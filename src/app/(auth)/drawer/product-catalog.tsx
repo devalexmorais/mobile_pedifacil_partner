@@ -17,6 +17,30 @@ import { db, auth } from '../../../config/firebase';
 import * as ImagePicker from 'expo-image-picker';
 import ImageViewer from '../../../components/ImageViewer';
 
+interface ProductOption {
+  name: string;
+  extraPrice: number;
+}
+
+interface ProductVariation {
+  name: string;
+  options: ProductOption[];
+}
+
+interface RequiredSelection {
+  name: string;
+  minRequired: number;
+  maxRequired: number;
+  options: ProductOption[];
+}
+
+interface Extra {
+  name: string;
+  extraPrice: number;
+  minRequired: number;
+  maxRequired: number;
+}
+
 interface Product {
   id: string;
   name: string;
@@ -24,7 +48,14 @@ interface Product {
   price: number;
   category: string;
   image?: string;
-  available: boolean;
+  isActive: boolean;
+  isPromotion: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  sellerId: string;
+  variations: ProductVariation[];
+  requiredSelections: RequiredSelection[];
+  extras: Extra[];
 }
 
 interface Category {
@@ -33,20 +64,11 @@ interface Category {
   products: Product[];
 }
 
-interface ProductVariation {
-  id?: string;
+interface FormVariation {
   name: string;
   description: string;
   price: string;
   isAvailable: boolean;
-}
-
-interface ProductOption {
-  id?: string;
-  name: string;
-  additionalPrice: string;
-  isRequired: boolean;
-  maxChoices: number;
 }
 
 interface NewProduct {
@@ -57,8 +79,9 @@ interface NewProduct {
   isActive: boolean;
   isPromotion: boolean;
   promotionalPrice: string | null;
-  variations: ProductVariation[];
-  options: ProductOption[];
+  variations: FormVariation[];
+  requiredSelections: RequiredSelection[];
+  extras: Extra[];
   image: string | null;
 }
 
@@ -84,7 +107,8 @@ export default function ProductCatalog() {
     isPromotion: false,
     promotionalPrice: null,
     variations: [],
-    options: [],
+    requiredSelections: [],
+    extras: [],
     image: null
   });
   const [availableCategories, setAvailableCategories] = useState<CategoryOption[]>([]);
@@ -108,7 +132,9 @@ export default function ProductCatalog() {
       
       const productsData = productsSnapshot.docs.map(doc => ({
         id: doc.id,
-        ...doc.data()
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate(),
+        updatedAt: doc.data().updatedAt?.toDate()
       })) as Product[];
 
       // Agrupar produtos por categoria
@@ -154,6 +180,8 @@ export default function ProductCatalog() {
   };
 
   const handleAddProduct = () => {
+    setIsEditing(false);
+    setEditingProductId(null);
     setIsModalVisible(true);
   };
 
@@ -167,13 +195,16 @@ export default function ProductCatalog() {
       isPromotion: false,
       promotionalPrice: null,
       variations: [],
-      options: [],
+      requiredSelections: [],
+      extras: [],
       image: null
     });
   };
 
   const handleCloseModal = () => {
     setIsModalVisible(false);
+    setIsEditing(false);
+    setEditingProductId(null);
     resetNewProduct();
   };
 
@@ -199,7 +230,7 @@ export default function ProductCatalog() {
 
       const productRef = doc(db, 'partners', user.uid, 'products', product.id);
       await updateDoc(productRef, {
-        available: !product.available
+        isActive: !product.isActive
       });
 
       // Recarrega a lista após a atualização
@@ -246,34 +277,35 @@ export default function ProductCatalog() {
       const user = auth.currentUser;
       if (!user) return;
 
-      // Carregar variações
-      const variationsRef = collection(db, 'partners', user.uid, 'products', product.id, 'variations');
-      const variationsSnapshot = await getDocs(variationsRef);
-      const variations = variationsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        price: doc.data().price.toString()
-      })) as ProductVariation[];
-
-      // Carregar opções
-      const optionsRef = collection(db, 'partners', user.uid, 'products', product.id, 'options');
-      const optionsSnapshot = await getDocs(optionsRef);
-      const options = optionsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        additionalPrice: doc.data().additionalPrice.toString()
-      })) as ProductOption[];
+      // Converter as variações do produto para o formato do formulário
+      const formVariations: FormVariation[] = (product.variations || []).map(variation => ({
+        name: variation.name,
+        description: variation.options[0]?.name || '',
+        // Multiplica por 100 para converter para centavos antes de formatar
+        price: formatPrice((variation.options[0]?.extraPrice * 100 || 0).toString()),
+        isAvailable: true
+      }));
 
       setNewProduct({
         name: product.name,
         description: product.description || '',
-        price: product.price.toString(),
+        // Multiplica por 100 para converter para centavos antes de formatar
+        price: formatPrice((product.price * 100).toString()),
         category: product.category,
-        isActive: product.available,
-        isPromotion: false,
+        isActive: product.isActive,
+        isPromotion: product.isPromotion || false,
         promotionalPrice: null,
-        variations: variations,
-        options: options,
+        variations: formVariations,
+        requiredSelections: product.requiredSelections.map(selection => ({
+          name: selection.name,
+          minRequired: selection.minRequired,
+          maxRequired: selection.maxRequired,
+          options: selection.options.map(option => ({
+            name: option.name,
+            extraPrice: option.extraPrice || 0
+          }))
+        })) || [],
+        extras: product.extras || [],
         image: product.image || null
       });
       
@@ -286,6 +318,28 @@ export default function ProductCatalog() {
     }
   };
 
+  const formatPrice = (value: string): string => {
+    // Remove tudo que não é número
+    let numbers = value.replace(/\D/g, '');
+    
+    // Se não houver números, retorna "0,00"
+    if (!numbers) return "0,00";
+    
+    // Converte para número e divide por 100 para ter os centavos
+    const price = Number(numbers) / 100;
+    
+    // Formata o número com duas casas decimais, usando vírgula como separador
+    return price.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+      useGrouping: true // Isso manterá os separadores de milhar
+    }).replace(/\s/g, ''); // Remove possíveis espaços em branco
+  };
+
+  const unformatPrice = (value: string): string => {
+    return value.replace(/\D/g, '');
+  };
+
   const handleCreateProduct = async () => {
     try {
       if (!newProduct.name || !newProduct.price || !newProduct.category) {
@@ -293,7 +347,8 @@ export default function ProductCatalog() {
         return;
       }
 
-      const price = parseFloat(newProduct.price.replace(',', '.'));
+      // Converte o preço formatado para número
+      const price = Number(unformatPrice(newProduct.price)) / 100;
       if (isNaN(price)) {
         Alert.alert('Erro', 'Preço inválido');
         return;
@@ -301,6 +356,26 @@ export default function ProductCatalog() {
 
       const user = auth.currentUser;
       if (!user) return;
+
+      // Converter as variações do formulário para o formato do ProductVariation
+      const variations: ProductVariation[] = newProduct.variations.map(variation => ({
+        name: variation.name,
+        options: [{
+          name: variation.description || '',
+          extraPrice: Number(unformatPrice(variation.price)) / 100 || 0
+        }]
+      }));
+
+      // Converter as requiredSelections mantendo o extraPrice
+      const requiredSelections: RequiredSelection[] = newProduct.requiredSelections.map(selection => ({
+        name: selection.name,
+        minRequired: selection.minRequired,
+        maxRequired: selection.maxRequired,
+        options: selection.options.map(option => ({
+          name: option.name,
+          extraPrice: option.extraPrice || 0 // Garante que o extraPrice existe
+        }))
+      }));
 
       const productData = {
         name: newProduct.name,
@@ -312,7 +387,16 @@ export default function ProductCatalog() {
         promotionalPrice: newProduct.promotionalPrice ? 
           parseFloat(newProduct.promotionalPrice.replace(',', '.')) : null,
         image: newProduct.image,
-        available: newProduct.isActive,
+        sellerId: user.uid,
+        variations,
+        requiredSelections,
+        extras: newProduct.extras.map(extra => ({
+          name: extra.name,
+          extraPrice: extra.extraPrice,
+          minRequired: extra.minRequired,
+          maxRequired: extra.maxRequired
+        })),
+        createdAt: new Date(),
         updatedAt: new Date()
       };
 
@@ -321,60 +405,17 @@ export default function ProductCatalog() {
       if (isEditing && editingProductId) {
         // Atualizar produto existente
         productRef = doc(db, 'partners', user.uid, 'products', editingProductId);
-        await updateDoc(productRef, productData);
-
-        // Deletar variações e opções antigas antes de adicionar as novas
-        const oldVariationsRef = collection(productRef, 'variations');
-        const oldOptionsRef = collection(productRef, 'options');
-        
-        const oldVariationsSnapshot = await getDocs(oldVariationsRef);
-        const oldOptionsSnapshot = await getDocs(oldOptionsRef);
-        
-        await Promise.all([
-          ...oldVariationsSnapshot.docs.map(doc => deleteDoc(doc.ref)),
-          ...oldOptionsSnapshot.docs.map(doc => deleteDoc(doc.ref))
-        ]);
-
+        await updateDoc(productRef, {
+          ...productData,
+          updatedAt: new Date()
+        });
       } else {
         // Criar novo produto
         productRef = doc(collection(db, 'partners', user.uid, 'products'));
         await setDoc(productRef, {
           ...productData,
-          sellerId: user.uid,
-          createdAt: new Date()
+          id: productRef.id
         });
-      }
-
-      // Adicionar variações como subcoleção
-      if (newProduct.variations.length > 0) {
-        const variationsRef = collection(productRef, 'variations');
-        await Promise.all(
-          newProduct.variations.map(variation => 
-            addDoc(variationsRef, {
-              name: variation.name,
-              description: variation.description,
-              price: parseFloat(variation.price.replace(',', '.')),
-              isAvailable: variation.isAvailable,
-              createdAt: new Date()
-            })
-          )
-        );
-      }
-
-      // Adicionar opções como subcoleção
-      if (newProduct.options.length > 0) {
-        const optionsRef = collection(productRef, 'options');
-        await Promise.all(
-          newProduct.options.map(option => 
-            addDoc(optionsRef, {
-              name: option.name,
-              additionalPrice: parseFloat(option.additionalPrice.replace(',', '.')),
-              isRequired: option.isRequired,
-              maxChoices: option.maxChoices,
-              createdAt: new Date()
-            })
-          )
-        );
       }
 
       Alert.alert('Sucesso', isEditing ? 'Produto atualizado com sucesso!' : 'Produto criado com sucesso!');
@@ -398,16 +439,30 @@ export default function ProductCatalog() {
     }));
   };
 
-  const addOption = () => {
+  const addRequiredSelection = () => {
     setNewProduct(prev => ({
       ...prev,
-      options: [...prev.options, {
+      requiredSelections: [...prev.requiredSelections, {
         name: '',
-        additionalPrice: '',
-        isRequired: false,
-        maxChoices: 1  // Valor padrão
+        minRequired: 1,
+        maxRequired: 1,
+        options: []
       }]
     }));
+  };
+
+  const addOptionToSelection = (selectionIndex: number) => {
+    setNewProduct(prev => {
+      const newRequiredSelections = [...prev.requiredSelections];
+      newRequiredSelections[selectionIndex].options.push({
+        name: '',
+        extraPrice: 0 // Adicione o preço padrão
+      });
+      return {
+        ...prev,
+        requiredSelections: newRequiredSelections
+      };
+    });
   };
 
   const handleAddCategory = async (categoryName: string) => {
@@ -508,33 +563,68 @@ export default function ProductCatalog() {
 
   const loadProductDetails = async (product: Product) => {
     try {
-      const user = auth.currentUser;
-      if (!user) return;
-
-      // Carregar variações
-      const variationsRef = collection(db, 'partners', user.uid, 'products', product.id, 'variations');
-      const variationsSnapshot = await getDocs(variationsRef);
-      const variations = variationsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as ProductVariation[];
-
-      // Carregar opções
-      const optionsRef = collection(db, 'partners', user.uid, 'products', product.id, 'options');
-      const optionsSnapshot = await getDocs(optionsRef);
-      const options = optionsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as ProductOption[];
-
-      setProductVariations(variations);
-      setProductOptions(options);
       setSelectedProduct(product);
+      setProductVariations(product.variations);
+      setProductOptions(product.requiredSelections.flatMap(selection => selection.options));
       setIsDetailsModalVisible(true);
     } catch (error) {
       console.error('Erro ao carregar detalhes do produto:', error);
       Alert.alert('Erro', 'Não foi possível carregar os detalhes do produto');
     }
+  };
+
+  const removeVariation = (index: number) => {
+    setNewProduct(prev => ({
+      ...prev,
+      variations: prev.variations.filter((_, i) => i !== index)
+    }));
+  };
+
+  const removeRequiredSelection = (index: number) => {
+    setNewProduct(prev => ({
+      ...prev,
+      requiredSelections: prev.requiredSelections.filter((_, i) => i !== index)
+    }));
+  };
+
+  const removeOptionFromSelection = (selectionIndex: number, optionIndex: number) => {
+    setNewProduct(prev => {
+      const newRequiredSelections = [...prev.requiredSelections];
+      newRequiredSelections[selectionIndex].options = 
+        newRequiredSelections[selectionIndex].options.filter((_, i) => i !== optionIndex);
+      return {
+        ...prev,
+        requiredSelections: newRequiredSelections
+      };
+    });
+  };
+
+  const addExtra = () => {
+    setNewProduct(prev => ({
+      ...prev,
+      extras: [...prev.extras, {
+        name: '',
+        extraPrice: 0,
+        minRequired: 0,
+        maxRequired: 1
+      }]
+    }));
+  };
+
+  const removeExtra = (index: number) => {
+    setNewProduct(prev => ({
+      ...prev,
+      extras: prev.extras.filter((_, i) => i !== index)
+    }));
+  };
+
+  // Primeiro, vamos criar uma função auxiliar para formatar o preço do extra
+  const formatExtraPrice = (value: number): string => {
+    return value.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+      useGrouping: false
+    });
   };
 
   if (loading) {
@@ -633,13 +723,13 @@ export default function ProductCatalog() {
                     onPress={() => toggleProductAvailability(product)}
                     style={[
                       styles.availabilityButton,
-                      product.available && styles.availableButton
+                      product.isActive && styles.availableButton
                     ]}
                   >
                     <Ionicons
-                      name={product.available ? "checkmark-circle" : "close-circle"}
+                      name={product.isActive ? "checkmark-circle" : "close-circle"}
                       size={24}
-                      color={product.available ? "#4CAF50" : "#FF3B30"}
+                      color={product.isActive ? "#4CAF50" : "#FF3B30"}
                     />
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -712,9 +802,12 @@ export default function ProductCatalog() {
               <TextInput
                 style={styles.input}
                 value={newProduct.price}
-                onChangeText={(text) => setNewProduct(prev => ({ ...prev, price: text }))}
+                onChangeText={(text) => {
+                  const formattedPrice = formatPrice(text);
+                  setNewProduct(prev => ({ ...prev, price: formattedPrice }));
+                }}
                 placeholder="Preço *"
-                keyboardType="decimal-pad"
+                keyboardType="numeric"
               />
               {renderCategoryInput()}
               <View style={styles.availableContainer}>
@@ -734,6 +827,15 @@ export default function ProductCatalog() {
               <Text style={styles.sectionTitle}>Variações</Text>
               {newProduct.variations.map((variation, index) => (
                 <View key={index} style={styles.variationContainer}>
+                  <View style={styles.itemHeader}>
+                    <Text style={styles.itemTitle}>Variação {index + 1}</Text>
+                    <TouchableOpacity 
+                      style={styles.removeButton}
+                      onPress={() => removeVariation(index)}
+                    >
+                      <Ionicons name="close-circle" size={24} color="#FF3B30" />
+                    </TouchableOpacity>
+                  </View>
                   <TextInput
                     style={styles.input}
                     value={variation.name}
@@ -758,12 +860,13 @@ export default function ProductCatalog() {
                     style={styles.input}
                     value={variation.price}
                     onChangeText={(text) => {
+                      const formattedPrice = formatPrice(text);
                       const newVariations = [...newProduct.variations];
-                      newVariations[index].price = text;
+                      newVariations[index].price = formattedPrice;
                       setNewProduct(prev => ({ ...prev, variations: newVariations }));
                     }}
                     placeholder="Preço"
-                    keyboardType="decimal-pad"
+                    keyboardType="numeric"
                   />
                 </View>
               ))}
@@ -771,79 +874,238 @@ export default function ProductCatalog() {
                 <Text style={styles.addButtonText}>+ Adicionar Variação</Text>
               </TouchableOpacity>
 
-              <Text style={styles.sectionTitle}>Opções Adicionais</Text>
-              {newProduct.options.map((option, index) => (
-                <View key={index} style={styles.optionContainer}>
+              <Text style={styles.sectionTitle}>Seleções Obrigatórias</Text>
+              {newProduct.requiredSelections.map((selection, selectionIndex) => (
+                <View key={selectionIndex} style={styles.selectionContainer}>
+                  <View style={styles.itemHeader}>
+                    <Text style={styles.itemTitle}>Seleção {selectionIndex + 1}</Text>
+                    <TouchableOpacity 
+                      style={styles.removeButton}
+                      onPress={() => removeRequiredSelection(selectionIndex)}
+                    >
+                      <Ionicons name="close-circle" size={24} color="#FF3B30" />
+                    </TouchableOpacity>
+                  </View>
                   <TextInput
                     style={styles.input}
-                    value={option.name}
+                    value={selection.name}
                     onChangeText={(text) => {
-                      const newOptions = [...newProduct.options];
-                      newOptions[index].name = text;
-                      setNewProduct(prev => ({ ...prev, options: newOptions }));
+                      const newSelections = [...newProduct.requiredSelections];
+                      newSelections[selectionIndex].name = text;
+                      setNewProduct(prev => ({ ...prev, requiredSelections: newSelections }));
                     }}
-                    placeholder="Nome da opção"
+                    placeholder="Nome da seleção"
                   />
-                  <TextInput
-                    style={styles.input}
-                    value={option.additionalPrice}
-                    onChangeText={(text) => {
-                      const newOptions = [...newProduct.options];
-                      newOptions[index].additionalPrice = text;
-                      setNewProduct(prev => ({ ...prev, options: newOptions }));
-                    }}
-                    placeholder="Preço adicional"
-                    keyboardType="decimal-pad"
-                  />
-                  <View style={styles.optionControlRow}>
-                    <View style={styles.optionControl}>
-                      <Text style={styles.inputLabel}>Máximo de escolhas</Text>
+                  
+                  <View style={styles.selectionControlRow}>
+                    <View style={styles.selectionControl}>
+                      <Text style={styles.inputLabel}>Mínimo de escolhas</Text>
                       <View style={styles.maxChoicesContainer}>
                         <TouchableOpacity 
                           style={styles.maxChoicesButton}
                           onPress={() => {
-                            const newOptions = [...newProduct.options];
-                            newOptions[index].maxChoices = Math.max(1, (newOptions[index].maxChoices || 1) - 1);
-                            setNewProduct(prev => ({ ...prev, options: newOptions }));
+                            const newSelections = [...newProduct.requiredSelections];
+                            newSelections[selectionIndex].minRequired = 
+                              Math.max(1, newSelections[selectionIndex].minRequired - 1);
+                            setNewProduct(prev => ({ ...prev, requiredSelections: newSelections }));
                           }}
                         >
                           <Ionicons name="remove" size={20} color="#666" />
                         </TouchableOpacity>
-                        <Text style={styles.maxChoicesText}>{option.maxChoices || 1}</Text>
+                        <Text style={styles.maxChoicesText}>{selection.minRequired}</Text>
                         <TouchableOpacity 
                           style={styles.maxChoicesButton}
                           onPress={() => {
-                            const newOptions = [...newProduct.options];
-                            newOptions[index].maxChoices = (newOptions[index].maxChoices || 1) + 1;
-                            setNewProduct(prev => ({ ...prev, options: newOptions }));
+                            const newSelections = [...newProduct.requiredSelections];
+                            newSelections[selectionIndex].minRequired += 1;
+                            setNewProduct(prev => ({ ...prev, requiredSelections: newSelections }));
                           }}
                         >
                           <Ionicons name="add" size={20} color="#666" />
                         </TouchableOpacity>
                       </View>
                     </View>
-                    <View style={styles.optionControl}>
-                      <Text style={styles.inputLabel}>Obrigatório</Text>
-                      <TouchableOpacity
-                        onPress={() => {
-                          const newOptions = [...newProduct.options];
-                          newOptions[index].isRequired = !newOptions[index].isRequired;
-                          setNewProduct(prev => ({ ...prev, options: newOptions }));
+                    
+                    <View style={styles.selectionControl}>
+                      <Text style={styles.inputLabel}>Máximo de escolhas</Text>
+                      <View style={styles.maxChoicesContainer}>
+                        <TouchableOpacity 
+                          style={styles.maxChoicesButton}
+                          onPress={() => {
+                            const newSelections = [...newProduct.requiredSelections];
+                            newSelections[selectionIndex].maxRequired = 
+                              Math.max(1, newSelections[selectionIndex].maxRequired - 1);
+                            setNewProduct(prev => ({ ...prev, requiredSelections: newSelections }));
+                          }}
+                        >
+                          <Ionicons name="remove" size={20} color="#666" />
+                        </TouchableOpacity>
+                        <Text style={styles.maxChoicesText}>{selection.maxRequired}</Text>
+                        <TouchableOpacity 
+                          style={styles.maxChoicesButton}
+                          onPress={() => {
+                            const newSelections = [...newProduct.requiredSelections];
+                            newSelections[selectionIndex].maxRequired += 1;
+                            setNewProduct(prev => ({ ...prev, requiredSelections: newSelections }));
+                          }}
+                        >
+                          <Ionicons name="add" size={20} color="#666" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Opções da seleção */}
+                  {selection.options.map((option, optionIndex) => (
+                    <View key={optionIndex} style={styles.optionContainer}>
+                      <View style={styles.itemHeader}>
+                        <Text style={styles.itemTitle}>Opção {optionIndex + 1}</Text>
+                        <TouchableOpacity 
+                          style={styles.removeButton}
+                          onPress={() => removeOptionFromSelection(selectionIndex, optionIndex)}
+                        >
+                          <Ionicons name="close-circle" size={24} color="#FF3B30" />
+                        </TouchableOpacity>
+                      </View>
+                      <TextInput
+                        style={styles.input}
+                        value={option.name}
+                        onChangeText={(text) => {
+                          const newSelections = [...newProduct.requiredSelections];
+                          newSelections[selectionIndex].options[optionIndex].name = text;
+                          setNewProduct(prev => ({ ...prev, requiredSelections: newSelections }));
                         }}
-                        style={styles.toggleButton}
-                      >
-                        <Ionicons
-                          name={option.isRequired ? "checkmark-circle" : "close-circle"}
-                          size={30}
-                          color={option.isRequired ? "#4CAF50" : "#FF3B30"}
-                        />
-                      </TouchableOpacity>
+                        placeholder="Nome da opção"
+                      />
+                      <TextInput
+                        style={styles.input}
+                        value={formatPrice(option.extraPrice?.toString() || '0')}
+                        onChangeText={(text) => {
+                          const newSelections = [...newProduct.requiredSelections];
+                          newSelections[selectionIndex].options[optionIndex].extraPrice = 
+                            Number(unformatPrice(text)) / 100;
+                          setNewProduct(prev => ({ ...prev, requiredSelections: newSelections }));
+                        }}
+                        placeholder="Preço adicional"
+                        keyboardType="numeric"
+                      />
+                    </View>
+                  ))}
+
+                  <TouchableOpacity 
+                    style={styles.addButton}
+                    onPress={() => addOptionToSelection(selectionIndex)}
+                  >
+                    <Text style={styles.addButtonText}>+ Adicionar Opção</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+
+              <TouchableOpacity style={styles.addButton} onPress={addRequiredSelection}>
+                <Text style={styles.addButtonText}>+ Adicionar Seleção Obrigatória</Text>
+              </TouchableOpacity>
+
+              <Text style={styles.sectionTitle}>Opções Adicionais</Text>
+              {newProduct.extras.map((extra, index) => (
+                <View key={index} style={styles.optionContainer}>
+                  <View style={styles.itemHeader}>
+                    <Text style={styles.itemTitle}>Opção {index + 1}</Text>
+                    <TouchableOpacity 
+                      style={styles.removeButton}
+                      onPress={() => removeExtra(index)}
+                    >
+                      <Ionicons name="close-circle" size={24} color="#FF3B30" />
+                    </TouchableOpacity>
+                  </View>
+                  <TextInput
+                    style={styles.input}
+                    value={extra.name}
+                    onChangeText={(text) => {
+                      const newExtras = [...newProduct.extras];
+                      newExtras[index].name = text;
+                      setNewProduct(prev => ({ ...prev, extras: newExtras }));
+                    }}
+                    placeholder="Nome da opção"
+                  />
+                  <TextInput
+                    style={styles.input}
+                    value={formatExtraPrice(extra.extraPrice)}
+                    onChangeText={(text) => {
+                      const numbers = text.replace(/\D/g, '');
+                      const newExtras = [...newProduct.extras];
+                      
+                      if (numbers) {
+                        const valueInCents = parseInt(numbers);
+                        newExtras[index].extraPrice = valueInCents / 100;
+                      } else {
+                        newExtras[index].extraPrice = 0;
+                      }
+                      
+                      setNewProduct(prev => ({ ...prev, extras: newExtras }));
+                    }}
+                    placeholder="Preço adicional"
+                    keyboardType="numeric"
+                  />
+                  
+                  <View style={styles.optionControlRow}>
+                    <View style={styles.optionControl}>
+                      <Text style={styles.inputLabel}>Mínimo de escolhas</Text>
+                      <View style={styles.maxChoicesContainer}>
+                        <TouchableOpacity 
+                          style={styles.maxChoicesButton}
+                          onPress={() => {
+                            const newExtras = [...newProduct.extras];
+                            newExtras[index].minRequired = Math.max(0, newExtras[index].minRequired - 1);
+                            setNewProduct(prev => ({ ...prev, extras: newExtras }));
+                          }}
+                        >
+                          <Ionicons name="remove" size={20} color="#666" />
+                        </TouchableOpacity>
+                        <Text style={styles.maxChoicesText}>{extra.minRequired}</Text>
+                        <TouchableOpacity 
+                          style={styles.maxChoicesButton}
+                          onPress={() => {
+                            const newExtras = [...newProduct.extras];
+                            newExtras[index].minRequired += 1;
+                            setNewProduct(prev => ({ ...prev, extras: newExtras }));
+                          }}
+                        >
+                          <Ionicons name="add" size={20} color="#666" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                    
+                    <View style={styles.optionControl}>
+                      <Text style={styles.inputLabel}>Máximo de escolhas</Text>
+                      <View style={styles.maxChoicesContainer}>
+                        <TouchableOpacity 
+                          style={styles.maxChoicesButton}
+                          onPress={() => {
+                            const newExtras = [...newProduct.extras];
+                            newExtras[index].maxRequired = Math.max(1, newExtras[index].maxRequired - 1);
+                            setNewProduct(prev => ({ ...prev, extras: newExtras }));
+                          }}
+                        >
+                          <Ionicons name="remove" size={20} color="#666" />
+                        </TouchableOpacity>
+                        <Text style={styles.maxChoicesText}>{extra.maxRequired}</Text>
+                        <TouchableOpacity 
+                          style={styles.maxChoicesButton}
+                          onPress={() => {
+                            const newExtras = [...newProduct.extras];
+                            newExtras[index].maxRequired += 1;
+                            setNewProduct(prev => ({ ...prev, extras: newExtras }));
+                          }}
+                        >
+                          <Ionicons name="add" size={20} color="#666" />
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
                 </View>
               ))}
-              <TouchableOpacity style={styles.addButton} onPress={addOption}>
-                <Text style={styles.addButtonText}>+ Adicionar Opção</Text>
+              <TouchableOpacity style={styles.addButton} onPress={addExtra}>
+                <Text style={styles.addButtonText}>+ Adicionar Opção Adicional</Text>
               </TouchableOpacity>
             </ScrollView>
 
@@ -917,7 +1179,7 @@ export default function ProductCatalog() {
                       <Text style={styles.sectionTitle}>Variações</Text>
                       {productVariations.map((variation, index) => (
                         <View 
-                          key={variation.id} 
+                          key={`${variation.name}-${index}`}
                           style={[
                             styles.variationItem,
                             index === productVariations.length - 1 && styles.lastItem
@@ -926,49 +1188,45 @@ export default function ProductCatalog() {
                           <View style={styles.variationHeader}>
                             <View style={styles.variationInfo}>
                               <Text style={styles.variationName}>{variation.name}</Text>
-                              {variation.description && (
-                                <Text style={styles.variationDescription}>
-                                  {variation.description}
+                              {variation.options.map((option, optIndex) => (
+                                <Text key={`${option.name}-${optIndex}`} style={styles.variationDescription}>
+                                  {option.name} {option.extraPrice > 0 && `(+R$ ${option.extraPrice.toFixed(2)})`}
                                 </Text>
-                              )}
+                              ))}
                             </View>
-                            <Text style={styles.variationPrice}>
-                              R$ {parseFloat(variation.price).toFixed(2)}
-                            </Text>
                           </View>
                         </View>
                       ))}
                     </View>
                   )}
 
-                  {productOptions.length > 0 && (
-                    <View style={styles.detailsSection}>
-                      <Text style={styles.sectionTitle}>Adicionais</Text>
-                      {productOptions.map((option, index) => (
-                        <View 
-                          key={option.id} 
-                          style={[
-                            styles.optionItem,
-                            index === productOptions.length - 1 && styles.lastItem
-                          ]}
-                        >
-                          <View style={styles.optionHeader}>
-                            <View style={styles.optionInfo}>
-                              <Text style={styles.optionName}>{option.name}</Text>
-                              <Text style={styles.optionDetails}>
-                                <Text>{option.isRequired ? 'Obrigatório' : 'Opcional'}</Text>
-                                <Text style={styles.bulletPoint}> • </Text>
-                                <Text>Máx: {option.maxChoices}</Text>
-                              </Text>
-                            </View>
-                            <Text style={styles.optionPrice}>
-                              +R$ {parseFloat(option.additionalPrice).toFixed(2)}
-                            </Text>
-                          </View>
+                  {selectedProduct?.requiredSelections.map((selection, index) => (
+                    <View 
+                      key={`${selection.name}-${index}`}
+                      style={[
+                        styles.optionItem,
+                        index === selectedProduct.requiredSelections.length - 1 && styles.lastItem
+                      ]}
+                    >
+                      <View style={styles.optionHeader}>
+                        <View style={styles.optionInfo}>
+                          <Text style={styles.optionName}>{selection.name}</Text>
+                          <Text style={styles.optionDetails}>
+                            <Text>{selection.minRequired > 0 ? 'Obrigatório' : 'Opcional'}</Text>
+                            <Text style={styles.bulletPoint}> • </Text>
+                            <Text>Mín: {selection.minRequired} • Máx: {selection.maxRequired}</Text>
+                          </Text>
                         </View>
-                      ))}
+                        <View>
+                          {selection.options.map((option, optIndex) => (
+                            <Text key={`${option.name}-${optIndex}`} style={styles.optionPrice}>
+                              {option.name}
+                            </Text>
+                          ))}
+                        </View>
+                      </View>
                     </View>
-                  )}
+                  ))}
                 </>
               )}
             </ScrollView>
@@ -1336,7 +1594,7 @@ const styles = StyleSheet.create({
   maxChoicesContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#f5f5f9',
     borderRadius: 8,
     padding: 4,
   },
@@ -1431,11 +1689,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#666',
   },
-  variationPrice: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#FFA500',
-  },
   optionItem: {
     paddingVertical: 12,
     borderBottomWidth: 1,
@@ -1471,5 +1724,32 @@ const styles = StyleSheet.create({
   },
   bulletPoint: {
     color: '#666',
+  },
+  selectionContainer: {
+    marginBottom: 16,
+  },
+  selectionControlRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  selectionControl: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  itemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  itemTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#666',
+  },
+  removeButton: {
+    padding: 4,
   },
 });
