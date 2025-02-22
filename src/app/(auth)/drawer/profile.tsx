@@ -295,7 +295,7 @@ export default function Profile() {
             <Image
               source={partnerData.store.logo ? 
                 { uri: partnerData.store.logo } : 
-                require('../../../assets/logoAmarela.png')
+                require('../../../assets/logo.png')
               }
               style={styles.profileImage}
             />

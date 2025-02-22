@@ -1,13 +1,11 @@
 import { Drawer } from 'expo-router/drawer';
-import { useEffect } from 'react';
-import { useRouter, Redirect } from 'expo-router';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { useRouter} from 'expo-router';
+import { View,SafeAreaView, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons, AntDesign, FontAwesome6, FontAwesome } from '@expo/vector-icons';
-import { useAuth } from '../../hooks/useAuth';
-import { authService } from '../../services/authService';
 import { DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
 import { StatusBar } from 'react-native';
 import { MainEstablishmentButton } from '@/components/MainEstablishmentButton';
+import { signOut, getAuth } from 'firebase/auth';
 
 <StatusBar
   barStyle="light-content" // Define o estilo do texto (claro ou escuro)
@@ -21,17 +19,18 @@ function CustomDrawerContent(props: any) {
     try {
       console.log('Iniciando processo de logout...');
       
-      await authService.logout();
+      const auth = getAuth();
+      await signOut(auth);
       
       console.log('Logout bem sucedido, redirecionando...');
-      router.replace('/public/Login');
+      router.replace('/');
     } catch (error) {
       console.error('Erro ao fazer logout:', error);
     }
   };
 
   return (
-    <View style={styles.drawerContainer}>
+    <SafeAreaView style={styles.drawerContainer}>
       <StatusBar barStyle="light-content" backgroundColor="#FFA500" />
       <MainEstablishmentButton/>
       <DrawerContentScrollView {...props}>
@@ -49,32 +48,11 @@ function CustomDrawerContent(props: any) {
         <Ionicons name="log-out-outline" size={24} color="#FF3B30" />
         <Text style={styles.logoutText}>Sair</Text>
       </TouchableOpacity>
-    </View>
+    </SafeAreaView>
   );
 }
 
 export default function AuthLayout() {
-  const { user, loading, isAuthenticated } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!loading && !isAuthenticated) {
-      router.replace('/public/Login');
-    }
-  }, [loading, isAuthenticated]);
-
-  if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#007AFF" />
-      </View>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <Redirect href="/public/Login" />;
-  }
-
   return (
     <Drawer
       screenOptions={{

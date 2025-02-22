@@ -1,4 +1,15 @@
 export const colors = {
+  primary: '#FFA500',
+  background: '#FFFFFF',
+  inputBackground: '#F8F8F8',
+  text: {
+    primary: '#333333',
+    secondary: '#666666',
+    error: '#FF3B30',
+  },
+  border: {
+    default: '#E0E0E0',
+  },
   white: "#FFFFFF",
   black: "#000000",
 

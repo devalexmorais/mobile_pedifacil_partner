@@ -1,7 +1,10 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
+let serviceAccount = require('./serviceAccountKey.json');
 
-admin.initializeApp();
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
 
 exports.makePremium = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
@@ -133,5 +136,84 @@ exports.updatePartnerDocuments = functions.https.onCall(async (data, context) =>
   } catch (error) {
     console.error('Erro ao atualizar documentos:', error);
     throw new functions.https.HttpsError('internal', 'Erro ao atualizar documentos');
+  }
+});
+
+// Função para definir a role do usuário
+exports.setUserRole = functions.https.onCall((data, context) => {
+  // Verifica se o usuário está autenticado
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      'unauthenticated', 
+      'É necessário estar autenticado para usar esta função.'
+    );
+  }
+
+  const uid = context.auth.uid;
+  const role = data.role;
+
+  // Validação do papel (role)
+  const validRoles = ['partner', 'admin', 'user'];
+  if (!validRoles.includes(role)) {
+    throw new functions.https.HttpsError(
+      'invalid-argument',
+      'Role inválida. As roles permitidas são: partner, admin, user'
+    );
+  }
+
+  // Define a custom claim do usuário
+  return admin.auth().setCustomUserClaims(uid, { role: role })
+    .then(() => {
+      // Atualiza o documento do usuário no Firestore também
+      return admin.firestore().collection('partners').doc(uid).update({
+        role: role,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    })
+    .then(() => {
+      return {
+        success: true,
+        message: `Role ${role} foi definida para o usuário ${uid}.`
+      };
+    })
+    .catch((error) => {
+      console.error('Erro ao definir role:', error);
+      throw new functions.https.HttpsError('internal', error.message);
+    });
+});
+
+// Trigger quando um novo usuário é criado
+exports.onUserCreated = functions.auth.user().onCreate((user) => {
+  // Define a role padrão como 'partner' para novos usuários
+  const defaultClaims = { role: 'partner' };
+  
+  return admin.auth().setCustomUserClaims(user.uid, defaultClaims)
+    .then(() => {
+      console.log(`Role padrão definida para o usuário ${user.uid}`);
+      return null;
+    })
+    .catch((error) => {
+      console.error('Erro ao definir role padrão:', error);
+      return null;
+    });
+});
+
+// Opcional: Função para verificar a role atual do usuário
+exports.getUserRole = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      'unauthenticated', 
+      'É necessário estar autenticado para usar esta função.'
+    );
+  }
+
+  try {
+    const user = await admin.auth().getUser(context.auth.uid);
+    return {
+      role: user.customClaims?.role || 'partner',
+      email: user.email
+    };
+  } catch (error) {
+    throw new functions.https.HttpsError('internal', error.message);
   }
 }); 

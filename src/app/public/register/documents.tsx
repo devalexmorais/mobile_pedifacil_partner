@@ -9,13 +9,14 @@ import {
   Alert,
   ActivityIndicator,
   LogBox,
+  SafeAreaView,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Picker } from '@react-native-picker/picker';
-import { useRegisterForm } from './context';
 import { categoryService} from '../../../services/categoryService';
 import { registerService } from '../../../services/registerService';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { CustomInput } from '../../../components/CustomInput';
+import { colors } from '../../../styles/theme/colors';
 
 interface Category {
   id: string;
@@ -27,9 +28,23 @@ interface Subcategory {
   name: string;
 }
 
+interface DocumentsFormData {
+  storeName: string;
+  category: string;
+  subcategory: string;
+  cnpj_or_cpf: string;
+}
+
 export default function Documents() {
   const router = useRouter();
-  const { formData, updateFormData } = useRegisterForm();
+  const params = useLocalSearchParams();
+  const [formData, setFormData] = useState<DocumentsFormData>({
+    storeName: '',
+    category: '',
+    subcategory: '',
+    cnpj_or_cpf: ''
+  });
+  
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
   const [loading, setLoading] = useState(false);
@@ -40,6 +55,13 @@ export default function Documents() {
     subcategory: '',
     document: '',
   });
+
+  const updateFormData = (field: Partial<DocumentsFormData>) => {
+    setFormData(prev => ({
+      ...prev,
+      ...field
+    }));
+  };
 
   useEffect(() => {
     LogBox.ignoreLogs(['Possible Unhandled Promise Rejection']);
@@ -158,32 +180,37 @@ export default function Documents() {
     try {
       setLoading(true);
 
-      // Verificar se todos os dados necessários estão presentes
-      if (!formData.email || !formData.password || !formData.name || !formData.phone) {
-        throw new Error('Dados pessoais incompletos. Por favor, volte e preencha todos os campos.');
+      console.log('Parâmetros para registro:', params);
+
+      // Verificação mais detalhada dos dados
+      if (!params.name || !params.email || !params.password || 
+          !params.phone || !params.street || !params.number || 
+          !params.neighborhood || !params.city || !params.state) {
+        Alert.alert('Erro', 'Dados de cadastro incompletos. Por favor, comece o cadastro novamente.');
+        router.push('/public/register/basic-info');
+        return;
       }
 
-      if (!formData.street || !formData.number || !formData.neighborhood || !formData.city || !formData.state) {
-        throw new Error('Dados de endereço incompletos. Por favor, volte e preencha todos os campos.');
-      }
-
-      // Tentar cadastrar o usuário
       const result = await registerService.registerPartner({
-        ...formData,
-        email: formData.email,
-        password: formData.password,
-        name: formData.name,
-        phone: formData.phone,
-        street: formData.street,
-        number: formData.number,
-        neighborhood: formData.neighborhood,
-        city: formData.city,
-        state: formData.state,
+        name: String(params.name),
+        email: String(params.email),
+        password: String(params.password),
+        phone: String(params.phone),
+        street: String(params.street),
+        number: String(params.number),
+        complement: params.complement ? String(params.complement) : '',
+        neighborhood: String(params.neighborhood),
+        city: String(params.city),
+        state: String(params.state),
         storeName: formData.storeName,
         category: formData.category,
         subcategory: formData.subcategory,
-        cnpj_or_cpf: formData.cnpj_or_cpf
+        cnpj_or_cpf: formData.cnpj_or_cpf,
       });
+
+      if ('error' in result) {
+        throw new Error(String(result.error));
+      }
 
       console.log('Usuário registrado com sucesso:', result);
 
@@ -197,52 +224,54 @@ export default function Documents() {
           }
         ]
       );
-
+      
     } catch (error: any) {
-      console.error('Erro no processo de cadastro:', error);
       Alert.alert(
         'Erro no Cadastro',
-        error.message || 'Não foi possível realizar o cadastro. Tente novamente.',
-        [
-          { 
-            text: 'OK',
-            style: 'cancel'
-          }
-        ]
+        error.message || 'Não foi possível realizar o cadastro. Tente novamente.'
       );
     } finally {
       setLoading(false);
     }
   };
-
+  
   const handleBack = () => {
     router.back();
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.title}>Documentos</Text>
-        <Text style={styles.subtitle}>Informe os dados do seu estabelecimento</Text>
+        <Text style={styles.title}>Dados do Estabelecimento</Text>
+        <Text style={styles.subtitle}>Complete as informações do seu negócio</Text>
 
         <View style={styles.form}>
-          {/* Nome do Estabelecimento */}
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Nome do Estabelecimento *</Text>
-            <TextInput
-              style={[styles.input, errors.storeName ? styles.inputError : null]}
-              placeholder="Digite o nome do seu estabelecimento"
-              value={formData.storeName}
-              onChangeText={(text) => updateFormData({ storeName: text })}
-              placeholderTextColor="#999"
-            />
-            {errors.storeName ? <Text style={styles.errorText}>{errors.storeName}</Text> : null}
-          </View>
+          {/* Nome do Estabelecimento com CustomInput */}
+          <CustomInput
+            label="Nome do Estabelecimento"
+            value={formData.storeName}
+            onChangeText={(text) => updateFormData({ storeName: text })}
+            error={!!errors.storeName}
+            placeholder="Digite o nome do seu estabelecimento"
+          />
+          {errors.storeName ? <Text style={styles.errorText}>{errors.storeName}</Text> : null}
+          
+          {/* CPF/CNPJ com CustomInput */}
+          <CustomInput
+            label="CPF ou CNPJ"
+            value={formData.cnpj_or_cpf}
+            onChangeText={(text) => updateFormData({ cnpj_or_cpf: formatDocument(text) })}
+            error={!!errors.document}
+            keyboardType="numeric"
+            maxLength={14}
+            placeholder="Digite apenas números"
+          />
+          {errors.document ? <Text style={styles.errorText}>{errors.document}</Text> : null}
 
-          {/* Categoria */}
+          {/* Categoria - mantendo o Picker */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Categoria *</Text>
-            <View style={[styles.pickerContainer, errors.category ? styles.inputError : null]}>
+            <Text style={styles.label}>Categoria</Text>
+            <View style={[styles.pickerContainer, errors.category ? styles.pickerError : null]}>
               <Picker
                 selectedValue={formData.category}
                 onValueChange={(itemValue) => {
@@ -262,89 +291,72 @@ export default function Documents() {
             {errors.category ? <Text style={styles.errorText}>{errors.category}</Text> : null}
           </View>
 
-          {/* Subcategoria */}
+          {/* Subcategoria - mantendo o Picker */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Subcategoria *</Text>
-            <View style={[styles.pickerContainer, errors.subcategory ? styles.inputError : null]}>
+            <Text style={styles.label}>Subcategoria</Text>
+            <View style={[styles.pickerContainer, errors.subcategory ? styles.pickerError : null]}>
               <Picker
                 selectedValue={formData.subcategory}
-                onValueChange={(itemValue) => {
-                  updateFormData({ subcategory: itemValue });
-                }}
+                onValueChange={(itemValue) => updateFormData({ subcategory: itemValue })}
                 style={styles.picker}
                 enabled={!!formData.category}
               >
                 <Picker.Item label="Selecione uma subcategoria" value="" />
                 {subcategories.map((subcategory) => (
-                  <Picker.Item 
-                    key={subcategory.id} 
-                    label={subcategory.name} 
-                    value={subcategory.id} 
-                  />
+                  <Picker.Item key={subcategory.id} label={subcategory.name} value={subcategory.id} />
                 ))}
               </Picker>
             </View>
             {errors.subcategory ? <Text style={styles.errorText}>{errors.subcategory}</Text> : null}
           </View>
 
-          {/* CPF ou CNPJ */}
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>CPF ou CNPJ *</Text>
-            <TextInput
-              style={[styles.input, errors.document ? styles.inputError : null]}
-              placeholder="Digite apenas números"
-              value={formData.cnpj_or_cpf}
-              onChangeText={(text) => updateFormData({ cnpj_or_cpf: formatDocument(text) })}
-              keyboardType="numeric"
-              maxLength={14}
-            />
-            {errors.document ? <Text style={styles.errorText}>{errors.document}</Text> : null}
-          </View>
         </View>
 
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-            <Text style={styles.backButtonText}>Voltar</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.nextButton, loading ? styles.buttonDisabled : null]} 
-            onPress={handleNext}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.nextButtonText}>Cadastrar</Text>
-            )}
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={[styles.button, loading && styles.buttonDisabled]}
+          onPress={handleNext}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Finalizar Cadastro</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={handleBack}
+        >
+          <Text style={styles.backButtonText}>Voltar</Text>
+        </TouchableOpacity>
       </View>
-    </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.background,
   },
   content: {
-    padding: 20,
-  },
-  loadingContainer: {
     flex: 1,
+    padding: 30,
     justifyContent: 'center',
-    alignItems: 'center',
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 28,
+    fontWeight: '600',
+    color: colors.text.primary,
     marginBottom: 8,
+    textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
-    color: '#666',
-    marginBottom: 24,
+    color: colors.text.secondary,
+    marginBottom: 30,
+    textAlign: 'center',
   },
   form: {
     gap: 16,
@@ -354,110 +366,69 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 16,
+    color: colors.text.secondary,
     marginBottom: 8,
-    color: '#333',
-  },
-  input: {
-    height: 50,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    paddingHorizontal: 15,
-    backgroundColor: '#fff',
-    fontSize: 16,
-    color: '#333',
   },
   pickerContainer: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: colors.border.default,
     borderRadius: 8,
-    backgroundColor: '#fff',
-    marginTop: 4,
+    backgroundColor: colors.inputBackground,
+    height: 60,
+    justifyContent: 'center',
+  },
+  pickerError: {
+    borderColor: colors.text.error,
   },
   picker: {
     height: 50,
+    color: colors.text.primary,
   },
   errorText: {
-    color: '#ff3b30',
-    fontSize: 14,
-    marginTop: 4,
+    color: colors.text.error,
+    fontSize: 12,
+    marginTop: -12,
+    marginBottom: 12,
+    marginLeft: 4,
   },
-  buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 24,
-  },
-  backButton: {
-    flex: 1,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#007AFF',
-    borderRadius: 8,
-    padding: 15,
-    marginRight: 8,
-  },
-  nextButton: {
-    flex: 1,
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
-    padding: 15,
-    marginLeft: 8,
-  },
-  backButtonText: {
-    color: '#007AFF',
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  nextButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  retryButton: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#007AFF',
-    borderRadius: 8,
-    padding: 15,
-    marginTop: 16,
-  },
-  retryButtonText: {
-    color: '#007AFF',
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  inputError: {
-    borderColor: '#ff3b30',
-  },
-  imageUploadButton: {
-    height: 150,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    backgroundColor: '#f5f5f5',
+  button: {
+    backgroundColor: colors.primary,
+    height: 56,
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  previewImage: {
+    marginTop: 24,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
     width: '100%',
-    height: '100%',
-    borderRadius: 8,
-  },
-  imageUploadText: {
-    color: '#666',
-    fontSize: 16,
   },
   buttonDisabled: {
     opacity: 0.7,
   },
-  uploadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  uploadingText: {
-    color: '#fff',
-    marginLeft: 8,
+  buttonText: {
+    color: colors.white,
     fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  backButton: {
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 16,
+    width: '100%',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.text.secondary,
+  },
+  backButtonText: {
+    color: colors.text.secondary,
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.5,
   },
 });

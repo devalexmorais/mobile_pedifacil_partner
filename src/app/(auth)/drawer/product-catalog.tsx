@@ -5,21 +5,26 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  TextInput,
-  Image,
   ActivityIndicator,
   Modal,
   Alert,
+  SafeAreaView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { doc, collection, getDocs, addDoc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
+import { doc, collection, getDocs, addDoc, updateDoc, deleteDoc, setDoc, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../../../config/firebase';
 import * as ImagePicker from 'expo-image-picker';
-import ImageViewer from '../../../components/ImageViewer';
+import { usePlan } from '@/contexts/PlanContext';
+import { useRouter } from 'expo-router';
+import { SearchHeader } from '@/components/ProductCatalog/SearchHeader';
+import { CategoryList } from '@/components/ProductCatalog/CategoryList';
+import { ProductCard } from '@/components/ProductCatalog/ProductCard';
+import { ProductFormModal } from '@/components/ProductCatalog/ProductFormModal';
+import { ProductDetailsModal } from '@/components/ProductCatalog/ProductDetailsModal';
 
 interface ProductOption {
   name: string;
-  extraPrice: number;
+  price?: number;
 }
 
 interface ProductVariation {
@@ -90,6 +95,8 @@ interface CategoryOption {
   name: string;
 }
 
+const defaultProductImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAABmJLR0QA/wD/AP+gvaeTAAABKklEQVR4nO3ZMQqDQBRF0RnIFrKubCB1tiH774KUbkQhYhCdl3MqCx8Xq4v4EwEAAAAAAAAAAP9tqqrHb/bnqprH1mbxZxZc85D0lvSS9Jb0yJhZbG0Wf2bBNQ9Jb0kvSW9Jj4yZxdZm8WcWXPOQ9Jb0kvSW9MiYWWxtFn9mwTUPSW9JL0lvSY+MmcXWZvFnFlzzkPSW9JL0lvTImFlsbRZ/ZsE1D0lvSS9Jb0mPjJnF1mbxZxZc85D0lvSS9Jb0yJhZbG0Wf2bBNQ9Jb0kvSW9Jj4yZxdZm8WcWXPOQ9Jb0kvSW9MiYWWxtFn9mwTUPSW9JL0lvSY+MmcXWZvFnFlzzkPSW9JL0lvTImFlsbRZ/ZsE1D0lvSS9Jb0mPjJnF1mYBAAAAAAAAAAAAwCndAZJZYGwJVbsyAAAAAElFTkSuQmCC';
+
 export default function ProductCatalog() {
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -113,14 +120,26 @@ export default function ProductCatalog() {
   });
   const [availableCategories, setAvailableCategories] = useState<CategoryOption[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [productVariations, setProductVariations] = useState<ProductVariation[]>([]);
-  const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
   const [isDetailsModalVisible, setIsDetailsModalVisible] = useState(false);
-
+  const planContext = usePlan();
+  const { isPremium, getPlanLimits } = planContext || { isPremium: false, getPlanLimits: () => ({ maxProducts: 5 }) };
+  const limits = getPlanLimits ? getPlanLimits() : { maxProducts: 5 };
+  const [showLimitWarning, setShowLimitWarning] = useState(false);
+  const router = useRouter();
+  const [showDowngradeModal, setShowDowngradeModal] = useState(false);
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  
   useEffect(() => {
     loadProducts();
     loadCategories();
   }, []);
+
+  useEffect(() => {
+    if (categories.length > 0) {
+      checkPlanDowngrade();
+    }
+  }, [isPremium, categories]);
 
   const loadProducts = async () => {
     try {
@@ -137,8 +156,19 @@ export default function ProductCatalog() {
         updatedAt: doc.data().updatedAt?.toDate()
       })) as Product[];
 
+      // Filtra produtos ativos se estiver no plano gratuito
+      const filteredProducts = !isPremium 
+        ? productsData.map(product => ({
+            ...product,
+            isActive: product.isActive && categories
+              .flatMap(cat => cat.products)
+              .filter(p => p.isActive)
+              .indexOf(product) < limits.maxProducts
+          }))
+        : productsData;
+
       // Agrupar produtos por categoria
-      const groupedProducts = productsData.reduce((acc, product) => {
+      const groupedProducts = filteredProducts.reduce((acc, product) => {
         const category = acc.find(cat => cat.name === product.category);
         if (category) {
           category.products.push(product);
@@ -180,6 +210,15 @@ export default function ProductCatalog() {
   };
 
   const handleAddProduct = () => {
+    const totalProducts = categories.reduce((acc, category) => 
+      acc + category.products.length, 0);
+
+    // Verifica se pode adicionar mais produtos
+    if (!isPremium && totalProducts >= limits.maxProducts) {
+      setShowLimitWarning(true);
+      return;
+    }
+
     setIsEditing(false);
     setEditingProductId(null);
     setIsModalVisible(true);
@@ -204,6 +243,7 @@ export default function ProductCatalog() {
   const handleCloseModal = () => {
     setIsModalVisible(false);
     setIsEditing(false);
+    setEditingProduct(null);
     setEditingProductId(null);
     resetNewProduct();
   };
@@ -228,9 +268,40 @@ export default function ProductCatalog() {
       const user = auth.currentUser;
       if (!user) return;
 
+      // Se estiver tentando ativar o produto
+      if (!product.isActive) {
+        // Conta quantos produtos ativos existem
+        const activeProductsCount = categories.reduce((acc, category) => 
+          acc + category.products.filter(p => p.isActive).length, 0);
+
+        // Verifica se atingiu o limite (apenas para plano não premium)
+        if (!isPremium && activeProductsCount >= limits.maxProducts) {
+          Alert.alert(
+            'Limite Atingido',
+            `Seu plano atual permite apenas ${limits.maxProducts} produtos ativos. Desative outro produto ou faça upgrade para o plano Premium.`,
+            [
+              {
+                text: 'Fazer Upgrade',
+                onPress: handleUpgrade,
+              },
+              {
+                text: 'Gerenciar Produtos',
+                onPress: handleManageActiveProducts,
+              },
+              {
+                text: 'Cancelar',
+                style: 'cancel',
+              },
+            ]
+          );
+          return;
+        }
+      }
+
       const productRef = doc(db, 'partners', user.uid, 'products', product.id);
       await updateDoc(productRef, {
-        isActive: !product.isActive
+        isActive: !product.isActive,
+        updatedAt: new Date() // Atualiza a data de modificação
       });
 
       // Recarrega a lista após a atualização
@@ -274,43 +345,8 @@ export default function ProductCatalog() {
 
   const handleEditProduct = async (product: Product) => {
     try {
-      const user = auth.currentUser;
-      if (!user) return;
-
-      // Converter as variações do produto para o formato do formulário
-      const formVariations: FormVariation[] = (product.variations || []).map(variation => ({
-        name: variation.name,
-        description: variation.options[0]?.name || '',
-        // Multiplica por 100 para converter para centavos antes de formatar
-        price: formatPrice((variation.options[0]?.extraPrice * 100 || 0).toString()),
-        isAvailable: true
-      }));
-
-      setNewProduct({
-        name: product.name,
-        description: product.description || '',
-        // Multiplica por 100 para converter para centavos antes de formatar
-        price: formatPrice((product.price * 100).toString()),
-        category: product.category,
-        isActive: product.isActive,
-        isPromotion: product.isPromotion || false,
-        promotionalPrice: null,
-        variations: formVariations,
-        requiredSelections: product.requiredSelections.map(selection => ({
-          name: selection.name,
-          minRequired: selection.minRequired,
-          maxRequired: selection.maxRequired,
-          options: selection.options.map(option => ({
-            name: option.name,
-            extraPrice: option.extraPrice || 0
-          }))
-        })) || [],
-        extras: product.extras || [],
-        image: product.image || null
-      });
-      
+      setEditingProduct(product);
       setIsEditing(true);
-      setEditingProductId(product.id);
       setIsModalVisible(true);
     } catch (error) {
       console.error('Erro ao carregar produto para edição:', error);
@@ -347,6 +383,11 @@ export default function ProductCatalog() {
         return;
       }
 
+      if (!isPremium && categories.reduce((acc, category) => acc + category.products.length, 0) >= limits.maxProducts) {
+        setShowLimitWarning(true);
+        return;
+      }
+
       // Converte o preço formatado para número
       const price = Number(unformatPrice(newProduct.price)) / 100;
       if (isNaN(price)) {
@@ -362,18 +403,17 @@ export default function ProductCatalog() {
         name: variation.name,
         options: [{
           name: variation.description || '',
-          extraPrice: Number(unformatPrice(variation.price)) / 100 || 0
+          price: Number(unformatPrice(variation.price)) / 100 || 0
         }]
       }));
 
-      // Converter as requiredSelections mantendo o extraPrice
+      // Converter as requiredSelections sem o price
       const requiredSelections: RequiredSelection[] = newProduct.requiredSelections.map(selection => ({
-        name: selection.name,
-        minRequired: selection.minRequired,
-        maxRequired: selection.maxRequired,
+        name: selection.name || '',
+        minRequired: selection.minRequired || 1,
+        maxRequired: selection.maxRequired || 1,
         options: selection.options.map(option => ({
-          name: option.name,
-          extraPrice: option.extraPrice || 0 // Garante que o extraPrice existe
+          name: option.name || ''
         }))
       }));
 
@@ -396,29 +436,25 @@ export default function ProductCatalog() {
           minRequired: extra.minRequired,
           maxRequired: extra.maxRequired
         })),
-        createdAt: new Date(),
         updatedAt: new Date()
       };
 
-      let productRef;
-
-      if (isEditing && editingProductId) {
+      if (isEditing && editingProduct) {
         // Atualizar produto existente
-        productRef = doc(db, 'partners', user.uid, 'products', editingProductId);
-        await updateDoc(productRef, {
-          ...productData,
-          updatedAt: new Date()
-        });
+        const productRef = doc(db, 'partners', user.uid, 'products', editingProduct.id);
+        await updateDoc(productRef, productData);
+        Alert.alert('Sucesso', 'Produto atualizado com sucesso!');
       } else {
         // Criar novo produto
-        productRef = doc(collection(db, 'partners', user.uid, 'products'));
+        const productRef = doc(collection(db, 'partners', user.uid, 'products'));
         await setDoc(productRef, {
           ...productData,
-          id: productRef.id
+          id: productRef.id,
+          createdAt: new Date()
         });
+        Alert.alert('Sucesso', 'Produto criado com sucesso!');
       }
 
-      Alert.alert('Sucesso', isEditing ? 'Produto atualizado com sucesso!' : 'Produto criado com sucesso!');
       handleCloseModal();
       loadProducts();
     } catch (error) {
@@ -455,8 +491,7 @@ export default function ProductCatalog() {
     setNewProduct(prev => {
       const newRequiredSelections = [...prev.requiredSelections];
       newRequiredSelections[selectionIndex].options.push({
-        name: '',
-        extraPrice: 0 // Adicione o preço padrão
+        name: ''
       });
       return {
         ...prev,
@@ -500,78 +535,19 @@ export default function ProductCatalog() {
     }
   };
 
-  const renderCategoryInput = () => (
-    <View>
-      <Text style={styles.inputLabel}>Categoria *</Text>
-      <View style={styles.categoryInputContainer}>
-        <View style={styles.categoryInputWrapper}>
-          <TextInput
-            style={[styles.input, styles.categoryInput]}
-            value={newProduct.category}
-            onChangeText={(text) => setNewProduct(prev => ({ ...prev, category: text }))}
-            placeholder="Digite uma nova categoria ou pesquise"
-          />
-          <Ionicons name="chevron-down" size={20} color="#666" />
-        </View>
-        {newProduct.category && (
-          <ScrollView 
-            style={styles.categoryDropdown}
-            keyboardShouldPersistTaps="handled"
-          >
-            {availableCategories
-              .filter(cat => 
-                cat.name.toLowerCase().includes(newProduct.category.toLowerCase())
-              )
-              .map(category => (
-                <TouchableOpacity
-                  key={category.id}
-                  style={styles.categoryOption}
-                  onPress={() => setNewProduct(prev => ({ 
-                    ...prev, 
-                    category: category.name 
-                  }))}
-                >
-                  <Ionicons name="folder-outline" size={20} color="#666" style={styles.categoryIcon} />
-                  <Text style={styles.categoryOptionText}>{category.name}</Text>
-                </TouchableOpacity>
-              ))}
-            {newProduct.category && !availableCategories.find(
-              cat => cat.name.toLowerCase() === newProduct.category.toLowerCase()
-            ) && (
-              <TouchableOpacity
-                style={[styles.categoryOption, styles.newCategoryOption]}
-                onPress={() => handleAddCategory(newProduct.category)}
-              >
-                <Ionicons name="add-circle-outline" size={20} color="#FFA500" style={styles.categoryIcon} />
-                <Text style={styles.newCategoryText}>
-                  Criar nova categoria "{newProduct.category}"
-                </Text>
-              </TouchableOpacity>
-            )}
-          </ScrollView>
-        )}
-      </View>
-    </View>
-  );
+
+  const safeStringCompare = (text: string | undefined | null, search: string | undefined | null): boolean => {
+    if (!text || !search) return true;
+    return text.toLowerCase().includes(search.toLowerCase());
+  };
 
   const filteredCategories = categories.map(category => ({
     ...category,
-    products: category.products.filter(product =>
-      product.name.toLowerCase().includes(searchText.toLowerCase())
+    products: category.products.filter(product => 
+      safeStringCompare(product.name, searchText)
     )
   })).filter(category => category.products.length > 0);
 
-  const loadProductDetails = async (product: Product) => {
-    try {
-      setSelectedProduct(product);
-      setProductVariations(product.variations);
-      setProductOptions(product.requiredSelections.flatMap(selection => selection.options));
-      setIsDetailsModalVisible(true);
-    } catch (error) {
-      console.error('Erro ao carregar detalhes do produto:', error);
-      Alert.alert('Erro', 'Não foi possível carregar os detalhes do produto');
-    }
-  };
 
   const removeVariation = (index: number) => {
     setNewProduct(prev => ({
@@ -618,13 +594,195 @@ export default function ProductCatalog() {
     }));
   };
 
-  // Primeiro, vamos criar uma função auxiliar para formatar o preço do extra
-  const formatExtraPrice = (value: number): string => {
-    return value.toLocaleString('pt-BR', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-      useGrouping: false
-    });
+
+  const currentProductCount = categories.reduce((acc, category) => 
+    acc + category.products.length, 0);
+
+  const handleUpgrade = () => {
+    setShowLimitWarning(false);
+    router.push('/(auth)/drawer/signature');
+  };
+
+  const checkPlanDowngrade = async () => {
+    try {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      const totalActiveProducts = categories.reduce((acc, category) => 
+        acc + category.products.filter(p => p.isActive).length, 0);
+      
+      // Se não é premium e tem mais produtos ativos que o limite
+      if (!isPremium && totalActiveProducts > limits.maxProducts) {
+        console.log('Downgrade detectado:', { totalActiveProducts, limit: limits.maxProducts });
+        
+        // Pré-seleciona os produtos mais recentes
+        const activeProducts = categories
+          .flatMap(cat => cat.products)
+          .filter(p => p.isActive)
+          .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+
+        // Desativa automaticamente os produtos excedentes
+        const productsToKeepActive = activeProducts.slice(0, limits.maxProducts);
+        const productsToDeactivate = activeProducts.slice(limits.maxProducts);
+
+        // Atualiza o status dos produtos no Firestore
+        const batch = writeBatch(db);
+        
+        // Mantém ativos apenas os produtos dentro do limite
+        productsToKeepActive.forEach(product => {
+          const productRef = doc(db, 'partners', user.uid, 'products', product.id);
+          batch.update(productRef, { isActive: true });
+        });
+
+        // Desativa os produtos excedentes
+        productsToDeactivate.forEach(product => {
+          const productRef = doc(db, 'partners', user.uid, 'products', product.id);
+          batch.update(productRef, { isActive: false });
+        });
+
+        await batch.commit();
+        
+        // Recarrega os produtos para atualizar a interface
+        loadProducts();
+
+        Alert.alert(
+          'Plano Alterado',
+          `Seu plano atual permite apenas ${limits.maxProducts} produtos ativos. Os produtos excedentes foram desativados automaticamente.`,
+          [
+            {
+              text: 'Fazer Upgrade',
+              onPress: handleUpgrade,
+              style: 'default',
+            },
+            {
+              text: 'OK',
+              style: 'cancel',
+            },
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('Erro ao ajustar produtos:', error);
+      Alert.alert('Erro', 'Não foi possível ajustar os produtos ativos');
+    }
+  };
+
+  const isProductExceedingLimit = (product: Product) => {
+    if (isPremium) return false;
+    
+    const activeProducts = categories
+      .flatMap(cat => cat.products)
+      .filter(p => p.isActive)
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+
+    const productIndex = activeProducts.findIndex(p => p.id === product.id);
+    return productIndex >= limits.maxProducts;
+  };
+
+  const handleProductPress = (product: Product) => {
+    if (!isPremium && isProductExceedingLimit(product)) {
+      // Pré-seleciona os produtos mais recentes até o limite
+      const activeProducts = categories
+        .flatMap(cat => cat.products)
+        .filter(p => p.isActive)
+        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+
+      setSelectedProducts(new Set(
+        activeProducts
+          .slice(0, limits.maxProducts)
+          .map(p => p.id)
+      ));
+      setShowDowngradeModal(true);
+    } else {
+      setSelectedProduct(product);
+      setIsDetailsModalVisible(true);
+    }
+  };
+
+  const handleProductSelection = (productId: string) => {
+    const newSelection = new Set(selectedProducts);
+    
+    if (newSelection.has(productId)) {
+      newSelection.delete(productId);
+    } else if (newSelection.size < limits.maxProducts) {
+      newSelection.add(productId);
+    } else {
+      Alert.alert('Limite atingido', `Você só pode manter ${limits.maxProducts} produtos ativos no plano atual.`);
+      return;
+    }
+    
+    setSelectedProducts(newSelection);
+  };
+
+  const handleConfirmProductSelection = async () => {
+    try {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      // Atualiza o status de todos os produtos
+      const batch = writeBatch(db);
+      
+      for (const category of categories) {
+        for (const product of category.products) {
+          const productRef = doc(db, 'partners', user.uid, 'products', product.id);
+          batch.update(productRef, {
+            isActive: selectedProducts.has(product.id)
+          });
+        }
+      }
+
+      await batch.commit();
+      setShowDowngradeModal(false);
+      loadProducts(); // Recarrega os produtos
+      
+      Alert.alert(
+        'Produtos atualizados',
+        'Os produtos selecionados foram mantidos ativos. Os demais foram desativados.'
+      );
+    } catch (error) {
+      console.error('Erro ao atualizar produtos:', error);
+      Alert.alert('Erro', 'Não foi possível atualizar os produtos');
+    }
+  };
+
+  const handleManageActiveProducts = () => {
+    const activeProducts = categories
+      .flatMap(cat => cat.products)
+      .filter(p => p.isActive)
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+
+    setSelectedProducts(new Set(
+      activeProducts
+        .slice(0, limits.maxProducts)
+        .map(p => p.id)
+    ));
+    setShowDowngradeModal(true);
+  };
+
+  // Função para verificar se excedeu o limite de produtos
+  const hasExceededLimit = () => {
+    if (isPremium) return false;
+    
+    const totalActiveProducts = categories.reduce((acc, category) => 
+      acc + category.products.filter(p => p.isActive).length, 0);
+    
+    return totalActiveProducts > limits.maxProducts;
+  };
+
+  const productFormProps = {
+    onPickImage: pickImageAsync,
+    availableCategories,
+    handleAddCategory,
+    formatPrice,
+    unformatPrice,
+    addVariation,
+    removeVariation,
+    addRequiredSelection,
+    removeRequiredSelection,
+    addOptionToSelection,
+    removeOptionFromSelection,
+    addExtra,
+    removeExtra,
   };
 
   if (loading) {
@@ -636,604 +794,183 @@ export default function ProductCatalog() {
   }
 
   return (
-    <View style={styles.container}>
-      {/* Header com Busca */}
-      <View style={styles.header}>
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color="#666" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Buscar produtos..."
-            value={searchText}
-            onChangeText={setSearchText}
-          />
-        </View>
-        <TouchableOpacity 
-          style={styles.addButtonproduct}
-          onPress={handleAddProduct}
-        >
-          <Ionicons name="add" size={24} color="#FFF" />
-        </TouchableOpacity>
-      </View>
+    <SafeAreaView style={styles.container}>
+      <SearchHeader 
+        searchText={searchText}
+        onSearchChange={setSearchText}
+        onAddProduct={handleAddProduct}
+        onManageProducts={handleManageActiveProducts}
+        showManageButton={!isPremium && hasExceededLimit()}
+        isAddButtonDisabled={!isPremium && currentProductCount >= limits.maxProducts}
+      />
 
+      <CategoryList 
+        categories={categories}
+        selectedCategory={selectedCategory}
+        onSelectCategory={setSelectedCategory}
+      />
 
-      {/* Categorias horizontais */}
       <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false}
-        style={styles.categoriesScroll}
+        style={styles.productsList}
+        contentContainerStyle={styles.productsListContent}
+        showsVerticalScrollIndicator={false}
       >
-        <TouchableOpacity
-          style={[
-            styles.categoryChip,
-            !selectedCategory && styles.selectedCategoryChip
-          ]}
-          onPress={() => setSelectedCategory(null)}
-        >
-          <Text style={[
-            styles.categoryChipText,
-            !selectedCategory && styles.selectedCategoryChipText
-          ]}>Todos</Text>
-        </TouchableOpacity>
-        {categories.map(category => (
-          <TouchableOpacity
-            key={category.id}
-            style={[
-              styles.categoryChip,
-              selectedCategory === category.id && styles.selectedCategoryChip
-            ]}
-            onPress={() => setSelectedCategory(category.id)}
-          >
-            <Text style={[
-              styles.categoryChipText,
-              selectedCategory === category.id && styles.selectedCategoryChipText
-            ]}>{category.name}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      {/* Lista de Produtos */}
-      <ScrollView style={styles.productsList}>
         {filteredCategories
           .filter(category => !selectedCategory || category.id === selectedCategory)
           .map(category => (
           <View key={category.id} style={styles.categorySection}>
             <Text style={styles.categoryTitle}>{category.name}</Text>
             {category.products.map(product => (
-              <TouchableOpacity 
-                key={product.id} 
-                style={styles.productCard}
-                onPress={() => loadProductDetails(product)}
-              >
-                <Image
-                  source={product.image ? { uri: product.image } : require('../../../assets/localhost-file-not-found.jpg')}
-                  style={styles.productImage}
+                <ProductCard
+                key={product.id}
+                  product={product}
+                  isExceedingLimit={isProductExceedingLimit(product)}
+                  isPremium={isPremium}
+                  onToggleAvailability={() => toggleProductAvailability(product)}
+                  onEdit={() => handleEditProduct(product)}
+                  onDelete={() => handleDeleteProduct(product)}
+                onPress={() => handleProductPress(product)}
+                  defaultImage={defaultProductImage}
                 />
-                <View style={styles.productInfo}>
-                  <Text style={styles.productName}>{product.name}</Text>
-                  <Text style={styles.productDescription} numberOfLines={2}>
-                    {product.description}
-                  </Text>
-                  <Text style={styles.productPrice}>
-                    R$ {product.price.toFixed(2)}
-                  </Text>
-                </View>
-                <View style={styles.productActions}>
-                  <TouchableOpacity
-                    onPress={() => toggleProductAvailability(product)}
-                    style={[
-                      styles.availabilityButton,
-                      product.isActive && styles.availableButton
-                    ]}
-                  >
-                    <Ionicons
-                      name={product.isActive ? "checkmark-circle" : "close-circle"}
-                      size={24}
-                      color={product.isActive ? "#4CAF50" : "#FF3B30"}
-                    />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => handleEditProduct(product)}
-                    style={styles.actionButton}
-                  >
-                    <Ionicons name="create-outline" size={20} color="#666" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => handleDeleteProduct(product)}
-                    style={styles.actionButton}
-                  >
-                    <Ionicons name="trash-outline" size={20} color="#FF3B30" />
-                  </TouchableOpacity>
-                </View>
-              </TouchableOpacity>
             ))}
           </View>
         ))}
       </ScrollView>
 
-      {/* Modal de Adicionar Produto */}
-      <Modal
+      <ProductFormModal 
         visible={isModalVisible}
-        animationType="slide"
+        isEditing={isEditing}
+        newProduct={newProduct}
+        editingProduct={editingProduct || undefined}
+        onClose={handleCloseModal}
+        onSave={handleCreateProduct}
+        onUpdateProduct={(updates) => setNewProduct(prev => ({ ...prev, ...updates }))}
+        {...productFormProps}
+      />
+
+      <ProductDetailsModal 
+        visible={isDetailsModalVisible}
+        product={selectedProduct}
+        onClose={() => setIsDetailsModalVisible(false)}
+        defaultImage={defaultProductImage}
+      />
+
+      {/* Modal de aviso de limite */}
+      <Modal
+        visible={showLimitWarning}
         transparent={true}
-        onRequestClose={handleCloseModal}
+        animationType="fade"
+        onRequestClose={() => setShowLimitWarning(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {isEditing ? 'Editar Produto' : 'Novo Produto'}
-              </Text>
-              <TouchableOpacity onPress={handleCloseModal}>
-                <Ionicons name="close" size={24} color="#666" />
+        <View style={styles.limitWarningContainer}>
+          <View style={styles.limitWarningContent}>
+            <Text style={styles.limitWarningText}>
+              Limite de produtos atingido
+            </Text>
+            <Text style={styles.limitWarningDetails}>
+              Você atingiu o limite de {limits.maxProducts} produtos do plano gratuito.
+            </Text>
+            <Text style={styles.limitWarningDetails}>
+              Para adicionar mais produtos, faça upgrade para o plano Premium!
+            </Text>
+            <View style={styles.warningButtons}>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setShowLimitWarning(false)}
+              >
+                <Text style={styles.closeButtonText}>Fechar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.upgradeButton}
+                onPress={handleUpgrade}
+              >
+                <Text style={styles.upgradeButtonText}>Fazer Upgrade</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
 
-            <ScrollView style={styles.modalForm}>
-              <View style={styles.imageSection}>
-                <TouchableOpacity 
-                  style={styles.imagePickerButton} 
-                  onPress={pickImageAsync}
-                >
-                  <ImageViewer
-                    placeholderImageSource={require('../../../assets/localhost-file-not-found.jpg')}
-                    selectedImage={newProduct.image}
-                  />
-                </TouchableOpacity>
-                {loading && (
-                  <View style={styles.uploadProgress}>
-                    <ActivityIndicator size="small" color="#FFA500" />
-                  </View>
-                )}
-              </View>
-              <Text style={styles.sectionTitle}>Informações Básicas</Text>
-              <TextInput
-                style={styles.input}
-                value={newProduct.name}
-                onChangeText={(text) => setNewProduct(prev => ({ ...prev, name: text }))}
-                placeholder="Nome do produto *"
-              />
-              <TextInput
-                style={styles.input}
-                value={newProduct.description}
-                onChangeText={(text) => setNewProduct(prev => ({ ...prev, description: text }))}
-                placeholder="Descrição"
-              />
-              <TextInput
-                style={styles.input}
-                value={newProduct.price}
-                onChangeText={(text) => {
-                  const formattedPrice = formatPrice(text);
-                  setNewProduct(prev => ({ ...prev, price: formattedPrice }));
-                }}
-                placeholder="Preço *"
-                keyboardType="numeric"
-              />
-              {renderCategoryInput()}
-              <View style={styles.availableContainer}>
-                <Text style={styles.inputLabel}>Disponível</Text>
-                <TouchableOpacity
-                  onPress={() => setNewProduct(prev => ({ ...prev, isActive: !prev.isActive }))}
-                  style={styles.toggleButton}
-                >
-                  <Ionicons
-                    name={newProduct.isActive ? "checkmark-circle" : "close-circle"}
-                    size={30}
-                    color={newProduct.isActive ? "#4CAF50" : "#FF3B30"}
-                  />
-                </TouchableOpacity>
-              </View>
+      {/* Modal de Downgrade */}
+      <Modal
+        visible={showDowngradeModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowDowngradeModal(false)}
+      >
+        <View style={styles.downgradeModalContainer}>
+          <View style={styles.downgradeModalContent}>
+            <Text style={styles.downgradeTitle}>Selecione os produtos ativos</Text>
+            <Text style={styles.downgradeDescription}>
+              Seu plano atual permite apenas {limits.maxProducts} produtos ativos.
+              Selecione quais produtos você deseja manter ativos:
+            </Text>
+            
+            <Text style={styles.selectionCounter}>
+              Selecionados: {selectedProducts.size}/{limits.maxProducts}
+            </Text>
 
-              <Text style={styles.sectionTitle}>Variações</Text>
-              {newProduct.variations.map((variation, index) => (
-                <View key={index} style={styles.variationContainer}>
-                  <View style={styles.itemHeader}>
-                    <Text style={styles.itemTitle}>Variação {index + 1}</Text>
-                    <TouchableOpacity 
-                      style={styles.removeButton}
-                      onPress={() => removeVariation(index)}
+            <ScrollView style={styles.productSelectionList}>
+              {categories.map(category => (
+                <View key={category.id}>
+                  <Text style={styles.categoryTitle}>{category.name}</Text>
+                  {category.products.map(product => (
+                    <TouchableOpacity
+                      key={product.id}
+                      style={[
+                        styles.productSelectionItem,
+                        selectedProducts.has(product.id) && styles.productSelectionItemSelected
+                      ]}
+                      onPress={() => handleProductSelection(product.id)}
                     >
-                      <Ionicons name="close-circle" size={24} color="#FF3B30" />
-                    </TouchableOpacity>
-                  </View>
-                  <TextInput
-                    style={styles.input}
-                    value={variation.name}
-                    onChangeText={(text) => {
-                      const newVariations = [...newProduct.variations];
-                      newVariations[index].name = text;
-                      setNewProduct(prev => ({ ...prev, variations: newVariations }));
-                    }}
-                    placeholder="Nome da variação"
-                  />
-                  <TextInput
-                    style={styles.input}
-                    value={variation.description}
-                    onChangeText={(text) => {
-                      const newVariations = [...newProduct.variations];
-                      newVariations[index].description = text;
-                      setNewProduct(prev => ({ ...prev, variations: newVariations }));
-                    }}
-                    placeholder="Descrição"
-                  />
-                  <TextInput
-                    style={styles.input}
-                    value={variation.price}
-                    onChangeText={(text) => {
-                      const formattedPrice = formatPrice(text);
-                      const newVariations = [...newProduct.variations];
-                      newVariations[index].price = formattedPrice;
-                      setNewProduct(prev => ({ ...prev, variations: newVariations }));
-                    }}
-                    placeholder="Preço"
-                    keyboardType="numeric"
-                  />
-                </View>
-              ))}
-              <TouchableOpacity style={styles.addButton} onPress={addVariation}>
-                <Text style={styles.addButtonText}>+ Adicionar Variação</Text>
-              </TouchableOpacity>
-
-              <Text style={styles.sectionTitle}>Seleções Obrigatórias</Text>
-              {newProduct.requiredSelections.map((selection, selectionIndex) => (
-                <View key={selectionIndex} style={styles.selectionContainer}>
-                  <View style={styles.itemHeader}>
-                    <Text style={styles.itemTitle}>Seleção {selectionIndex + 1}</Text>
-                    <TouchableOpacity 
-                      style={styles.removeButton}
-                      onPress={() => removeRequiredSelection(selectionIndex)}
-                    >
-                      <Ionicons name="close-circle" size={24} color="#FF3B30" />
-                    </TouchableOpacity>
-                  </View>
-                  <TextInput
-                    style={styles.input}
-                    value={selection.name}
-                    onChangeText={(text) => {
-                      const newSelections = [...newProduct.requiredSelections];
-                      newSelections[selectionIndex].name = text;
-                      setNewProduct(prev => ({ ...prev, requiredSelections: newSelections }));
-                    }}
-                    placeholder="Nome da seleção"
-                  />
-                  
-                  <View style={styles.selectionControlRow}>
-                    <View style={styles.selectionControl}>
-                      <Text style={styles.inputLabel}>Mínimo de escolhas</Text>
-                      <View style={styles.maxChoicesContainer}>
-                        <TouchableOpacity 
-                          style={styles.maxChoicesButton}
-                          onPress={() => {
-                            const newSelections = [...newProduct.requiredSelections];
-                            newSelections[selectionIndex].minRequired = 
-                              Math.max(1, newSelections[selectionIndex].minRequired - 1);
-                            setNewProduct(prev => ({ ...prev, requiredSelections: newSelections }));
-                          }}
-                        >
-                          <Ionicons name="remove" size={20} color="#666" />
-                        </TouchableOpacity>
-                        <Text style={styles.maxChoicesText}>{selection.minRequired}</Text>
-                        <TouchableOpacity 
-                          style={styles.maxChoicesButton}
-                          onPress={() => {
-                            const newSelections = [...newProduct.requiredSelections];
-                            newSelections[selectionIndex].minRequired += 1;
-                            setNewProduct(prev => ({ ...prev, requiredSelections: newSelections }));
-                          }}
-                        >
-                          <Ionicons name="add" size={20} color="#666" />
-                        </TouchableOpacity>
+                      <View style={styles.productSelectionInfo}>
+                        <Text style={styles.productSelectionName}>{product.name}</Text>
+                        <Text style={styles.productSelectionPrice}>
+                          R$ {product.price.toFixed(2)}
+                        </Text>
+                        <Text style={[
+                          styles.productStatusLabel,
+                          { color: product.isActive ? '#4CAF50' : '#666' }
+                        ]}>
+                          {product.isActive ? 'Ativo' : 'Inativo'}
+                        </Text>
                       </View>
-                    </View>
-                    
-                    <View style={styles.selectionControl}>
-                      <Text style={styles.inputLabel}>Máximo de escolhas</Text>
-                      <View style={styles.maxChoicesContainer}>
-                        <TouchableOpacity 
-                          style={styles.maxChoicesButton}
-                          onPress={() => {
-                            const newSelections = [...newProduct.requiredSelections];
-                            newSelections[selectionIndex].maxRequired = 
-                              Math.max(1, newSelections[selectionIndex].maxRequired - 1);
-                            setNewProduct(prev => ({ ...prev, requiredSelections: newSelections }));
-                          }}
-                        >
-                          <Ionicons name="remove" size={20} color="#666" />
-                        </TouchableOpacity>
-                        <Text style={styles.maxChoicesText}>{selection.maxRequired}</Text>
-                        <TouchableOpacity 
-                          style={styles.maxChoicesButton}
-                          onPress={() => {
-                            const newSelections = [...newProduct.requiredSelections];
-                            newSelections[selectionIndex].maxRequired += 1;
-                            setNewProduct(prev => ({ ...prev, requiredSelections: newSelections }));
-                          }}
-                        >
-                          <Ionicons name="add" size={20} color="#666" />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  </View>
-
-                  {/* Opções da seleção */}
-                  {selection.options.map((option, optionIndex) => (
-                    <View key={optionIndex} style={styles.optionContainer}>
-                      <View style={styles.itemHeader}>
-                        <Text style={styles.itemTitle}>Opção {optionIndex + 1}</Text>
-                        <TouchableOpacity 
-                          style={styles.removeButton}
-                          onPress={() => removeOptionFromSelection(selectionIndex, optionIndex)}
-                        >
-                          <Ionicons name="close-circle" size={24} color="#FF3B30" />
-                        </TouchableOpacity>
-                      </View>
-                      <TextInput
-                        style={styles.input}
-                        value={option.name}
-                        onChangeText={(text) => {
-                          const newSelections = [...newProduct.requiredSelections];
-                          newSelections[selectionIndex].options[optionIndex].name = text;
-                          setNewProduct(prev => ({ ...prev, requiredSelections: newSelections }));
-                        }}
-                        placeholder="Nome da opção"
+                      <Ionicons
+                        name={selectedProducts.has(product.id) ? "checkmark-circle" : "ellipse-outline"}
+                        size={24}
+                        color={selectedProducts.has(product.id) ? "#FFA500" : "#666"}
                       />
-                      <TextInput
-                        style={styles.input}
-                        value={formatPrice(option.extraPrice?.toString() || '0')}
-                        onChangeText={(text) => {
-                          const newSelections = [...newProduct.requiredSelections];
-                          newSelections[selectionIndex].options[optionIndex].extraPrice = 
-                            Number(unformatPrice(text)) / 100;
-                          setNewProduct(prev => ({ ...prev, requiredSelections: newSelections }));
-                        }}
-                        placeholder="Preço adicional"
-                        keyboardType="numeric"
-                      />
-                    </View>
+                    </TouchableOpacity>
                   ))}
-
-                  <TouchableOpacity 
-                    style={styles.addButton}
-                    onPress={() => addOptionToSelection(selectionIndex)}
-                  >
-                    <Text style={styles.addButtonText}>+ Adicionar Opção</Text>
-                  </TouchableOpacity>
                 </View>
               ))}
-
-              <TouchableOpacity style={styles.addButton} onPress={addRequiredSelection}>
-                <Text style={styles.addButtonText}>+ Adicionar Seleção Obrigatória</Text>
-              </TouchableOpacity>
-
-              <Text style={styles.sectionTitle}>Opções Adicionais</Text>
-              {newProduct.extras.map((extra, index) => (
-                <View key={index} style={styles.optionContainer}>
-                  <View style={styles.itemHeader}>
-                    <Text style={styles.itemTitle}>Opção {index + 1}</Text>
-                    <TouchableOpacity 
-                      style={styles.removeButton}
-                      onPress={() => removeExtra(index)}
-                    >
-                      <Ionicons name="close-circle" size={24} color="#FF3B30" />
-                    </TouchableOpacity>
-                  </View>
-                  <TextInput
-                    style={styles.input}
-                    value={extra.name}
-                    onChangeText={(text) => {
-                      const newExtras = [...newProduct.extras];
-                      newExtras[index].name = text;
-                      setNewProduct(prev => ({ ...prev, extras: newExtras }));
-                    }}
-                    placeholder="Nome da opção"
-                  />
-                  <TextInput
-                    style={styles.input}
-                    value={formatExtraPrice(extra.extraPrice)}
-                    onChangeText={(text) => {
-                      const numbers = text.replace(/\D/g, '');
-                      const newExtras = [...newProduct.extras];
-                      
-                      if (numbers) {
-                        const valueInCents = parseInt(numbers);
-                        newExtras[index].extraPrice = valueInCents / 100;
-                      } else {
-                        newExtras[index].extraPrice = 0;
-                      }
-                      
-                      setNewProduct(prev => ({ ...prev, extras: newExtras }));
-                    }}
-                    placeholder="Preço adicional"
-                    keyboardType="numeric"
-                  />
-                  
-                  <View style={styles.optionControlRow}>
-                    <View style={styles.optionControl}>
-                      <Text style={styles.inputLabel}>Mínimo de escolhas</Text>
-                      <View style={styles.maxChoicesContainer}>
-                        <TouchableOpacity 
-                          style={styles.maxChoicesButton}
-                          onPress={() => {
-                            const newExtras = [...newProduct.extras];
-                            newExtras[index].minRequired = Math.max(0, newExtras[index].minRequired - 1);
-                            setNewProduct(prev => ({ ...prev, extras: newExtras }));
-                          }}
-                        >
-                          <Ionicons name="remove" size={20} color="#666" />
-                        </TouchableOpacity>
-                        <Text style={styles.maxChoicesText}>{extra.minRequired}</Text>
-                        <TouchableOpacity 
-                          style={styles.maxChoicesButton}
-                          onPress={() => {
-                            const newExtras = [...newProduct.extras];
-                            newExtras[index].minRequired += 1;
-                            setNewProduct(prev => ({ ...prev, extras: newExtras }));
-                          }}
-                        >
-                          <Ionicons name="add" size={20} color="#666" />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                    
-                    <View style={styles.optionControl}>
-                      <Text style={styles.inputLabel}>Máximo de escolhas</Text>
-                      <View style={styles.maxChoicesContainer}>
-                        <TouchableOpacity 
-                          style={styles.maxChoicesButton}
-                          onPress={() => {
-                            const newExtras = [...newProduct.extras];
-                            newExtras[index].maxRequired = Math.max(1, newExtras[index].maxRequired - 1);
-                            setNewProduct(prev => ({ ...prev, extras: newExtras }));
-                          }}
-                        >
-                          <Ionicons name="remove" size={20} color="#666" />
-                        </TouchableOpacity>
-                        <Text style={styles.maxChoicesText}>{extra.maxRequired}</Text>
-                        <TouchableOpacity 
-                          style={styles.maxChoicesButton}
-                          onPress={() => {
-                            const newExtras = [...newProduct.extras];
-                            newExtras[index].maxRequired += 1;
-                            setNewProduct(prev => ({ ...prev, extras: newExtras }));
-                          }}
-                        >
-                          <Ionicons name="add" size={20} color="#666" />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-              ))}
-              <TouchableOpacity style={styles.addButton} onPress={addExtra}>
-                <Text style={styles.addButtonText}>+ Adicionar Opção Adicional</Text>
-              </TouchableOpacity>
             </ScrollView>
 
-            <View style={styles.modalFooter}>
+            <View style={styles.downgradeModalFooter}>
               <TouchableOpacity
-                style={[styles.footerButton, styles.cancelButton]}
-                onPress={handleCloseModal}
+                style={styles.upgradeButton}
+                onPress={handleUpgrade}
               >
-                <Text style={styles.footerButtonText}>Cancelar</Text>
+                <Text style={styles.upgradeButtonText}>Fazer Upgrade</Text>
               </TouchableOpacity>
+              
               <TouchableOpacity
-                style={[styles.footerButton, styles.createButton]}
-                onPress={handleCreateProduct}
+                style={[
+                  styles.confirmSelectionButton,
+                  selectedProducts.size === limits.maxProducts && styles.confirmSelectionButtonEnabled
+                ]}
+                onPress={handleConfirmProductSelection}
+                disabled={selectedProducts.size !== limits.maxProducts}
               >
-                <Text style={[styles.footerButtonText, styles.createButtonText]}>
-                  {isEditing ? 'Atualizar Produto' : 'Criar Produto'}
+                <Text style={styles.confirmSelectionButtonText}>
+                  Confirmar Seleção
                 </Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-
-      {/* Modal de Detalhes do Produto */}
-      <Modal
-        visible={isDetailsModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setIsDetailsModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, styles.detailsModalContent]}>
-            <View style={styles.modalHeader}>
-              <TouchableOpacity 
-                style={styles.backButton}
-                onPress={() => setIsDetailsModalVisible(false)}
-              >
-                <Ionicons name="arrow-back" size={24} color="#666" />
-              </TouchableOpacity>
-              <Text style={styles.modalTitle}>Detalhes do Produto</Text>
-              <View style={styles.headerSpacer} />
-            </View>
-
-            <ScrollView style={styles.modalForm}>
-              {selectedProduct && (
-                <>
-                  <Image
-                    source={selectedProduct.image ? 
-                      { uri: selectedProduct.image } : 
-                      require('../../../assets/localhost-file-not-found.jpg')
-                    }
-                    style={styles.detailsImage}
-                  />
-
-                  <View style={styles.detailsSection}>
-                    <View style={styles.detailsHeader}>
-                      <Text style={styles.productDetailName}>{selectedProduct.name}</Text>
-                      <Text style={styles.productDetailPrice}>
-                        R$ {selectedProduct.price.toFixed(2)}
-                      </Text>
-                    </View>
-                    {selectedProduct.description && (
-                      <Text style={styles.productDetailDescription}>
-                        {selectedProduct.description}
-                      </Text>
-                    )}
-                  </View>
-
-                  {productVariations.length > 0 && (
-                    <View style={styles.detailsSection}>
-                      <Text style={styles.sectionTitle}>Variações</Text>
-                      {productVariations.map((variation, index) => (
-                        <View 
-                          key={`${variation.name}-${index}`}
-                          style={[
-                            styles.variationItem,
-                            index === productVariations.length - 1 && styles.lastItem
-                          ]}
-                        >
-                          <View style={styles.variationHeader}>
-                            <View style={styles.variationInfo}>
-                              <Text style={styles.variationName}>{variation.name}</Text>
-                              {variation.options.map((option, optIndex) => (
-                                <Text key={`${option.name}-${optIndex}`} style={styles.variationDescription}>
-                                  {option.name} {option.extraPrice > 0 && `(+R$ ${option.extraPrice.toFixed(2)})`}
-                                </Text>
-                              ))}
-                            </View>
-                          </View>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-
-                  {selectedProduct?.requiredSelections.map((selection, index) => (
-                    <View 
-                      key={`${selection.name}-${index}`}
-                      style={[
-                        styles.optionItem,
-                        index === selectedProduct.requiredSelections.length - 1 && styles.lastItem
-                      ]}
-                    >
-                      <View style={styles.optionHeader}>
-                        <View style={styles.optionInfo}>
-                          <Text style={styles.optionName}>{selection.name}</Text>
-                          <Text style={styles.optionDetails}>
-                            <Text>{selection.minRequired > 0 ? 'Obrigatório' : 'Opcional'}</Text>
-                            <Text style={styles.bulletPoint}> • </Text>
-                            <Text>Mín: {selection.minRequired} • Máx: {selection.maxRequired}</Text>
-                          </Text>
-                        </View>
-                        <View>
-                          {selection.options.map((option, optIndex) => (
-                            <Text key={`${option.name}-${optIndex}`} style={styles.optionPrice}>
-                              {option.name}
-                            </Text>
-                          ))}
-                        </View>
-                      </View>
-                    </View>
-                  ))}
-                </>
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -1271,15 +1008,37 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 15,
   },
-  addButtonproduct: {
-    backgroundColor: '#FFA500',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
+  headerButtons: {
+    flexDirection: 'row',
     alignItems: 'center',
-
-    elevation: 2,
+    gap: 8,
+  },
+  manageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 4,
+  },
+  manageButtonText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  addProductButton: {
+    backgroundColor: '#f0f0f0',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 20,
+  },
+  addProductButtonText: {
+    color: '#666',
+    fontSize: 14,
+    fontWeight: '500',
   },
   categoriesScroll: {
     backgroundColor: '#ffffff',
@@ -1315,6 +1074,10 @@ const styles = StyleSheet.create({
   productsList: {
     padding: 8,
     marginTop: 4,
+    paddingBottom: 100,
+  },
+  productsListContent: {
+    paddingBottom: 150,
   },
   categorySection: {
     marginBottom: 16,
@@ -1387,30 +1150,34 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: '#fff',
   },
   modalContent: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: '#fff',
-    borderRadius: 12,
-    width: '90%',
-    maxHeight: '80%',
-    padding: 20,
+    padding: 0,
   },
   modalHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    padding: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    elevation: 2,
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
+    flex: 1,
+    textAlign: 'center',
   },
   modalForm: {
-    maxHeight: '80%',
+    flex: 1,
+    padding: 16,
   },
   inputLabel: {
     fontSize: 14,
@@ -1440,8 +1207,10 @@ const styles = StyleSheet.create({
   },
   modalFooter: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 20,
+    padding: 16,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
     gap: 12,
   },
   footerButton: {
@@ -1482,19 +1251,6 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 8,
     marginBottom: 12,
-  },
-  addButton: {
-    backgroundColor: '#f0f0f0',
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 20,
-  },
-  addButtonText: {
-    color: '#666',
-    fontSize: 14,
-    fontWeight: '500',
   },
   imageSection: {
     alignItems: 'center',
@@ -1660,7 +1416,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFA500',
   },
-  lastItem:{
+  lastItem: {
     borderBottomWidth: 0,
   },
   variationItem: {
@@ -1668,7 +1424,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
-
   variationHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1720,23 +1475,13 @@ const styles = StyleSheet.create({
     color: '#FFA500',
   },
   headerSpacer: {
-    width: 24,
+    width: 40,
   },
   bulletPoint: {
     color: '#666',
   },
   selectionContainer: {
     marginBottom: 16,
-  },
-  selectionControlRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  selectionControl: {
-    flex: 1,
-    alignItems: 'center',
   },
   itemHeader: {
     flexDirection: 'row',
@@ -1751,5 +1496,161 @@ const styles = StyleSheet.create({
   },
   removeButton: {
     padding: 4,
+  },
+  limitWarningContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  limitWarningContent: {
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 10,
+    maxWidth: '80%',
+    maxHeight: '80%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  limitWarningText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 10
+  },
+  limitWarningDetails: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 10
+  },
+  warningButtons: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 20,
+  },
+  closeButton: {
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+    alignItems: 'center',
+    flex: 1,
+  },
+  closeButtonText: {
+    color: '#666',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  upgradeButton: {
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: '#FFA500',
+    alignItems: 'center',
+    marginTop: 15
+  },
+  upgradeButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600'
+  },
+  downgradeModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  downgradeModalContent: {
+    backgroundColor: '#fff',
+    width: '90%',
+    maxHeight: '80%',
+    borderRadius: 10,
+    padding: 20,
+  },
+  downgradeTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 10,
+  },
+  downgradeDescription: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 20,
+  },
+  selectionCounter: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFA500',
+    marginBottom: 10,
+  },
+  productSelectionList: {
+    maxHeight: '60%',
+    paddingBottom: 20,
+  },
+  productSelectionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+    marginBottom: 8,
+  },
+  productSelectionItemSelected: {
+    backgroundColor: '#FFF3E0',
+    borderColor: '#FFA500',
+    borderWidth: 1,
+  },
+  productSelectionInfo: {
+    flex: 1,
+  },
+  productSelectionName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#333',
+  },
+  productSelectionPrice: {
+    fontSize: 14,
+    color: '#666',
+  },
+  downgradeModalFooter: {
+    marginTop: 20,
+    gap: 10,
+  },
+  confirmSelectionButton: {
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: '#ccc',
+    alignItems: 'center',
+  },
+  confirmSelectionButtonEnabled: {
+    backgroundColor: '#4CAF50',
+  },
+  confirmSelectionButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  productCardExceeding: {
+    backgroundColor: '#FFE0E0',
+    borderColor: '#FFA07A',
+    borderWidth: 1,
+  },
+  productCardInactive: {
+    opacity: 0.7,
+    backgroundColor: '#f5f5f5',
+  },
+  exceedingLabel: {
+    color: '#FF6B6B',
+    fontSize: 12,
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  productStatusLabel: {
+    fontSize: 12,
+    marginTop: 4,
   },
 });

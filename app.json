@@ -1,21 +1,26 @@
 {
   "expo": {
-    "name": "pediFacil_cliente",
-    "slug": "pediFacil_cliente",
+    "name": "pediFacil parceiros",
+    "slug": "pedifacil-parceiros",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/logo-black.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.pedifacil.deliverycliente",
+      "googleServicesFile": "./GoogleService-Info.plist"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "foregroundImage": "./assets/images/logo-black.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.pedifacil.deliverycliente",
+      "googleServicesFile": "./google-services.json"
+      
     },
     "web": {
       "bundler": "metro",
@@ -32,10 +37,35 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
-      ]
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static"
+          }
+        }
+      ],
+      "@react-native-firebase/app",
+      "@react-native-firebase/auth",
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "13473e79-6ba0-49dd-92d8-e363edf12f65"
+      }
+    },
+    "owner": "alexmorais1910"
+  },
+  "doctor": {
+    "reactNativeDirectoryCheck": {
+      "listUnknownPackages": false
     }
   }
 }

@@ -1,8 +1,11 @@
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 import { getAnalytics, logEvent } from 'firebase/analytics';
-import { analytics } from '../config/firebase';
+import * as Crypto from 'expo-crypto';
+
+// Inicializar o analytics
+const analytics = getAnalytics();
 
 interface RegisterData {
   // Dados pessoais
@@ -26,29 +29,79 @@ interface RegisterData {
   cnpj_or_cpf: string;
 }
 
-interface RegisterPartnerData extends RegisterData {
-  isPremium?: boolean;
-  premiumExpiresAt?: string;
+interface RegisterPartnerData {
+  // Dados pessoais
+  name: string;
+  email: string;
+  password: string;
+  phone: string;
+  
+  // Dados do endereço
+  street: string;
+  number: string;
+  complement?: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  
+  // Dados do estabelecimento
+  storeName: string;
+  category: string;
+  subcategory: string;
+  cnpj_or_cpf: string;
 }
+
+const encryptDocument = async (document: string): Promise<string> => {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(document);
+  const hash = await Crypto.digestStringAsync(
+    Crypto.CryptoDigestAlgorithm.SHA256,
+    document
+  );
+  return hash;
+};
+
+const checkDocumentExists = async (document: string): Promise<boolean> => {
+  const encryptedDocument = await encryptDocument(document);
+  const partnersRef = collection(db, 'partners');
+  const q = query(
+    partnersRef, 
+    where('store.document', '==', encryptedDocument)
+  );
+  
+  const querySnapshot = await getDocs(q);
+  return !querySnapshot.empty;
+};
 
 export const registerService = {
   async registerPartner(data: RegisterPartnerData) {
     try {
-      if (analytics) {
-        logEvent(analytics, 'begin_registration', {
-          email: data.email
-        });
+      // Log dos dados recebidos
+      console.log('Dados recebidos no registerService:', {
+        email: data.email,
+        name: data.name,
+        phone: data.phone,
+        // ... outros dados
+      });
+
+      // Validação mais detalhada
+      if (!data.email?.trim()) {
+        throw new Error('Email é obrigatório');
+      }
+      if (!data.password?.trim()) {
+        throw new Error('Senha é obrigatória');
+      }
+      if (!data.name?.trim()) {
+        throw new Error('Nome é obrigatório');
       }
 
-      console.log('Iniciando processo de cadastro com dados:', data);
-      
-      // Validar dados obrigatórios
-      if (!data.email || !data.password) {
-        throw new Error('Email e senha são obrigatórios');
+      // Verificar se o documento já existe
+      const documentExists = await checkDocumentExists(data.cnpj_or_cpf);
+      if (documentExists) {
+        throw new Error('Este CPF/CNPJ já está cadastrado no sistema');
       }
 
-      // 1. Criar usuário no Authentication
-      console.log('Criando usuário no Authentication...');
+      // Criar usuário no Authentication
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         data.email,
@@ -58,14 +111,14 @@ export const registerService = {
       const userId = userCredential.user.uid;
       console.log('Usuário criado com ID:', userId);
 
-      // 2. Criar documento do parceiro no Firestore
+      // Criptografar o documento antes de salvar
+      const encryptedDocument = await encryptDocument(data.cnpj_or_cpf);
+
+      // Preparar dados para o Firestore
       const partnerData = {
-        // Dados pessoais
         name: data.name,
         email: data.email,
         phone: data.phone,
-        
-        // Endereço
         address: {
           street: data.street,
           number: data.number,
@@ -74,30 +127,26 @@ export const registerService = {
           city: data.city,
           state: data.state,
         },
-        
-        // Dados do estabelecimento
+        createdAt: new Date(),
+        isActive: true,
+        isOpen: false,
+        lastUpdated: new Date().toISOString(),
+        role: 'partner',
+        status: 'pending',
         store: {
           name: data.storeName,
           category: data.category,
           subcategory: data.subcategory,
-          document: data.cnpj_or_cpf,
+          document: encryptedDocument,
           isPremium: false,
           premiumExpiresAt: null,
-          premiumFeatures: {
-            analytics: false,
-            advancedReports: false,
-            prioritySupport: false,
-          }
         },
-        
-        // Metadados
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        status: 'pending',
-        isActive: true,
-        role: 'partner',
-        isOpen: false,
-        lastUpdated: new Date().toISOString(),
+        premiumFeatures: {
+          advancedReports: false,
+          analytics: false,
+          prioritySupport: false,
+        },
+        updatedAt: new Date(),
       };
 
       console.log('Salvando dados do parceiro no Firestore:', partnerData);
@@ -106,11 +155,13 @@ export const registerService = {
       await setDoc(doc(db, 'partners', userId), partnerData);
       console.log('Dados do parceiro salvos com sucesso');
 
-      // Log de sucesso
-      if (analytics) {
+      try {
+        // Log de sucesso - em um try/catch separado pois analytics pode falhar em alguns ambientes
         logEvent(analytics, 'registration_complete', {
           userId: userId
         });
+      } catch (analyticsError) {
+        console.log('Erro ao registrar analytics:', analyticsError);
       }
 
       return {
@@ -119,29 +170,24 @@ export const registerService = {
         message: 'Cadastro realizado com sucesso!'
       };
     } catch (error: any) {
-      // Log de erro
-      if (analytics) {
-        logEvent(analytics, 'registration_error', {
-          error_code: error.code,
-          error_message: error.message
-        });
-      }
-
       console.error('Erro detalhado no cadastro:', error);
       
+      // Melhor tratamento de erros
       if (error.code === 'auth/email-already-in-use') {
         throw new Error('Este e-mail já está em uso');
       }
-      
       if (error.code === 'auth/invalid-email') {
         throw new Error('Email inválido');
       }
-
       if (error.code === 'auth/weak-password') {
         throw new Error('A senha deve ter pelo menos 6 caracteres');
       }
       
-      throw new Error(error.message || 'Erro ao realizar cadastro');
+      if (error.message === 'Este CPF/CNPJ já está cadastrado no sistema') {
+        throw new Error('Este CPF/CNPJ já está cadastrado no sistema');
+      }
+      
+      throw error;
     }
   }
 }; 
