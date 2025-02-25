@@ -21,6 +21,8 @@ import { CategoryList } from '@/components/ProductCatalog/CategoryList';
 import { ProductCard } from '@/components/ProductCatalog/ProductCard';
 import { ProductFormModal } from '@/components/ProductCatalog/ProductFormModal';
 import { ProductDetailsModal } from '@/components/ProductCatalog/ProductDetailsModal';
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { storage } from '../../../config/firebase';
 
 interface ProductOption {
   name: string;
@@ -249,17 +251,23 @@ export default function ProductCatalog() {
   };
 
   const pickImageAsync = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      quality: 1,
-    });
+    try {
+      let result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: "images",
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.5,
+      });
 
-    if (!result.canceled) {
-      setNewProduct(prev => ({
-        ...prev,
-        image: result.assets[0].uri
-      }));
+      if (!result.canceled) {
+        setNewProduct(prev => ({
+          ...prev,
+          image: result.assets[0].uri
+        }));
+      }
+    } catch (error) {
+      console.error('Erro ao selecionar imagem:', error);
+      Alert.alert('Erro', 'Não foi possível selecionar a imagem');
     }
   };
 
@@ -329,10 +337,28 @@ export default function ProductCatalog() {
             text: 'Excluir',
             style: 'destructive',
             onPress: async () => {
-              const productRef = doc(db, 'partners', user.uid, 'products', product.id);
-              await deleteDoc(productRef);
-              loadProducts(); // Recarrega a lista
-              Alert.alert('Sucesso', 'Produto excluído com sucesso!');
+              try {
+                // Excluir a imagem do Storage se existir
+                if (product.image) {
+                  const imageRef = ref(storage, `partners/${user.uid}/products/${product.id}/product.jpg`);
+                  try {
+                    await deleteObject(imageRef);
+                  } catch (error) {
+                    console.error('Erro ao excluir imagem do storage:', error);
+                    // Continua mesmo se falhar ao deletar a imagem
+                  }
+                }
+
+                // Excluir o documento do produto
+                const productRef = doc(db, 'partners', user.uid, 'products', product.id);
+                await deleteDoc(productRef);
+                
+                loadProducts(); // Recarrega a lista
+                Alert.alert('Sucesso', 'Produto excluído com sucesso!');
+              } catch (error) {
+                console.error('Erro ao excluir produto:', error);
+                Alert.alert('Erro', 'Não foi possível excluir o produto');
+              }
             }
           }
         ]
@@ -376,6 +402,31 @@ export default function ProductCatalog() {
     return value.replace(/\D/g, '');
   };
 
+  const uploadProductImage = async (uri: string, productId: string): Promise<string> => {
+    try {
+      // Converter URI em blob
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      
+      const user = auth.currentUser;
+      if (!user) throw new Error('Usuário não autenticado');
+
+      // Criar referência no Storage com caminho fixo
+      const storagePath = `partners/${user.uid}/products/${productId}/product.jpg`;
+      const storageRef = ref(storage, storagePath);
+      
+      // Fazer upload
+      await uploadBytes(storageRef, blob);
+      
+      // Obter URL de download
+      const downloadURL = await getDownloadURL(storageRef);
+      return downloadURL;
+    } catch (error) {
+      console.error('Erro ao fazer upload da imagem:', error);
+      throw error;
+    }
+  };
+
   const handleCreateProduct = async () => {
     try {
       if (!newProduct.name || !newProduct.price || !newProduct.category) {
@@ -396,7 +447,7 @@ export default function ProductCatalog() {
       }
 
       const user = auth.currentUser;
-      if (!user) return;
+      if (!user) throw new Error('Usuário não autenticado');
 
       // Converter as variações do formulário para o formato do ProductVariation
       const variations: ProductVariation[] = newProduct.variations.map(variation => ({
@@ -439,24 +490,47 @@ export default function ProductCatalog() {
         updatedAt: new Date()
       };
 
+      let productId: string;
+      let imageUrl: string | null = null;
+
       if (isEditing && editingProduct) {
-        // Atualizar produto existente
-        const productRef = doc(db, 'partners', user.uid, 'products', editingProduct.id);
-        await updateDoc(productRef, productData);
-        Alert.alert('Sucesso', 'Produto atualizado com sucesso!');
+        // Caso de edição
+        productId = editingProduct.id;
+        
+        // Se houver nova imagem, faz o upload
+        if (newProduct.image && newProduct.image !== editingProduct.image) {
+          imageUrl = await uploadProductImage(newProduct.image, productId);
+        }
+
+        const productRef = doc(db, 'partners', user.uid, 'products', productId);
+        await updateDoc(productRef, {
+          ...productData,
+          ...(imageUrl && { image: imageUrl }), // Atualiza a imagem apenas se houver uma nova
+          updatedAt: new Date()
+        });
+
       } else {
-        // Criar novo produto
+        // Caso de criação
         const productRef = doc(collection(db, 'partners', user.uid, 'products'));
+        productId = productRef.id;
+
+        // Faz upload da imagem se existir
+        if (newProduct.image) {
+          imageUrl = await uploadProductImage(newProduct.image, productId);
+        }
+
         await setDoc(productRef, {
           ...productData,
-          id: productRef.id,
-          createdAt: new Date()
+          id: productId,
+          image: imageUrl,
+          createdAt: new Date(),
+          updatedAt: new Date()
         });
-        Alert.alert('Sucesso', 'Produto criado com sucesso!');
       }
 
       handleCloseModal();
       loadProducts();
+      Alert.alert('Sucesso', isEditing ? 'Produto atualizado com sucesso!' : 'Produto criado com sucesso!');
     } catch (error) {
       console.error('Erro ao salvar produto:', error);
       Alert.alert('Erro', 'Erro ao salvar produto');

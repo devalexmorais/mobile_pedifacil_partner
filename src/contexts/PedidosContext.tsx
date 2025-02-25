@@ -75,20 +75,9 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
 
     console.log('Iniciando busca de pedidos...');
     
-    // 1. Primeiro, vamos verificar se conseguimos acessar a coleção orders
-    const ordersRef = collection(db, 'partners', 'dkU6rAoQ8fWXJKYwQx6BQM1dYwy2', 'orders');
+    // Atualizando para usar o user.uid do usuário logado
+    const ordersRef = collection(db, 'partners', user.uid, 'orders');
     
-    // 2. Vamos tentar buscar o documento específico que sabemos que existe
-    const pedidoRef = doc(db, 'partners', 'dkU6rAoQ8fWXJKYwQx6BQM1dYwy2', 'orders', 'J2SXsffaiR0y42Z5Tl5M');
-    
-    getDoc(pedidoRef).then(docSnap => {
-      console.log('Documento específico existe?', docSnap.exists());
-      if (docSnap.exists()) {
-        console.log('Dados do documento:', docSnap.data());
-        console.log('Status do pagamento:', docSnap.data().payment?.status);
-      }
-    });
-
     // 3. Vamos buscar todos os documentos da coleção primeiro
     getDocs(ordersRef).then(snapshot => {
       console.log('Total de documentos na coleção:', snapshot.docs.length);
@@ -310,7 +299,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
     if (!user?.uid) return;
     
     try {
-      const pedidoRef = doc(db, 'partners', 'dkU6rAoQ8fWXJKYwQx6BQM1dYwy2', 'orders', pedido.id);
+      const pedidoRef = doc(db, 'partners', user.uid, 'orders', pedido.id);
       await updateDoc(pedidoRef, {
         status: 'preparing',
         updatedAt: new Date().toISOString()
@@ -324,7 +313,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
     if (!user?.uid) return;
 
     try {
-      const pedidoRef = doc(db, 'partners', 'dkU6rAoQ8fWXJKYwQx6BQM1dYwy2', 'orders', pedidoId);
+      const pedidoRef = doc(db, 'partners', user.uid, 'orders', pedidoId);
       await updateDoc(pedidoRef, {
         status: 'cancelled',
         updatedAt: new Date().toISOString()
@@ -338,7 +327,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
     if (!user?.uid) return;
 
     try {
-      const pedidoRef = doc(db, 'partners', 'dkU6rAoQ8fWXJKYwQx6BQM1dYwy2', 'orders', pedidoId);
+      const pedidoRef = doc(db, 'partners', user.uid, 'orders', pedidoId);
       await updateDoc(pedidoRef, {
         status: 'ready',
         updatedAt: new Date().toISOString()
@@ -352,7 +341,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
     if (!user?.uid) return;
 
     try {
-      const pedidoRef = doc(db, 'partners', 'dkU6rAoQ8fWXJKYwQx6BQM1dYwy2', 'orders', pedidoId);
+      const pedidoRef = doc(db, 'partners', user.uid, 'orders', pedidoId);
       await updateDoc(pedidoRef, {
         status: 'out_for_delivery',
         updatedAt: new Date().toISOString()
@@ -366,7 +355,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
     if (!user?.uid) return;
 
     try {
-      const pedidoRef = doc(db, 'partners', 'dkU6rAoQ8fWXJKYwQx6BQM1dYwy2', 'orders', pedidoId);
+      const pedidoRef = doc(db, 'partners', user.uid, 'orders', pedidoId);
       await updateDoc(pedidoRef, {
         status: 'delivered',
         updatedAt: new Date().toISOString()

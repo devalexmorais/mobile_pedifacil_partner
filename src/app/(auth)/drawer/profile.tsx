@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Image, TouchableOpacity, Alert, ImageBackground } from 'react-native';
 import { doc, getDoc, collection, getDocs, updateDoc } from 'firebase/firestore';
-import { db } from '../../../config/firebase';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../../../config/firebase';
 import { Ionicons } from '@expo/vector-icons';
 import { Auth, getAuth } from 'firebase/auth';
 import { EditableField } from '../../../components/EditableField';
@@ -183,11 +184,32 @@ export default function Profile() {
     }
   };
 
+  const uploadImageToStorage = async (uri: string, path: string): Promise<string> => {
+    try {
+      // Converter URI em blob
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      
+      // Criar referência no Storage
+      const storageRef = ref(storage, path);
+      
+      // Fazer upload
+      await uploadBytes(storageRef, blob);
+      
+      // Obter URL de download
+      const downloadURL = await getDownloadURL(storageRef);
+      return downloadURL;
+    } catch (error) {
+      console.error('Erro ao fazer upload da imagem:', error);
+      throw error;
+    }
+  };
+
   const handleImageUpload = async () => {
     try {
       setUploading(true);
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: "images",
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.5,
@@ -197,24 +219,26 @@ export default function Profile() {
         const user = auth.currentUser;
         if (!user) throw new Error('Usuário não autenticado');
 
+        // Caminho fixo para a foto de perfil (sempre substituirá a existente)
+        const storagePath = `partners/${user.uid}/profile/profile.jpg`;
+        const downloadURL = await uploadImageToStorage(result.assets[0].uri, storagePath);
+
         const partnerRef = doc(db, 'partners', user.uid);
-        // Atualizar apenas store.logo
         await updateDoc(partnerRef, {
-          'store.logo': result.assets[0].uri
+          'store.logo': downloadURL
         });
 
-        // Atualizar estado local
         setPartnerData(prev => prev ? {
           ...prev,
           store: {
             ...prev.store,
-            logo: result.assets[0].uri
+            logo: downloadURL
           }
         } : null);
       }
     } catch (error) {
       console.error('Erro ao selecionar imagem:', error);
-      Alert.alert('Erro', 'Não foi possível selecionar a imagem');
+      Alert.alert('Erro', 'Não foi possível fazer upload da imagem');
     } finally {
       setUploading(false);
     }
@@ -224,7 +248,7 @@ export default function Profile() {
     try {
       setUploading(true);
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: "images",
         allowsEditing: true,
         aspect: [16, 9],
         quality: 0.5,
@@ -234,19 +258,23 @@ export default function Profile() {
         const user = auth.currentUser;
         if (!user) throw new Error('Usuário não autenticado');
 
+        // Caminho fixo para a foto de capa (sempre substituirá a existente)
+        const storagePath = `partners/${user.uid}/cover/cover.jpg`;
+        const downloadURL = await uploadImageToStorage(result.assets[0].uri, storagePath);
+
         const partnerRef = doc(db, 'partners', user.uid);
         await updateDoc(partnerRef, {
-          coverImage: result.assets[0].uri
+          coverImage: downloadURL
         });
 
         setPartnerData(prev => prev ? {
           ...prev,
-          coverImage: result.assets[0].uri
+          coverImage: downloadURL
         } : null);
       }
     } catch (error) {
       console.error('Erro ao selecionar imagem de capa:', error);
-      Alert.alert('Erro', 'Não foi possível selecionar a imagem de capa');
+      Alert.alert('Erro', 'Não foi possível fazer upload da imagem de capa');
     } finally {
       setUploading(false);
     }

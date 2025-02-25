@@ -1,147 +1,206 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert, Switch } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TextInput, Alert, Switch, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/theme/colors';
-import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '@/contexts/AuthContext';
+import { deliveryFeeService, DeliveryFee } from '@/services/deliveryFeeService';
+import { addressService } from '@/services/addressService';
 
-interface DeliveryFee {
+interface Neighborhood {
   id: string;
-  neighborhood: string;
-  fee: number;
-  isActive: boolean;
+  name: string;
 }
 
+// Função para formatar valor para BRL
+const formatToBRL = (value: number): string => {
+  return value.toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};
+
+// Função para limpar formatação e converter para número
+const cleanFormat = (value: string): number => {
+  const cleanValue = value.replace(/[^\d]/g, '');
+  return parseFloat(cleanValue) / 100;
+};
+
 export default function TaxasEntrega() {
-  const [deliveryFees, setDeliveryFees] = useState<DeliveryFee[]>([
-    { id: '1', neighborhood: 'Centro', fee: 5, isActive: true },
-    { id: '2', neighborhood: 'Jardim América', fee: 7, isActive: true },
-    { id: '3', neighborhood: 'Vila Nova', fee: 8, isActive: true },
-  ]);
+  const { user } = useAuth();
+  const [deliveryFees, setDeliveryFees] = useState<DeliveryFee[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const [newNeighborhood, setNewNeighborhood] = useState('');
-  const [newFee, setNewFee] = useState('');
-  const [isAddingNew, setIsAddingNew] = useState(false);
+  useEffect(() => {
+    loadInitialData();
+  }, [user]);
 
-  const handleToggleActive = (id: string) => {
-    setDeliveryFees(prev => 
-      prev.map(fee => 
-        fee.id === id ? { ...fee, isActive: !fee.isActive } : fee
-      )
-    );
+  const loadInitialData = async () => {
+    try {
+      if (!user?.uid) return;
+      setIsLoading(true);
+
+      // Carregar todos os bairros
+      const allNeighborhoods = await addressService.getAllNeighborhoods();
+
+      // Carregar taxas existentes
+      const existingFees = await deliveryFeeService.getAllDeliveryFees(user.uid);
+      
+      // Criar um mapa de taxas existentes por bairro
+      const feesByNeighborhood = new Map(
+        existingFees.map(fee => [fee.neighborhood.toLowerCase(), fee])
+      );
+
+      // Criar lista final de taxas, incluindo bairros sem taxa (com valor 0)
+      const allFees = allNeighborhoods.map(neighborhood => {
+        const existingFee = feesByNeighborhood.get(neighborhood.name.toLowerCase());
+        if (existingFee) {
+          return existingFee;
+        }
+        return {
+          id: `temp_${neighborhood.id}`,
+          neighborhood: neighborhood.name,
+          fee: 0,
+          isActive: false,
+          storeId: user.uid,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+      });
+
+      // Ordenar por nome do bairro
+      allFees.sort((a, b) => a.neighborhood.localeCompare(b.neighborhood));
+
+      setDeliveryFees(allFees);
+    } catch (error) {
+      Alert.alert('Erro', 'Não foi possível carregar os dados');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleUpdateFee = (id: string, newValue: string) => {
-    const value = parseFloat(newValue);
-    if (isNaN(value) || value < 0) return;
+  const handleToggleActive = async (id: string) => {
+    try {
+      if (!user?.uid) return;
+      const fee = deliveryFees.find(f => f.id === id);
+      if (!fee) return;
 
-    setDeliveryFees(prev =>
-      prev.map(fee =>
-        fee.id === id ? { ...fee, fee: value } : fee
-      )
-    );
-  };
+      // Se é uma taxa temporária, criar nova no banco
+      if (id.startsWith('temp_')) {
+        const newFeeId = await deliveryFeeService.createDeliveryFee({
+          neighborhood: fee.neighborhood,
+          fee: fee.fee,
+          isActive: true,
+          storeId: user.uid
+        });
 
-  const handleAddNew = () => {
-    if (!newNeighborhood.trim() || !newFee.trim()) {
-      Alert.alert('Erro', 'Preencha todos os campos');
-      return;
-    }
+        // Atualizar o estado local com o novo ID
+        setDeliveryFees(prev =>
+          prev.map(f => f.id === id ? { ...f, id: newFeeId, isActive: true } : f)
+        );
+      } else {
+        // Atualizar taxa existente
+        await deliveryFeeService.updateDeliveryFee(user.uid, id, {
+          isActive: !fee.isActive
+        });
 
-    const value = parseFloat(newFee);
-    if (isNaN(value) || value < 0) {
-      Alert.alert('Erro', 'Valor inválido');
-      return;
-    }
-
-    const newId = (deliveryFees.length + 1).toString();
-    setDeliveryFees(prev => [
-      ...prev,
-      {
-        id: newId,
-        neighborhood: newNeighborhood.trim(),
-        fee: value,
-        isActive: true,
+        setDeliveryFees(prev =>
+          prev.map(f => f.id === id ? { ...f, isActive: !f.isActive } : f)
+        );
       }
-    ]);
+    } catch (error) {
+      Alert.alert('Erro', 'Não foi possível atualizar o status da taxa');
+    }
+  };
 
-    setNewNeighborhood('');
-    setNewFee('');
-    setIsAddingNew(false);
+  const handleUpdateFee = async (id: string, newValue: string) => {
+    try {
+      if (!user?.uid) return;
+      
+      // Converter o valor formatado para número
+      const value = cleanFormat(newValue);
+      if (isNaN(value) || value < 0) return;
+
+      const fee = deliveryFees.find(f => f.id === id);
+      if (!fee) return;
+
+      // Se é uma taxa temporária e o valor é maior que 0, criar nova no banco
+      if (id.startsWith('temp_') && value > 0) {
+        const newFeeId = await deliveryFeeService.createDeliveryFee({
+          neighborhood: fee.neighborhood,
+          fee: value,
+          isActive: true,
+          storeId: user.uid
+        });
+
+        // Atualizar o estado local com o novo ID
+        setDeliveryFees(prev =>
+          prev.map(f => f.id === id ? { ...f, id: newFeeId, fee: value, isActive: true } : f)
+        );
+      } else if (!id.startsWith('temp_')) {
+        // Atualizar taxa existente
+        await deliveryFeeService.updateDeliveryFee(user.uid, id, {
+          fee: value
+        });
+
+        setDeliveryFees(prev =>
+          prev.map(f => f.id === id ? { ...f, fee: value } : f)
+        );
+      }
+    } catch (error) {
+      Alert.alert('Erro', 'Não foi possível atualizar o valor da taxa');
+    }
+  };
+
+  const formatInputValue = (value: string) => {
+    const numericValue = value.replace(/[^\d]/g, '');
+    const floatValue = parseFloat(numericValue) / 100;
+    if (isNaN(floatValue)) return '';
+    return formatToBRL(floatValue);
   };
 
   return (
     <View style={styles.container}>
-      
       <ScrollView style={styles.content}>
         <View style={styles.header}>
           <Text style={styles.title}>Taxas de Entrega</Text>
-          {!isAddingNew && (
-            <TouchableOpacity 
-              style={styles.addButton}
-              onPress={() => setIsAddingNew(true)}
-            >
-              <Ionicons name="add" size={24} color={colors.white} />
-            </TouchableOpacity>
-          )}
         </View>
 
-        {isAddingNew && (
-          <View style={styles.addNewContainer}>
-            <TextInput
-              style={styles.input}
-              placeholder="Nome do bairro"
-              value={newNeighborhood}
-              onChangeText={setNewNeighborhood}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Valor da taxa"
-              value={newFee}
-              onChangeText={setNewFee}
-              keyboardType="decimal-pad"
-            />
-            <View style={styles.addNewButtons}>
-              <TouchableOpacity 
-                style={[styles.actionButton, styles.cancelButton]}
-                onPress={() => setIsAddingNew(false)}
-              >
-                <Text style={styles.cancelButtonText}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.actionButton, styles.saveButton]}
-                onPress={handleAddNew}
-              >
-                <Text style={styles.saveButtonText}>Salvar</Text>
-              </TouchableOpacity>
-            </View>
+        {isLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.green[500]} />
+            <Text style={styles.loadingText}>Carregando taxas...</Text>
+          </View>
+        ) : (
+          <View style={styles.feesList}>
+            {deliveryFees.map((fee) => (
+              <View key={fee.id} style={styles.feeCard}>
+                <View style={styles.feeHeader}>
+                  <Text style={styles.neighborhoodName}>{fee.neighborhood}</Text>
+                  <Switch
+                    value={fee.isActive}
+                    onValueChange={() => handleToggleActive(fee.id)}
+                    trackColor={{ false: colors.gray[300], true: colors.green[500] }}
+                    thumbColor={colors.white}
+                  />
+                </View>
+                
+                <View style={styles.feeInputContainer}>
+                  <Text style={styles.currencySymbol}>R$</Text>
+                  <TextInput
+                    style={[
+                      styles.feeInput,
+                      !fee.isActive && styles.feeInputDisabled
+                    ]}
+                    value={formatToBRL(fee.fee)}
+                    onChangeText={(value) => handleUpdateFee(fee.id, value)}
+                    keyboardType="numeric"
+                    editable={true}
+                    placeholder="0,00"
+                  />
+                </View>
+              </View>
+            ))}
           </View>
         )}
-
-        <View style={styles.feesList}>
-          {deliveryFees.map((fee) => (
-            <View key={fee.id} style={styles.feeCard}>
-              <View style={styles.feeHeader}>
-                <Text style={styles.neighborhoodName}>{fee.neighborhood}</Text>
-                <Switch
-                  value={fee.isActive}
-                  onValueChange={() => handleToggleActive(fee.id)}
-                  trackColor={{ false: colors.gray[300], true: colors.green[500] }}
-                  thumbColor={colors.white}
-                />
-              </View>
-              
-              <View style={styles.feeInputContainer}>
-                <Text style={styles.currencySymbol}>R$</Text>
-                <TextInput
-                  style={styles.feeInput}
-                  value={fee.fee.toString()}
-                  onChangeText={(value) => handleUpdateFee(fee.id, value)}
-                  keyboardType="decimal-pad"
-                  editable={fee.isActive}
-                />
-              </View>
-            </View>
-          ))}
-        </View>
       </ScrollView>
     </View>
   );
@@ -165,14 +224,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '600',
     color: colors.gray[800],
-  },
-  addButton: {
-    backgroundColor: colors.green[500],
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   feesList: {
     padding: 16,
@@ -216,47 +267,19 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gray[100],
     borderRadius: 8,
   },
-  addNewContainer: {
-    backgroundColor: colors.white,
-    margin: 16,
-    padding: 16,
-    borderRadius: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
   },
-  input: {
+  loadingText: {
+    marginTop: 16,
     fontSize: 16,
-    color: colors.gray[800],
-    padding: 12,
-    backgroundColor: colors.gray[100],
-    borderRadius: 8,
-    marginBottom: 12,
+    color: colors.gray[600],
   },
-  addNewButtons: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 12,
-  },
-  actionButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-  },
-  cancelButton: {
+  feeInputDisabled: {
     backgroundColor: colors.gray[200],
-  },
-  saveButton: {
-    backgroundColor: colors.green[500],
-  },
-  cancelButtonText: {
-    color: colors.gray[700],
-    fontWeight: '500',
-  },
-  saveButtonText: {
-    color: colors.white,
-    fontWeight: '500',
+    color: colors.gray[500],
   },
 }); 
