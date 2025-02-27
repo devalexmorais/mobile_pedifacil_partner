@@ -9,6 +9,7 @@ import * as Yup from 'yup';
 import { CustomInput } from '../components/CustomInput';
 import { getFirestore, collection, query, where, getDocs } from 'firebase/firestore';
 import { colors } from '@/styles/theme/colors';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Esquema de validação
 const LoginSchema = Yup.object().shape({
@@ -41,6 +42,19 @@ export default function Index() {
 
       // Se for um parceiro, procede com o login
       const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
+      
+      // Obter e salvar o token
+      const token = await userCredential.user.getIdToken();
+      await AsyncStorage.setItem('@auth_token', token);
+      
+      // Salvar dados do usuário
+      const userData = {
+        id: userCredential.user.uid,
+        email: userCredential.user.email,
+        ...querySnapshot.docs[0].data()
+      };
+      await AsyncStorage.setItem('@user_data', JSON.stringify(userData));
+
       router.replace('/(auth)/(tabs)/pedidos');
     } catch (error: any) {
       switch (error.code) {

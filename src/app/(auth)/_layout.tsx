@@ -6,6 +6,8 @@ import { DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawe
 import { StatusBar } from 'react-native';
 import { MainEstablishmentButton } from '@/components/MainEstablishmentButton';
 import { signOut, getAuth } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useEffect } from 'react';
 
 <StatusBar
   barStyle="light-content" // Define o estilo do texto (claro ou escuro)
@@ -22,12 +24,33 @@ function CustomDrawerContent(props: any) {
       const auth = getAuth();
       await signOut(auth);
       
+      // Remover token e dados do usuário
+      await AsyncStorage.removeItem('@auth_token');
+      await AsyncStorage.removeItem('@user_data');
+      
       console.log('Logout bem sucedido, redirecionando...');
       router.replace('/');
     } catch (error) {
       console.error('Erro ao fazer logout:', error);
     }
   };
+
+  useEffect(() => {
+    const checkAuthStatus = async () => {
+      try {
+        const token = await AsyncStorage.getItem('@auth_token');
+        if (!token) {
+          console.log('Token não encontrado, redirecionando para login...');
+          router.replace('/');
+        }
+      } catch (error) {
+        console.error('Erro ao verificar autenticação:', error);
+        router.replace('/');
+      }
+    };
+
+    checkAuthStatus();
+  }, []);
 
   return (
     <SafeAreaView style={styles.drawerContainer}>

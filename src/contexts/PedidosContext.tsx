@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { db } from '../config/firebase';
-import { collection, query, where, doc, updateDoc, onSnapshot, orderBy, getDoc, getDocs } from 'firebase/firestore';
+import { collection, query, where, doc, updateDoc, onSnapshot, orderBy, getDoc, getDocs, DocumentData } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 
 type Address = {
@@ -37,16 +37,20 @@ export type Pedido = {
   };
   createdAt: string;
   deliveryFee: number;
+  deliveryMode: 'pickup' | 'delivery';
   finalPrice: number;
   items: OrderItem[];
   payment: {
     method: string;
-    status: 'pending' | 'preparing' | 'ready' | 'out_for_delivery' | 'delivered' | 'cancelled';
+    status: string;
   };
   storeId: string;
   totalPrice: number;
   updatedAt: string;
   userId: string;
+  userName?: string;
+  status?: 'pending' | 'preparing' | 'ready' | 'out_for_delivery' | 'delivered' | 'cancelled';
+  observations?: string;
 };
 
 type PedidosContextData = {
@@ -63,6 +67,10 @@ type PedidosContextData = {
 
 const PedidosContext = createContext<PedidosContextData>({} as PedidosContextData);
 
+interface UserData extends DocumentData {
+  name: string;
+}
+
 export function PedidosProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [pedidosPendentes, setPedidosPendentes] = useState<Pedido[]>([]);
@@ -75,27 +83,14 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
 
     console.log('Iniciando busca de pedidos...');
     
-    // Atualizando para usar o user.uid do usuário logado
     const ordersRef = collection(db, 'partners', user.uid, 'orders');
     
-    // 3. Vamos buscar todos os documentos da coleção primeiro
-    getDocs(ordersRef).then(snapshot => {
-      console.log('Total de documentos na coleção:', snapshot.docs.length);
-      snapshot.docs.forEach(doc => {
-        console.log('ID do documento:', doc.id);
-        console.log('Dados completos:', doc.data());
-        console.log('Status do pagamento:', doc.data().payment?.status);
-      });
-    });
-
-    // 4. Agora vamos criar a query com mais logs
     const pendentesQuery = query(
       ordersRef,
       where('status', '==', 'pending')
     );
 
-    // 5. Listener com verificações adicionais
-    const unsubPendentes = onSnapshot(pendentesQuery, (snapshot) => {
+    const unsubPendentes = onSnapshot(pendentesQuery, async (snapshot) => {
       console.log('Query executada');
       console.log('Documentos encontrados:', snapshot.docs.length);
       
@@ -103,20 +98,24 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         console.log('Nenhum documento encontrado com status = pending');
       }
 
-      snapshot.docs.forEach(doc => {
-        const data = doc.data();
-        console.log('Documento encontrado:', {
-          id: doc.id,
-          status: data.status,
-          paymentMethod: data.payment?.method,
-          rawData: data
-        });
-      });
+      const pedidosPromises = snapshot.docs.map(async (docSnapshot) => {
+        const data = docSnapshot.data();
+        
+        // Buscar informações do usuário
+        let userName = '';
+        try {
+          const userRef = doc(db, 'users', data.userId);
+          const userDoc = await getDoc(userRef);
+          if (userDoc.exists()) {
+            const userData = userDoc.data() as UserData;
+            userName = userData.name || '';
+          }
+        } catch (error) {
+          console.error('Erro ao buscar nome do usuário:', error);
+        }
 
-      const pedidos = snapshot.docs.map(doc => {
-        const data = doc.data();
         return {
-          id: doc.id,
+          id: docSnapshot.id,
           address: {
             city: data.address?.city || '',
             complement: data.address?.complement || '',
@@ -127,6 +126,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           },
           createdAt: data.createdAt || new Date().toISOString(),
           deliveryFee: Number(data.deliveryFee) || 0,
+          deliveryMode: data.deliveryMode || 'delivery',
           finalPrice: Number(data.finalPrice) || 0,
           items: data.items?.map((item: any) => ({
             name: item.name || '',
@@ -142,14 +142,16 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           storeId: data.storeId || '',
           totalPrice: Number(data.totalPrice) || 0,
           updatedAt: data.updatedAt || new Date().toISOString(),
-          userId: data.userId || ''
+          userId: data.userId || '',
+          userName: userName,
+          status: data.status || 'pending',
+          observations: data.observations || ''
         } as Pedido;
       });
 
+      const pedidos = await Promise.all(pedidosPromises);
       console.log('Pedidos processados:', pedidos);
       setPedidosPendentes(pedidos);
-    }, (error) => {
-      console.error('Erro no listener:', error);
     });
 
     // Query para pedidos na cozinha
@@ -161,7 +163,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
     // Query para pedidos prontos
     const prontosQuery = query(
       ordersRef,
-      where('status', 'in', ['ready', 'out_for_delivery'])
+      where('status', '==', 'ready')
     );
 
     // Query para pedidos em entrega
@@ -186,6 +188,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           },
           createdAt: data.createdAt || new Date().toISOString(),
           deliveryFee: Number(data.deliveryFee) || 0,
+          deliveryMode: data.deliveryMode || 'delivery',
           finalPrice: Number(data.finalPrice) || 0,
           items: data.items?.map((item: any) => ({
             name: item.name || '',
@@ -203,7 +206,8 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           totalPrice: Number(data.totalPrice) || 0,
           updatedAt: data.updatedAt || new Date().toISOString(),
           userId: data.userId || '',
-          status: data.status || 'pending'
+          status: data.status || 'pending',
+          observations: data.observations || ''
         } as Pedido;
       });
       setPedidosCozinha(pedidos);
@@ -225,6 +229,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           },
           createdAt: data.createdAt || new Date().toISOString(),
           deliveryFee: Number(data.deliveryFee) || 0,
+          deliveryMode: data.deliveryMode || 'delivery',
           finalPrice: Number(data.finalPrice) || 0,
           items: data.items?.map((item: any) => ({
             name: item.name || '',
@@ -242,7 +247,8 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           totalPrice: Number(data.totalPrice) || 0,
           updatedAt: data.updatedAt || new Date().toISOString(),
           userId: data.userId || '',
-          status: data.status || 'pending'
+          status: data.status || 'pending',
+          observations: data.observations || ''
         } as Pedido;
       });
       setPedidosProntos(pedidos);
@@ -264,6 +270,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           },
           createdAt: data.createdAt || new Date().toISOString(),
           deliveryFee: Number(data.deliveryFee) || 0,
+          deliveryMode: data.deliveryMode || 'delivery',
           finalPrice: Number(data.finalPrice) || 0,
           items: data.items?.map((item: any) => ({
             name: item.name || '',
@@ -281,7 +288,8 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           totalPrice: Number(data.totalPrice) || 0,
           updatedAt: data.updatedAt || new Date().toISOString(),
           userId: data.userId || '',
-          status: data.status || 'pending'
+          status: data.status || 'pending',
+          observations: data.observations || ''
         } as Pedido;
       });
       setPedidosEmEntrega(pedidos);

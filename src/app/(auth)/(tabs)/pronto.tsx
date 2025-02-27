@@ -5,6 +5,11 @@ import { usePedidos } from '../../../contexts/PedidosContext';
 import { EmptyState } from '../../../components/EmptyState';
 import { Pedido } from '../../../contexts/PedidosContext';
 
+// Estendendo o tipo Pedido para incluir status
+interface PedidoWithStatus extends Pedido {
+  status?: string;
+}
+
 export default function Pronto() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { pedidosProntos, marcarComoEmEntrega, marcarComoEntregue } = usePedidos();
@@ -21,7 +26,7 @@ export default function Pronto() {
 
   const renderPedido = ({ item }: { item: Pedido }) => {
     const isExpanded = expandedId === item.id;
-    const isOutForDelivery = item.status === 'out_for_delivery';
+    const isPickup = item.deliveryMode === 'pickup';
 
     // Formata o endereço completo
     const endereco = `${item.address.street}, ${item.address.number}${item.address.complement ? ` - ${item.address.complement}` : ''}\n${item.address.neighborhood}, ${item.address.city} - ${item.address.state}`;
@@ -64,41 +69,44 @@ export default function Pronto() {
 
         {isExpanded && (
           <View style={styles.expandedContent}>
+            {/* Modo de entrega */}
             <View style={styles.infoSection}>
-              <Text style={styles.sectionTitle}>Endereço de Entrega:</Text>
-              <Text style={styles.infoText}>{endereco}</Text>
+              <Text style={styles.sectionTitle}>Tipo de Pedido:</Text>
+              <Text style={styles.infoText}>
+                {item.deliveryMode === 'pickup' ? 'Retirada no local' : 'Entrega'}
+              </Text>
             </View>
+            
+            {/* Só mostra endereço se for entrega */}
+            {item.deliveryMode === 'delivery' && (
+              <View style={styles.infoSection}>
+                <Text style={styles.sectionTitle}>Endereço de Entrega:</Text>
+                <Text style={styles.infoText}>{endereco}</Text>
+              </View>
+            )}
           </View>
         )}
 
         {/* Botões de ação */}
-        {!isOutForDelivery ? (
-          <TouchableOpacity 
-            style={styles.deliveryButton}
-            onPress={() => marcarComoEmEntrega(item.id)}
-          >
-            <Ionicons name="bicycle" size={22} color="#fff" />
-            <Text style={styles.deliveryButtonText}>Enviar para Entrega</Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity 
-            style={styles.deliveredButton}
-            onPress={() => marcarComoEntregue(item.id)}
-          >
-            <Ionicons name="checkmark-done" size={22} color="#fff" />
-            <Text style={styles.deliveredButtonText}>Marcar como Entregue</Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity 
+          style={[styles.deliveryButton, isPickup && styles.pickupButton]}
+          onPress={() => marcarComoEmEntrega(item.id)}
+        >
+          <Ionicons name={isPickup ? "hand-left" : "bicycle"} size={22} color="#fff" />
+          <Text style={styles.deliveryButtonText}>
+            {isPickup ? 'Disponível para Retirada' : 'Enviar para Entrega'}
+          </Text>
+        </TouchableOpacity>
 
         {/* Status Badge */}
-        <View style={[styles.statusBadge, isOutForDelivery && styles.statusBadgeDelivery]}>
+        <View style={[styles.statusBadge, isPickup && styles.statusBadgePickup]}>
           <Ionicons 
-            name={isOutForDelivery ? "bicycle" : "checkmark-circle"} 
+            name={isPickup ? "storefront" : "checkmark-circle"}
             size={16} 
-            color={isOutForDelivery ? "#FF9800" : "#4CAF50"} 
+            color={isPickup ? "#8E44AD" : "#4CAF50"}
           />
-          <Text style={[styles.statusText, isOutForDelivery && styles.statusTextDelivery]}>
-            {isOutForDelivery ? 'Em Entrega' : 'Pronto para Entrega'}
+          <Text style={[styles.statusText, isPickup && styles.statusTextPickup]}>
+            {isPickup ? 'Pronto para Retirada' : 'Pronto para Entrega'}
           </Text>
         </View>
       </View>
@@ -209,16 +217,16 @@ const styles = StyleSheet.create({
     marginTop: 8,
     gap: 4,
   },
-  statusBadgeDelivery: {
-    backgroundColor: '#FFF3E0',
+  statusBadgePickup: {
+    backgroundColor: '#F5EEF8',
   },
   statusText: {
     fontSize: 12,
     color: '#4CAF50',
     fontWeight: '500',
   },
-  statusTextDelivery: {
-    color: '#FF9800',
+  statusTextPickup: {
+    color: '#8E44AD',
   },
   deliveryButton: {
     flexDirection: 'row',
@@ -230,6 +238,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginTop: 16,
     gap: 8,
+  },
+  pickupButton: {
+    backgroundColor: '#8E44AD',
   },
   deliveryButtonText: {
     color: '#fff',

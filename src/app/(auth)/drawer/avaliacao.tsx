@@ -1,52 +1,85 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
+import { collection, getDocs } from 'firebase/firestore';
+import { db, auth } from '@/config/firebase';
 
 interface Review {
   id: string;
-  userName: string;
-  rating: number;
   comment: string;
-  date: string;
-  orderNumber: string;
-  items: string[];
-  response?: string;
+  createdAt: Date;
+  orderId: string;
+  rating: number;
+  userId: string;
 }
 
-const reviews: Review[] = [
-  {
-    id: '1',
-    userName: 'João Silva',
-    rating: 5,
-    comment: 'Comida excelente! Entrega rápida e tudo muito bem embalado. Com certeza pedirei novamente.',
-    date: '15/03/2024',
-    orderNumber: '#12345',
-    items: ['X-Tudo', 'Batata Frita', 'Refrigerante'],
-  },
-  {
-    id: '2',
-    userName: 'Maria Santos',
-    rating: 4,
-    comment: 'Muito bom, mas demorou um pouco mais que o previsto.',
-    date: '14/03/2024',
-    orderNumber: '#12344',
-    items: ['Pizza Grande', 'Refrigerante'],
-    response: 'Olá Maria, agradecemos seu feedback! Estamos trabalhando para melhorar nosso tempo de entrega.',
-  },
-  {
-    id: '3',
-    userName: 'Pedro Costa',
-    rating: 3,
-    comment: 'A comida estava boa, mas chegou fria.',
-    date: '13/03/2024',
-    orderNumber: '#12343',
-    items: ['Yakisoba', 'Rolinho Primavera'],
-  },
-];
-
 export default function Avaliacao() {
-  const averageRating = reviews.reduce((acc, review) => acc + review.rating, 0) / reviews.length;
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchReviews = async () => {
+      try {
+        const user = auth.currentUser;
+        console.log('Usuário autenticado:', user?.uid);
+        if (!user) {
+          setError('Usuário não autenticado');
+          setLoading(false);
+          return;
+        }
+
+        console.log('Iniciando busca de orders para o parceiro:', user.uid);
+        const ordersRef = collection(db, 'partners', user.uid, 'orders');
+        const ordersSnapshot = await getDocs(ordersRef);
+        console.log('Total de pedidos encontrados:', ordersSnapshot.size);
+
+        const reviewsData: Review[] = [];
+
+        for (const orderDoc of ordersSnapshot.docs) {
+          console.log('Processando pedido:', orderDoc.id);
+          const reviewRef = collection(db, 'partners', user.uid, 'orders', orderDoc.id, 'review');
+          const reviewSnapshot = await getDocs(reviewRef);
+          console.log('Total de reviews encontrados para o pedido', orderDoc.id, ':', reviewSnapshot.size);
+
+          reviewSnapshot.forEach((reviewDoc) => {
+            const data = reviewDoc.data();
+            console.log('Dados do review:', data);
+            reviewsData.push({
+              id: reviewDoc.id,
+              comment: data.comment || '',
+              createdAt: data.createdAt ? new Date(data.createdAt) : new Date(),
+              orderId: data.orderId || orderDoc.id,
+              rating: data.rating || 0,
+              userId: data.userId || user.uid,
+            });
+          });
+        }
+
+        console.log('Reviews processados:', reviewsData);
+        setReviews(reviewsData);
+        console.log('Estado reviews atualizado com sucesso');
+      } catch (error: unknown) {
+        console.error('Erro detalhado ao buscar avaliações:', error);
+        if (error instanceof Error) {
+          setError('Erro ao carregar avaliações: ' + error.message);
+        } else {
+          setError('Erro ao carregar avaliações');
+        }
+      } finally {
+        setLoading(false);
+        console.log('Busca concluída, loading setado para false');
+      }
+    };
+
+    fetchReviews();
+  }, []);
+
+  const averageRating = reviews.length > 0
+    ? reviews.reduce((acc, review) => acc + review.rating, 0) / reviews.length
+    : 0;
+
   const totalReviews = reviews.length;
 
   const getRatingCount = (rating: number) => {
@@ -54,7 +87,7 @@ export default function Avaliacao() {
   };
 
   const getRatingPercentage = (rating: number) => {
-    return (getRatingCount(rating) / totalReviews) * 100;
+    return totalReviews > 0 ? (getRatingCount(rating) / totalReviews) * 100 : 0;
   };
 
   const renderStars = (rating: number) => {
@@ -68,11 +101,25 @@ export default function Avaliacao() {
     ));
   };
 
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color={colors.purple[500]} />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <Text style={styles.errorText}>{error}</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Resumo das Avaliações */}
         <View style={styles.summary}>
           <View style={styles.averageContainer}>
             <Text style={styles.averageRating}>{averageRating.toFixed(1)}</Text>
@@ -104,57 +151,52 @@ export default function Avaliacao() {
           </View>
         </View>
 
-        {/* Lista de Avaliações */}
         <View style={styles.reviewsContainer}>
           <Text style={styles.sectionTitle}>Últimas Avaliações</Text>
-
-          {reviews.map((review) => (
-            <View key={review.id} style={styles.reviewCard}>
-              <View style={styles.reviewHeader}>
-                <View>
-                  <Text style={styles.userName}>{review.userName}</Text>
-                  <View style={styles.ratingContainer}>
-                    {renderStars(review.rating)}
-                    <Text style={styles.reviewDate}>{review.date}</Text>
-                  </View>
-                </View>
-                <Text style={styles.orderNumber}>{review.orderNumber}</Text>
-              </View>
-
-              <Text style={styles.items}>
-                {review.items.join(' • ')}
+          {reviews.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateText}>
+                Ainda não há avaliações para mostrar
               </Text>
-
-              <Text style={styles.comment}>{review.comment}</Text>
-
-              {review.response && (
-                <View style={styles.responseContainer}>
-                  <View style={styles.responseHeader}>
-                    <Ionicons name="chatbubble-ellipses" size={16} color={colors.green[600]} />
-                    <Text style={styles.responseLabel}>Sua resposta</Text>
-                  </View>
-                  <Text style={styles.responseText}>{review.response}</Text>
-                </View>
-              )}
-
-              {!review.response && (
-                <TouchableOpacity style={styles.replyButton}>
-                  <Ionicons name="chatbubble-outline" size={16} color={colors.purple[500]} />
-                  <Text style={styles.replyButtonText}>Responder avaliação</Text>
-                </TouchableOpacity>
-              )}
             </View>
-          ))}
+          ) : (
+            reviews.map((review) => (
+              <View key={review.id} style={styles.reviewCard}>
+                <View style={styles.reviewHeader}>
+                  <View>
+                    <Text style={styles.orderNumber}>Pedido #{review.orderId}</Text>
+                    <View style={styles.ratingContainer}>
+                      {renderStars(review.rating)}
+                      <Text style={styles.reviewDate}>
+                        {review.createdAt.toLocaleDateString('pt-BR')}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+                {review.comment && <Text style={styles.comment}>{review.comment}</Text>}
+              </View>
+            ))
+          )}
         </View>
       </ScrollView>
     </View>
   );
 }
 
+// Estilos permanecem iguais
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.gray[100],
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    color: colors.red[500],
+    fontSize: 16,
+    textAlign: 'center',
   },
   summary: {
     backgroundColor: colors.white,
@@ -232,7 +274,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 12,
   },
-  userName: {
+  orderNumber: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.gray[800],
@@ -247,52 +289,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.gray[500],
   },
-  orderNumber: {
-    fontSize: 12,
-    color: colors.gray[500],
-    fontWeight: '500',
-  },
-  items: {
-    fontSize: 14,
-    color: colors.gray[600],
-    marginBottom: 8,
-  },
   comment: {
     fontSize: 14,
     color: colors.gray[800],
     lineHeight: 20,
-    marginBottom: 16,
   },
-  responseContainer: {
-    backgroundColor: colors.green[50],
-    borderRadius: 8,
-    padding: 12,
-  },
-  responseHeader: {
-    flexDirection: 'row',
+  emptyState: {
+    padding: 24,
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
+    backgroundColor: colors.white,
+    borderRadius: 12,
   },
-  responseLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.green[600],
+  emptyStateText: {
+    fontSize: 16,
+    color: colors.gray[600],
+    textAlign: 'center',
   },
-  responseText: {
-    fontSize: 14,
-    color: colors.gray[800],
-    lineHeight: 20,
-  },
-  replyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-  },
-  replyButtonText: {
-    fontSize: 14,
-    color: colors.purple[500],
-    fontWeight: '500',
-  },
-}); 
+});

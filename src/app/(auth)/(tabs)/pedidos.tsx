@@ -7,9 +7,8 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { usePedidos } from '../../../contexts/PedidosContext';
+import { usePedidos, Pedido } from '../../../contexts/PedidosContext';
 import { EmptyState } from '../../../components/EmptyState';
-import { Pedido } from '../../../contexts/PedidosContext';
 
 export default function Pedidos() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -32,66 +31,136 @@ export default function Pedidos() {
     console.log('Renderizando pedido:', item);
     const isExpanded = expandedId === item.id;
     
-    // Formata o endereço completo
-    const endereco = `${item.address.street}, ${item.address.number}${item.address.complement ? ` - ${item.address.complement}` : ''}\n${item.address.neighborhood}, ${item.address.city} - ${item.address.state}`;
+    // Formata o endereço de forma simplificada
+    const endereco = {
+      linha1: `${item.address.street}, ${item.address.number}`,
+      linha2: item.address.complement ? item.address.complement : '',
+      linha3: item.address.neighborhood
+    };
 
     return (
       <View style={styles.card}>
-        <TouchableOpacity 
-          style={styles.header}
-          onPress={() => setExpandedId(isExpanded ? null : item.id)}
-        >
-          <View style={styles.headerContent}>
-            <Text style={styles.orderTime}>
-              Pedido feito às {new Date(item.createdAt).toLocaleTimeString('pt-BR')}
-            </Text>
-            <Text style={styles.paymentMethod}>
-              Pagamento: {item.payment.method.toUpperCase()}
+        {/* Cabeçalho com ID do Pedido */}
+        <View style={styles.orderIdHeader}>
+          <Text style={styles.orderId}>Pedido #{item.id.slice(-4)}</Text>
+          <TouchableOpacity onPress={() => setExpandedId(isExpanded ? null : item.id)}>
+            <Ionicons 
+              name={isExpanded ? "chevron-up" : "chevron-down"} 
+              size={24} 
+              color="#666"
+            />
+          </TouchableOpacity>
+        </View>
+
+        {/* Informações Básicas do Pedido */}
+        <View style={styles.basicInfo}>
+          <View style={styles.infoRow}>
+            <Ionicons name="time-outline" size={16} color="#666" />
+            <Text style={styles.infoText}>
+              Feito às {new Date(item.createdAt).toLocaleTimeString('pt-BR')}
             </Text>
           </View>
-          <Ionicons 
-            name={isExpanded ? "chevron-up" : "chevron-down"} 
-            size={24} 
-            color="#666"
-          />
-        </TouchableOpacity>
-
-        <View style={styles.content}>
-          {item.items.map((produto, index) => (
-            <Text key={index} style={styles.item}>
-              {produto.quantity}x {produto.name}
+          <View style={styles.infoRow}>
+            <Ionicons name="cash-outline" size={16} color="#666" />
+            <Text style={styles.infoText}>
+              Total: R$ {item.finalPrice.toFixed(2)}
             </Text>
+          </View>
+        </View>
+
+        {/* Lista de Itens */}
+        <View style={styles.content}>
+          <Text style={styles.sectionTitle}>Itens do Pedido</Text>
+          {item.items.map((produto, index) => (
+            <View key={index} style={styles.itemRow}>
+              <Text style={styles.itemQuantity}>{produto.quantity}x</Text>
+              <Text style={styles.itemName}>{produto.name}</Text>
+              <Text style={styles.itemPrice}>
+                R$ {(produto.price * produto.quantity).toFixed(2)}
+              </Text>
+            </View>
           ))}
         </View>
 
+        {/* Informações do Cliente e Detalhes */}
         {isExpanded && (
           <View style={styles.details}>
-            <Text style={styles.detailsTitle}>Detalhes do Pedido:</Text>
-            <Text style={styles.detailsText}>Endereço: {endereco}</Text>
-            <Text style={styles.detailsText}>
-              Valor Total: R$ {item.totalPrice.toFixed(2)}
-            </Text>
-            <Text style={styles.detailsText}>
-              Taxa de Entrega: R$ {item.deliveryFee.toFixed(2)}
-            </Text>
+            <View style={styles.detailsSection}>
+              <Text style={styles.sectionTitle}>Informações do Cliente</Text>
+              <View style={styles.clientInfoContainer}>
+                <View style={styles.infoRow}>
+                  <Ionicons name="person-outline" size={16} color="#666" />
+                  <Text style={styles.infoText}>
+                    {item.userName || 'Cliente não identificado'}
+                  </Text>
+                </View>
+                <View style={styles.infoRow}>
+                  <Ionicons name="card-outline" size={16} color="#666" />
+                  <Text style={styles.infoText}>
+                    Pagamento: {item.payment.method.toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.infoRow}>
+                  <Ionicons 
+                    name={item.deliveryMode === 'pickup' ? 'storefront-outline' : 'bicycle-outline'} 
+                    size={16} 
+                    color="#666" 
+                  />
+                  <Text style={styles.infoText}>
+                    {item.deliveryMode === 'pickup' ? 'Retirada no local' : 'Entrega'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {item.deliveryMode === 'delivery' && (
+              <View style={styles.detailsSection}>
+                <Text style={styles.sectionTitle}>Endereço de Entrega</Text>
+                <View style={styles.addressContainer}>
+                  <Text style={styles.addressText}>{endereco.linha1}</Text>
+                  {endereco.linha2 ? (
+                    <Text style={styles.addressText}>{endereco.linha2}</Text>
+                  ) : null}
+                  <Text style={styles.addressText}>{endereco.linha3}</Text>
+                </View>
+              </View>
+            )}
+            
+            <View style={styles.detailsSection}>
+              <Text style={styles.sectionTitle}>Resumo do Valor</Text>
+              <View style={styles.valueContainer}>
+                <View style={styles.valueRow}>
+                  <Text style={styles.valueLabel}>Subtotal:</Text>
+                  <Text style={styles.valueText}>R$ {item.totalPrice.toFixed(2)}</Text>
+                </View>
+                <View style={styles.valueRow}>
+                  <Text style={styles.valueLabel}>Taxa de Entrega:</Text>
+                  <Text style={styles.valueText}>R$ {item.deliveryFee.toFixed(2)}</Text>
+                </View>
+                <View style={[styles.valueRow, styles.totalRow]}>
+                  <Text style={styles.totalLabel}>Total:</Text>
+                  <Text style={styles.totalValue}>R$ {item.finalPrice.toFixed(2)}</Text>
+                </View>
+              </View>
+            </View>
           </View>
         )}
 
+        {/* Ações do Pedido */}
         <View style={styles.footer}>
-          <Text style={styles.total}>
-            Total: R$ {item.finalPrice.toFixed(2)}
-          </Text>
           <View style={styles.actions}>
             <TouchableOpacity 
               style={[styles.button, styles.rejectButton]}
               onPress={() => recusarPedido(item.id)}
             >
+              <Ionicons name="close-circle-outline" size={20} color="#fff" />
               <Text style={styles.buttonText}>Recusar</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.button, styles.acceptButton]}
               onPress={() => aceitarPedido(item)}
             >
+              <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
               <Text style={styles.buttonText}>Aceitar</Text>
             </TouchableOpacity>
           </View>
@@ -122,7 +191,7 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: '#fff',
-    borderRadius: 8,
+    borderRadius: 12,
     marginBottom: 16,
     elevation: 2,
     shadowColor: '#000',
@@ -130,55 +199,134 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
-  header: {
+  orderIdHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
+    backgroundColor: '#f8f8f8',
   },
-  headerContent: {
-    flex: 1,
+  orderId: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
   },
-  orderTime: {
+  basicInfo: {
+    padding: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  infoText: {
     fontSize: 14,
     color: '#666',
   },
-  paymentMethod: {
-    fontSize: 14,
-    color: '#666',
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  clientInfoContainer: {
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#eee',
+    gap: 8,
+  },
+  valueContainer: {
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#eee',
   },
   content: {
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
   },
-  item: {
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  itemQuantity: {
     fontSize: 14,
-    marginBottom: 4,
+    fontWeight: '500',
+    color: '#666',
+    width: 40,
+  },
+  itemName: {
+    flex: 1,
+    fontSize: 14,
+    color: '#333',
+  },
+  itemPrice: {
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '500',
   },
   details: {
     padding: 16,
     backgroundColor: '#f9f9f9',
   },
-  detailsTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginBottom: 8,
+  detailsSection: {
+    marginBottom: 16,
   },
-  detailsText: {
+  addressContainer: {
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  addressText: {
+    fontSize: 14,
+    color: '#333',
+    lineHeight: 20,
+    marginBottom: 2,
+  },
+  valueRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  valueLabel: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 4,
+  },
+  valueText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  totalRow: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  totalLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  totalValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
   },
   footer: {
     padding: 16,
-  },
-  total: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 12,
   },
   actions: {
     flexDirection: 'row',
@@ -187,9 +335,12 @@ const styles = StyleSheet.create({
   },
   button: {
     flex: 1,
-    paddingVertical: 10,
-    borderRadius: 6,
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 8,
+    gap: 8,
   },
   acceptButton: {
     backgroundColor: '#4CAF50',
@@ -199,6 +350,7 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: '#fff',
+    fontSize: 15,
     fontWeight: '500',
   },
 });

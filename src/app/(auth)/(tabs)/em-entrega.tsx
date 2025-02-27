@@ -13,14 +13,15 @@ export default function EmEntrega() {
     return (
       <EmptyState
         icon="bicycle-outline"
-        title="Nenhum pedido em entrega"
-        message="Os pedidos em entrega aparecerão aqui."
+        title="Nenhum pedido em andamento"
+        message="Os pedidos em entrega ou disponíveis para retirada aparecerão aqui."
       />
     );
   }
 
   const renderPedido = ({ item }: { item: Pedido }) => {
     const isExpanded = expandedId === item.id;
+    const isPickup = item.deliveryMode === 'pickup';
 
     // Formata o endereço completo
     const endereco = `${item.address.street}, ${item.address.number}${item.address.complement ? ` - ${item.address.complement}` : ''}\n${item.address.neighborhood}, ${item.address.city} - ${item.address.state}`;
@@ -64,19 +65,40 @@ export default function EmEntrega() {
         {isExpanded && (
           <View style={styles.expandedContent}>
             <View style={styles.infoSection}>
-              <Text style={styles.sectionTitle}>Endereço de Entrega:</Text>
-              <Text style={styles.infoText}>{endereco}</Text>
+              <Text style={styles.sectionTitle}>Tipo de Pedido:</Text>
+              <Text style={styles.infoText}>{isPickup ? 'Retirada no local' : 'Entrega'}</Text>
             </View>
+            
+            {!isPickup && (
+              <View style={styles.infoSection}>
+                <Text style={styles.sectionTitle}>Endereço de Entrega:</Text>
+                <Text style={styles.infoText}>{endereco}</Text>
+              </View>
+            )}
           </View>
         )}
 
         <TouchableOpacity 
-          style={styles.deliveredButton}
+          style={[styles.deliveredButton, isPickup && styles.pickupButton]}
           onPress={() => marcarComoEntregue(item.id)}
         >
           <Ionicons name="checkmark-done" size={22} color="#fff" />
-          <Text style={styles.deliveredButtonText}>Confirmar Entrega</Text>
+          <Text style={styles.deliveredButtonText}>
+            {isPickup ? 'Confirmar Retirada' : 'Confirmar Entrega'}
+          </Text>
         </TouchableOpacity>
+
+        {/* Status Badge */}
+        <View style={[styles.statusBadge, isPickup && styles.statusBadgePickup]}>
+          <Ionicons 
+            name={isPickup ? "storefront" : "bicycle"} 
+            size={16} 
+            color={isPickup ? "#8E44AD" : "#FF9800"} 
+          />
+          <Text style={[styles.statusText, isPickup && styles.statusTextPickup]}>
+            {isPickup ? 'Disponível para Retirada' : 'Em Entrega'}
+          </Text>
+        </View>
       </View>
     );
   };
@@ -174,6 +196,28 @@ const styles = StyleSheet.create({
     color: '#666',
     flex: 1,
   },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginTop: 8,
+    gap: 4,
+  },
+  statusBadgePickup: {
+    backgroundColor: '#F5EEF8',
+  },
+  statusText: {
+    fontSize: 12,
+    color: '#FF9800',
+    fontWeight: '500',
+  },
+  statusTextPickup: {
+    color: '#8E44AD',
+  },
   deliveredButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -184,6 +228,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginTop: 16,
     gap: 8,
+  },
+  pickupButton: {
+    backgroundColor: '#8E44AD',
   },
   deliveredButtonText: {
     color: '#fff',

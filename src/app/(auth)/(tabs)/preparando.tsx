@@ -23,9 +23,6 @@ export default function Preparando() {
   const renderPedido = ({ item }: { item: Pedido }) => {
     const isExpanded = expandedId === item.id;
 
-    // Formata o endereço completo
-    const endereco = `${item.address.street}, ${item.address.number}${item.address.complement ? ` - ${item.address.complement}` : ''}\n${item.address.neighborhood}, ${item.address.city} - ${item.address.state}`;
-
     return (
       <View style={styles.pedidoCard}>
         <TouchableOpacity 
@@ -35,10 +32,10 @@ export default function Preparando() {
         >
           <View style={styles.headerLeft}>
             <Text style={styles.orderTime}>
-              Pedido feito às {new Date(item.createdAt).toLocaleTimeString('pt-BR')}
+              Pedido #{item.id.slice(-4)} • {new Date(item.createdAt).toLocaleTimeString('pt-BR')}
             </Text>
             <Text style={styles.paymentMethod}>
-              Pagamento: {item.payment.method.toUpperCase()}
+              {item.payment.method.toUpperCase()} • {item.deliveryMode === 'pickup' ? 'Retirada' : 'Entrega'}
             </Text>
           </View>
           <View style={styles.headerRight}>
@@ -54,9 +51,9 @@ export default function Preparando() {
         <View style={styles.itemsList}>
           {item.items.map((itemPedido, index) => (
             <View key={index} style={styles.itemRow}>
-              <Ionicons name="radio-button-off" size={18} color="#666" />
+              <Text style={styles.itemQuantity}>{itemPedido.quantity}x</Text>
               <Text style={styles.itemText}>
-                {itemPedido.quantity}x {itemPedido.name}
+                {itemPedido.name}
               </Text>
             </View>
           ))}
@@ -65,8 +62,10 @@ export default function Preparando() {
         {isExpanded && (
           <View style={styles.expandedContent}>
             <View style={styles.infoSection}>
-              <Text style={styles.sectionTitle}>Endereço de Entrega:</Text>
-              <Text style={styles.infoText}>{endereco}</Text>
+              <Text style={styles.sectionTitle}>Observações:</Text>
+              <Text style={styles.infoText}>
+                {item.observations || 'Nenhuma observação'}
+              </Text>
             </View>
           </View>
         )}
@@ -128,8 +127,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   orderTime: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
   },
   paymentMethod: {
     fontSize: 14,
@@ -148,6 +149,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  itemQuantity: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+    minWidth: 30,
   },
   itemText: {
     fontSize: 14,
