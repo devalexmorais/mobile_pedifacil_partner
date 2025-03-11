@@ -13,7 +13,7 @@ export default function TabLayout() {
 
     useEffect(() => {
         if (!isAuthenticated) {
-            router.replace('/public/Login');
+            router.replace('/');
         }
     }, [isAuthenticated]);
 
@@ -23,7 +23,7 @@ export default function TabLayout() {
                 tabBarActiveTintColor: '#FFA500',
                 tabBarInactiveTintColor: '#8E8E93',
                 tabBarStyle: {
-                    backgroundColor: colorScheme === 'light' ? '#1C1C1E' : '#FFFFFF',
+                    backgroundColor: '#FFFFFF',
                     borderTopColor: colorScheme === 'dark' ? '#1C1C1E' : '#C6C6C8',
                 },
                 headerShown: false,

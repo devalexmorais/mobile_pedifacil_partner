@@ -5,10 +5,14 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  SafeAreaView,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { usePedidos, Pedido } from '../../../contexts/PedidosContext';
 import { EmptyState } from '../../../components/EmptyState';
+import { FloatingButton } from '../../../components/FloatingButton';
+import { colors } from '../../../styles/theme/colors';
 
 export default function Pedidos() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -19,11 +23,14 @@ export default function Pedidos() {
   if (!pedidosPendentes || pedidosPendentes.length === 0) {
     console.log('Nenhum pedido pendente encontrado');
     return (
-      <EmptyState
-        icon="receipt-outline"
-        title="Nenhum pedido pendente"
-        message="Os novos pedidos aparecerão aqui para serem aceitos ou recusados."
-      />
+      <SafeAreaView style={styles.safeArea}>
+        <EmptyState
+          icon="receipt-outline"
+          title="Nenhum pedido pendente"
+          message="Os novos pedidos aparecerão aqui para serem aceitos ou recusados."
+        />
+        <FloatingButton />
+      </SafeAreaView>
     );
   }
 
@@ -170,21 +177,56 @@ export default function Pedidos() {
   };
 
   return (
-    <View style={styles.container}>
-      <FlatList
-        data={pedidosPendentes}
-        renderItem={renderPedido}
-        keyExtractor={item => item.id}
-        contentContainerStyle={styles.list}
-      />
-    </View>
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.container}>
+        <FlatList
+          data={pedidosPendentes}
+          renderItem={renderPedido}
+          keyExtractor={item => item.id}
+          contentContainerStyle={styles.list}
+          style={{flex: 1, width: '100%'}}
+        />
+      </View>
+      
+      <FloatingButton />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+    position: 'relative',
+  },
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  floatingButtonContainer: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 100,
+    height: 100,
+    zIndex: 9999,
+  },
+  testButton: {
+    position: 'absolute',
+    bottom: 100,
+    left: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'purple',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+    zIndex: 10000,
   },
   list: {
     padding: 16,
@@ -352,5 +394,22 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '500',
+  },
+  alternativeFloatingButton: {
+    position: 'absolute',
+    bottom: 30,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.orange,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 5,
+    zIndex: 20000,
   },
 });

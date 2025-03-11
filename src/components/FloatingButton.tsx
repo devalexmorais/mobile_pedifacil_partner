@@ -13,7 +13,8 @@ type FloatingButtonOption = {
 export function FloatingButton() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [scheduleModal, setScheduleModal] = useState(false);
-  const [deliveryModal, setDeliveryModal] = useState(false);
+  const [deliveryTimeModal, setDeliveryTimeModal] = useState(false);
+  const [cardFlagsModal, setCardFlagsModal] = useState(false);
   const [pickupModal, setPickupModal] = useState(false);
   const animation = useRef(new Animated.Value(0)).current;
 
@@ -26,7 +27,12 @@ export function FloatingButton() {
     {
       icon: 'bicycle',
       label: 'Tempo de entrega',
-      onPress: () => setDeliveryModal(true),
+      onPress: () => setDeliveryTimeModal(true),
+    },
+    {
+      icon: 'card',
+      label: 'Bandeiras de cartão',
+      onPress: () => setCardFlagsModal(true),
     },
     {
       icon: 'bag-check',
@@ -105,7 +111,7 @@ export function FloatingButton() {
         >
           <Ionicons
             name={isExpanded ? 'close' : 'add'}
-            size={24}
+            size={30}
             color="#FFF"
           />
         </TouchableOpacity>
@@ -113,10 +119,12 @@ export function FloatingButton() {
 
       <SettingsModals
         scheduleModal={scheduleModal}
-        deliveryModal={deliveryModal}
+        deliveryTimeModal={deliveryTimeModal}
+        cardFlagsModal={cardFlagsModal}
         pickupModal={pickupModal}
         setScheduleModal={setScheduleModal}
-        setDeliveryModal={setDeliveryModal}
+        setDeliveryTimeModal={setDeliveryTimeModal}
+        setCardFlagsModal={setCardFlagsModal}
         setPickupModal={setPickupModal}
       />
     </>
@@ -129,20 +137,28 @@ const styles = StyleSheet.create({
     bottom: 30,
     right: 20,
     alignItems: 'flex-end',
+    zIndex: 9999,
+    elevation: 10,
+    width: 140, // Definindo largura explícita
+    height: 350, // Definindo altura explícita para acomodar todo o menu
+    pointerEvents: 'box-none', // Permite toques nos elementos abaixo quando não há conteúdo
   },
   fab: {
     backgroundColor: colors.orange,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 5,
+    elevation: 8,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    zIndex: 1,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+    zIndex: 10000,
+    position: 'absolute', // Posicionamento absoluto
+    bottom: 0, // No fundo do container
+    right: 0, // À direita do container
   },
   fabActive: {
     backgroundColor: '#f44336',
@@ -151,8 +167,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     right: 0,
-    height: 240,
+    height: 320,
     width: 140,
+    zIndex: 9998, // Garantir que fique abaixo do botão
   },
   menuItem: {
     flexDirection: 'row',
