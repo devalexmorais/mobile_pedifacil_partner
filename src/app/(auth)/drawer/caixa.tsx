@@ -1,106 +1,93 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
+import firebaseSalesService from '@/services/firebaseSales';
+import { Order, OrderItem, DaySummary, PaymentMethodType } from '@/services/firebaseSales';
 
-interface OrderItem {
-  id: string;
-  name: string;
-  quantity: number;
-  price: number;
-}
+// Mapeamento centralizado dos métodos de pagamento
+const PAYMENT_METHODS = {
+  cash: {
+    id: 'cash',
+    name: 'Dinheiro',
+    icon: 'cash-outline' as const,
+    color: colors.green[600],
+    bg: colors.green[100]
+  },
+  card: {
+    id: 'card',
+    name: 'Cartão',
+    icon: 'card-outline' as const,
+    color: colors.blue[600],
+    bg: colors.blue[100]
+  },
+  pix: {
+    id: 'pix',
+    name: 'PIX',
+    icon: 'phone-portrait-outline' as const,
+    color: colors.purple[600],
+    bg: colors.purple[100]
+  }
+};
 
-interface OrderSummary {
-  id: string;
-  time: string;
-  total: number;
-  paymentMethod: 'cash' | 'card' | 'pix';
-  itemsCount: number;
-}
+// Mapeamento de bandeiras de cartão
+const CARD_FLAGS: Record<string, string> = {
+  visa: 'Visa',
+  mastercard: 'Mastercard',
+  elo: 'Elo',
+  amex: 'American Express',
+  hipercard: 'Hipercard'
+};
 
-interface DaySummary {
-  date: string;
-  total: number;
-  orders: number;
-  cash: number;
-  card: number;
-  pix: number;
-  ordersList: OrderSummary[];
-}
-
-interface OrderDetails extends Omit<OrderSummary, 'itemsCount'> {
-  customer: string;
-  address?: string;
-  items: OrderItem[];
-  deliveryFee?: number;
-  status: 'delivered' | 'cancelled';
-}
+// Função para obter informações do método de pagamento
+const getPaymentInfo = (method: string | undefined, paymentData?: any) => {
+  // Garantir que o método exista no mapeamento, ou retornar dinheiro como padrão
+  const paymentKey = method && PAYMENT_METHODS[method as keyof typeof PAYMENT_METHODS] 
+    ? method as keyof typeof PAYMENT_METHODS
+    : 'cash';
+    
+  const paymentInfo = { ...PAYMENT_METHODS[paymentKey] };
+  
+  // Se for cartão e tiver bandeira nos dados originais, adicionar ao nome
+  if (paymentKey === 'card' && paymentData && typeof paymentData === 'object') {
+    const flag = paymentData.flag || paymentData.payment?.flag;
+    if (flag && CARD_FLAGS[flag]) {
+      paymentInfo.name = `${paymentInfo.name} ${CARD_FLAGS[flag]}`;
+    } else if (paymentData.method === 'credit') {
+      paymentInfo.name = `${paymentInfo.name} (Crédito)`;
+    } else if (paymentData.method === 'debit') {
+      paymentInfo.name = `${paymentInfo.name} (Débito)`;
+    }
+  }
+  
+  return paymentInfo;
+};
 
 export default function Caixa() {
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [selectedOrder, setSelectedOrder] = useState<OrderDetails | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [daySummary, setDaySummary] = useState<DaySummary | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Função para gerar números consistentes baseados na data
-  const generateDayValues = (date: Date) => {
-    // Cria uma string única para cada data
-    const dateString = date.toISOString().split('T')[0];
-    
-    // Função para gerar número "aleatório" consistente
-    const getRandomNumber = (min: number, max: number, seed: string) => {
-      const hash = dateString.split('').reduce((acc, char) => {
-        return char.charCodeAt(0) + ((acc << 5) - acc);
-      }, 0);
-      const normalized = (Math.sin(hash) + 1) / 2;
-      return Math.floor(min + normalized * (max - min));
+  // Buscar dados do Firebase quando a data mudar
+  useEffect(() => {
+    const fetchDaySales = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const summary = await firebaseSalesService.getDaySales(selectedDate);
+        setDaySummary(summary);
+      } catch (err) {
+        console.error('Erro ao buscar vendas:', err);
+        setError('Falha ao carregar os dados de vendas');
+      } finally {
+        setLoading(false);
+      }
     };
 
-    // Gera valores para o dia
-    const total = getRandomNumber(500, 2500, dateString + 'total');
-    const orders = getRandomNumber(5, 40, dateString + 'orders');
-    const cash = getRandomNumber(100, total * 0.4, dateString + 'cash');
-    const pix = getRandomNumber(100, total * 0.4, dateString + 'pix');
-    const card = total - cash - pix;
-
-    // Gera lista de pedidos
-    const ordersList: OrderSummary[] = [];
-    const numOrders = orders;
-    
-    for (let i = 0; i < numOrders; i++) {
-      const orderTotal = getRandomNumber(20, 150, dateString + `order${i}`);
-      const hour = getRandomNumber(10, 22, dateString + `hour${i}`);
-      const minute = getRandomNumber(0, 59, dateString + `minute${i}`);
-      
-      const paymentMethods: Array<'cash' | 'card' | 'pix'> = ['cash', 'card', 'pix'];
-      const paymentMethod = paymentMethods[getRandomNumber(0, 3, dateString + `payment${i}`)];
-      
-      ordersList.push({
-        id: `${dateString}-${i}`,
-        time: `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`,
-        total: orderTotal,
-        paymentMethod,
-        itemsCount: getRandomNumber(1, 6, dateString + `items${i}`),
-      });
-    }
-
-    // Ordena pedidos por horário (mais recente primeiro)
-    ordersList.sort((a, b) => b.time.localeCompare(a.time));
-
-    return {
-      date: date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-      total,
-      orders,
-      cash,
-      card,
-      pix,
-      ordersList,
-    };
-  };
-
-  const getDaySummary = (date: Date): DaySummary => {
-    return generateDayValues(date);
-  };
-
-  const currentDayData = getDaySummary(selectedDate);
+    fetchDaySales();
+  }, [selectedDate]);
 
   const changeDate = (days: number) => {
     const newDate = new Date(selectedDate);
@@ -113,80 +100,28 @@ export default function Caixa() {
     return date.toDateString() === today.toDateString();
   };
 
-  const getPaymentIcon = (method: string) => {
-    switch (method) {
-      case 'cash':
-        return { 
-          name: 'cash-outline',
-          color: colors.green[600],
-          bg: colors.green[100]
-        };
-      case 'card':
-        return { 
-          name: 'card-outline',
-          color: colors.blue[600],
-          bg: colors.blue[100]
-        };
-      case 'pix':
-        return { 
-          name: 'phone-portrait-outline',
-          color: colors.purple[600],
-          bg: colors.purple[100]
-        };
-      default:
-        return { 
-          name: 'cash-outline',
-          color: colors.gray[600],
-          bg: colors.gray[100]
-        };
+  // Função para formatar a hora de um timestamp
+  const formatTime = (order: Order): string => {
+    try {
+      if (!order || !order.createdAt) return 'Sem data';
+      
+      // Verifica se createdAt é um Timestamp válido com método toDate
+      if (typeof order.createdAt.toDate !== 'function') {
+        return 'Data inválida';
+      }
+      
+      const date = order.createdAt.toDate();
+      if (!date || isNaN(date.getTime())) return 'Data inválida';
+      
+      return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+    } catch (error) {
+      console.error('Erro ao formatar data:', error);
+      return 'Data inválida';
     }
-  };
-
-  // Função para gerar detalhes do pedido
-  const getOrderDetails = (order: OrderSummary): OrderDetails => {
-    const dateString = selectedDate.toISOString().split('T')[0];
-    const getRandomNumber = (min: number, max: number, seed: string) => {
-      const hash = (dateString + seed).split('').reduce((acc, char) => {
-        return char.charCodeAt(0) + ((acc << 5) - acc);
-      }, 0);
-      const normalized = (Math.sin(hash) + 1) / 2;
-      return Math.floor(min + normalized * (max - min));
-    };
-
-    const items = [];
-    const itemsCount = getRandomNumber(1, 5, order.id + 'items');
-    
-    const menuItems = [
-      { name: 'X-Burger', basePrice: 25 },
-      { name: 'X-Bacon', basePrice: 28 },
-      { name: 'X-Tudo', basePrice: 32 },
-      { name: 'Refrigerante', basePrice: 8 },
-      { name: 'Batata Frita', basePrice: 15 },
-    ];
-
-    for (let i = 0; i < itemsCount; i++) {
-      const menuItem = menuItems[getRandomNumber(0, menuItems.length, order.id + `item${i}`)];
-      items.push({
-        id: `${order.id}-item-${i}`,
-        name: menuItem.name,
-        quantity: getRandomNumber(1, 3, order.id + `qty${i}`),
-        price: menuItem.basePrice,
-      });
-    }
-
-    return {
-      ...order,
-      customer: 'Cliente ' + getRandomNumber(1, 999, order.id + 'customer'),
-      address: order.paymentMethod === 'cash' ? 'Rua Example, 123' : undefined,
-      items,
-      deliveryFee: order.paymentMethod === 'cash' ? getRandomNumber(5, 15, order.id + 'delivery') : undefined,
-      status: getRandomNumber(0, 10, order.id + 'status') > 1 ? 'delivered' : 'cancelled',
-    };
   };
 
   return (
     <View style={styles.container}>
-      
       <ScrollView style={styles.content}>
         {/* Seletor de Data */}
         <View style={styles.dateSelector}>
@@ -199,7 +134,7 @@ export default function Caixa() {
           
           <View style={styles.dateContainer}>
             <Text style={styles.dateLabel}>
-              {isToday(selectedDate) ? 'Hoje' : currentDayData.date}
+              {isToday(selectedDate) ? 'Hoje' : daySummary?.date || ''}
             </Text>
             {!isToday(selectedDate) && (
               <TouchableOpacity 
@@ -224,92 +159,133 @@ export default function Caixa() {
           </TouchableOpacity>
         </View>
 
-        {/* Resumo do Dia */}
-        <View style={styles.summary}>
-          <Text style={styles.summaryValue}>
-            R$ {currentDayData.total.toFixed(2)}
-          </Text>
-          <Text style={styles.ordersText}>
-            {currentDayData.orders} pedidos
-          </Text>
-        </View>
-
-        {/* Detalhamento por Forma de Pagamento */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Formas de Pagamento</Text>
-          
-          <View style={styles.paymentGrid}>
-            <View style={styles.paymentCard}>
-              <View style={[styles.paymentIcon, { backgroundColor: colors.green[100] }]}>
-                <Ionicons name="cash-outline" size={24} color={colors.green[600]} />
-              </View>
-              <Text style={styles.paymentValue}>R$ {currentDayData.cash.toFixed(2)}</Text>
-              <Text style={styles.paymentLabel}>Dinheiro</Text>
-            </View>
-
-            <View style={styles.paymentCard}>
-              <View style={[styles.paymentIcon, { backgroundColor: colors.blue[100] }]}>
-                <Ionicons name="card-outline" size={24} color={colors.blue[600]} />
-              </View>
-              <Text style={styles.paymentValue}>R$ {currentDayData.card.toFixed(2)}</Text>
-              <Text style={styles.paymentLabel}>Cartão</Text>
-            </View>
-
-            <View style={styles.paymentCard}>
-              <View style={[styles.paymentIcon, { backgroundColor: colors.purple[100] }]}>
-                <Ionicons name="phone-portrait-outline" size={24} color={colors.purple[600]} />
-              </View>
-              <Text style={styles.paymentValue}>R$ {currentDayData.pix.toFixed(2)}</Text>
-              <Text style={styles.paymentLabel}>PIX</Text>
-            </View>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.purple[500]} />
+            <Text style={styles.loadingText}>Carregando dados...</Text>
           </View>
-        </View>
-
-        {/* Histórico de Vendas */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Histórico de Vendas</Text>
-          
-          {currentDayData.ordersList.length > 0 ? (
-            <View style={styles.ordersList}>
-              {currentDayData.ordersList.map((order) => (
-                <TouchableOpacity
-                  key={order.id}
-                  style={styles.orderCard}
-                  onPress={() => setSelectedOrder(getOrderDetails(order))}
-                >
-                  <View style={styles.orderHeader}>
-                    <View style={[
-                      styles.orderPaymentIcon,
-                      { backgroundColor: getPaymentIcon(order.paymentMethod).bg }
-                    ]}>
-                      <Ionicons 
-                        name={getPaymentIcon(order.paymentMethod).name as any}
-                        size={16}
-                        color={getPaymentIcon(order.paymentMethod).color}
-                      />
-                    </View>
-                    <Text style={styles.orderTime}>{order.time}</Text>
-                  </View>
-                  
-                  <View style={styles.orderInfo}>
-                    <Text style={styles.orderItems}>
-                      {order.itemsCount} {order.itemsCount === 1 ? 'item' : 'itens'}
-                    </Text>
-                    <Text style={styles.orderValue}>
-                      R$ {order.total.toFixed(2)}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-          ) : (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyStateText}>
-                Nenhuma venda registrada neste dia
+        ) : error ? (
+          <View style={styles.errorContainer}>
+            <Ionicons name="alert-circle-outline" size={40} color={colors.red[500]} />
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity 
+              style={styles.retryButton}
+              onPress={() => {
+                setSelectedDate(new Date(selectedDate));
+              }}
+            >
+              <Text style={styles.retryText}>Tentar novamente</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            {/* Resumo do Dia */}
+            <View style={styles.summary}>
+              <Text style={styles.summaryValue}>
+                R$ {(daySummary?.total ? Number(daySummary.total) : 0).toFixed(2)}
+              </Text>
+              <Text style={styles.ordersText}>
+                {daySummary?.orders || 0} pedidos
               </Text>
             </View>
-          )}
-        </View>
+
+            {/* Detalhamento por Forma de Pagamento */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Formas de Pagamento</Text>
+              
+              <View style={styles.paymentGrid}>
+                <View style={styles.paymentCard}>
+                  <View style={[styles.paymentIcon, { backgroundColor: PAYMENT_METHODS.cash.bg }]}>
+                    <Ionicons name={PAYMENT_METHODS.cash.icon} size={24} color={PAYMENT_METHODS.cash.color} />
+                  </View>
+                  <Text style={styles.paymentValue}>
+                    R$ {(daySummary?.cash ? Number(daySummary.cash) : 0).toFixed(2)}
+                  </Text>
+                  <Text style={styles.paymentLabel}>{PAYMENT_METHODS.cash.name}</Text>
+                </View>
+
+                <View style={styles.paymentCard}>
+                  <View style={[styles.paymentIcon, { backgroundColor: PAYMENT_METHODS.card.bg }]}>
+                    <Ionicons name={PAYMENT_METHODS.card.icon} size={24} color={PAYMENT_METHODS.card.color} />
+                  </View>
+                  <Text style={styles.paymentValue}>
+                    R$ {(daySummary?.card ? Number(daySummary.card) : 0).toFixed(2)}
+                  </Text>
+                  <Text style={styles.paymentLabel}>{PAYMENT_METHODS.card.name}</Text>
+                </View>
+
+                <View style={styles.paymentCard}>
+                  <View style={[styles.paymentIcon, { backgroundColor: PAYMENT_METHODS.pix.bg }]}>
+                    <Ionicons name={PAYMENT_METHODS.pix.icon} size={24} color={PAYMENT_METHODS.pix.color} />
+                  </View>
+                  <Text style={styles.paymentValue}>
+                    R$ {(daySummary?.pix ? Number(daySummary.pix) : 0).toFixed(2)}
+                  </Text>
+                  <Text style={styles.paymentLabel}>{PAYMENT_METHODS.pix.name}</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Histórico de Vendas */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Histórico de Vendas</Text>
+              
+              {daySummary?.ordersList && Array.isArray(daySummary.ordersList) && daySummary.ordersList.length > 0 ? (
+                <View style={styles.ordersList}>
+                  {daySummary.ordersList
+                    .filter(order => order.status !== 'cancelled')
+                    .map((order) => (
+                    <TouchableOpacity
+                      key={String(order.id || Math.random())}
+                      style={styles.orderCard}
+                      onPress={() => {
+                        // Verifica se o pedido tem todos os dados necessários
+                        const safeOrder = {...order};
+                        if (!safeOrder.items || !Array.isArray(safeOrder.items)) {
+                          // Cria items vazios se não existir
+                          safeOrder.items = [];
+                        }
+                        setSelectedOrder(safeOrder);
+                      }}
+                    >
+                      <View style={styles.orderHeader}>
+                        <View style={[
+                          styles.orderPaymentIcon,
+                          { backgroundColor: getPaymentInfo(order.paymentMethod || 'cash', order.paymentData).bg }
+                        ]}>
+                          <Ionicons 
+                            name={getPaymentInfo(order.paymentMethod || 'cash', order.paymentData).icon as any}
+                            size={16}
+                            color={getPaymentInfo(order.paymentMethod || 'cash', order.paymentData).color}
+                          />
+                        </View>
+                        <Text style={styles.orderTime}>{formatTime(order)}</Text>
+                      </View>
+                      
+                      <View style={styles.orderInfo}>
+                        <Text style={styles.orderItems}>
+                          {Array.isArray(order.items) ? order.items.length : 0}{' '}
+                          <Text>
+                            {Array.isArray(order.items) && order.items.length === 1 ? 'item' : 'itens'}
+                          </Text>
+                        </Text>
+                        <Text style={styles.orderValue}>
+                          R$ {Number(order.total || 0).toFixed(2)}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyStateText}>
+                    Nenhuma venda registrada neste dia
+                  </Text>
+                </View>
+              )}
+            </View>
+          </>
+        )}
       </ScrollView>
 
       {/* Modal de Detalhes do Pedido */}
@@ -328,42 +304,60 @@ export default function Caixa() {
               </TouchableOpacity>
             </View>
 
-            {selectedOrder && (
+            {selectedOrder ? (
               <ScrollView style={styles.modalScroll}>
                 <View style={styles.timeInfo}>
                   <View style={styles.timeRow}>
                     <Ionicons name="time-outline" size={18} color={colors.gray[600]} />
-                    <Text style={styles.timeText}>Pedido: {selectedOrder.time}</Text>
+                    <Text style={styles.timeText}>
+                      Pedido: <Text>{formatTime(selectedOrder)}</Text>
+                    </Text>
                   </View>
                   <View style={styles.timeRow}>
-                    <Ionicons name="checkmark-circle-outline" size={18} color={colors.green[600]} />
+                    <Ionicons 
+                      name={selectedOrder.status === 'delivered' ? 'checkmark-circle-outline' : 'alert-circle-outline'} 
+                      size={18} 
+                      color={selectedOrder.status === 'delivered' ? colors.green[600] : colors.red[500]} 
+                    />
                     <Text style={styles.timeText}>
-                      Status: {selectedOrder.status === 'delivered' ? 'Entregue' : 'Cancelado'}
+                      Status:{' '}
+                      <Text>
+                        {selectedOrder.status === 'delivered' ? 'Entregue' : 
+                         selectedOrder.status === 'cancelled' ? 'Cancelado' : 'Pendente'}
+                      </Text>
                     </Text>
                   </View>
                 </View>
 
                 <View style={styles.customerSection}>
-                  <Text style={styles.sectionText}>{selectedOrder.customer}</Text>
-                  {selectedOrder.address && (
-                    <Text style={styles.addressText}>{selectedOrder.address}</Text>
-                  )}
+                  <Text style={styles.sectionText}>{selectedOrder.customerName || 'Cliente'}</Text>
+                  {selectedOrder.customerAddress ? (
+                    <Text style={styles.addressText}>{String(selectedOrder.customerAddress)}</Text>
+                  ) : null}
                 </View>
 
                 <View style={styles.itemsContainer}>
                   <Text style={styles.modalSectionTitle}>Itens do Pedido:</Text>
-                  {selectedOrder.items.map((item) => (
-                    <View key={item.id} style={styles.itemRow}>
-                      <Text style={styles.itemQuantity}>{item.quantity}x</Text>
-                      <Text style={styles.itemName}>{item.name}</Text>
-                      <Text style={styles.itemPrice}>
-                        R$ {(item.price * item.quantity).toFixed(2)}
-                      </Text>
-                    </View>
-                  ))}
+                  {Array.isArray(selectedOrder.items) && selectedOrder.items.length > 0 ? (
+                    selectedOrder.items.map((item) => (
+                      <View key={String(item.id || Math.random())} style={styles.itemRow}>
+                        <Text style={styles.itemQuantity}>
+                          {Number(item.quantity || 0)}x
+                        </Text>
+                        <Text style={styles.itemName}>
+                          {String(item.name || 'Item')}
+                        </Text>
+                        <Text style={styles.itemPrice}>
+                          R$ {Number((Number(item.price) || 0) * (Number(item.quantity) || 0)).toFixed(2)}
+                        </Text>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={styles.emptyStateText}>Nenhum item encontrado</Text>
+                  )}
                 </View>
 
-                {selectedOrder.deliveryFee && (
+                {selectedOrder.deliveryFee && Number(selectedOrder.deliveryFee) > 0 ? (
                   <View style={styles.deliveryFeeContainer}>
                     <View style={styles.itemRow}>
                       <View style={styles.itemNameContainer}>
@@ -371,31 +365,34 @@ export default function Caixa() {
                         <Text style={styles.itemName}>Taxa de Entrega</Text>
                       </View>
                       <Text style={styles.itemPrice}>
-                        R$ {selectedOrder.deliveryFee.toFixed(2)}
+                        R$ {Number(selectedOrder.deliveryFee).toFixed(2)}
                       </Text>
                     </View>
                   </View>
-                )}
+                ) : null}
 
                 <View style={styles.totalContainer}>
                   <Text style={styles.totalLabel}>Total do Pedido</Text>
                   <Text style={styles.modalTotalValue}>
-                    R$ {selectedOrder.total.toFixed(2)}
+                    R$ {Number(selectedOrder.total || 0).toFixed(2)}
                   </Text>
                 </View>
 
                 <View style={styles.paymentInfo}>
                   <Ionicons 
-                    name={getPaymentIcon(selectedOrder.paymentMethod).name as any}
+                    name={getPaymentInfo(selectedOrder.paymentMethod || 'cash', selectedOrder.paymentData).icon as any}
                     size={18} 
-                    color={getPaymentIcon(selectedOrder.paymentMethod).color}
+                    color={getPaymentInfo(selectedOrder.paymentMethod || 'cash', selectedOrder.paymentData).color}
                   />
                   <Text style={styles.paymentText}>
-                    {selectedOrder.paymentMethod === 'cash' ? 'Dinheiro' :
-                     selectedOrder.paymentMethod === 'card' ? 'Cartão' : 'PIX'}
+                    {getPaymentInfo(selectedOrder.paymentMethod || 'cash', selectedOrder.paymentData).name}
                   </Text>
                 </View>
               </ScrollView>
+            ) : (
+              <View style={styles.loadingContainer}>
+                <Text style={styles.loadingText}>Carregando detalhes...</Text>
+              </View>
             )}
           </View>
         </View>
@@ -694,5 +691,37 @@ const styles = StyleSheet.create({
   },
   deliveryIcon: {
     marginRight: 8,
+  },
+  loadingContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: colors.gray[600],
+  },
+  errorContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: colors.gray[700],
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: colors.purple[500],
+    borderRadius: 8,
+  },
+  retryText: {
+    color: colors.white,
+    fontWeight: '500',
   },
 }); 

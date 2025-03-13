@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,10 +13,23 @@ import { usePedidos, Pedido } from '../../../contexts/PedidosContext';
 import { EmptyState } from '../../../components/EmptyState';
 import { FloatingButton } from '../../../components/FloatingButton';
 import { colors } from '../../../styles/theme/colors';
+import { establishmentSettingsService } from '../../../services/establishmentSettingsService';
 
 export default function Pedidos() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { pedidosPendentes, aceitarPedido, recusarPedido } = usePedidos();
+
+  useEffect(() => {
+    initializeSettings();
+  }, []);
+
+  const initializeSettings = async () => {
+    try {
+      await establishmentSettingsService.initializeSettings();
+    } catch (error) {
+      console.error('Erro ao inicializar configurações:', error);
+    }
+  };
 
   console.log('Pedidos pendentes na tela:', pedidosPendentes);
 

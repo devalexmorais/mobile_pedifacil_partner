@@ -1,8 +1,19 @@
-import React, { useState, useRef } from 'react';
-import { View, TouchableOpacity, Text, StyleSheet, Animated } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { 
+  View, 
+  TouchableOpacity, 
+  Text, 
+  StyleSheet, 
+  Animated,
+  Alert,
+  Dimensions
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles/theme/colors';
 import { SettingsModals } from './SettingsModals';
+import { establishmentSettingsService } from '../services/establishmentSettingsService';
+
+const { width, height } = Dimensions.get('window');
 
 type FloatingButtonOption = {
   icon: string;
@@ -17,6 +28,19 @@ export function FloatingButton() {
   const [cardFlagsModal, setCardFlagsModal] = useState(false);
   const [pickupModal, setPickupModal] = useState(false);
   const animation = useRef(new Animated.Value(0)).current;
+
+  // Inicializar configurações quando o componente é montado
+  useEffect(() => {
+    initSettings();
+  }, []);
+
+  const initSettings = async () => {
+    try {
+      await establishmentSettingsService.initializeSettings();
+    } catch (error) {
+      console.error('Erro ao inicializar configurações:', error);
+    }
+  };
 
   const buttons: FloatingButtonOption[] = [
     {

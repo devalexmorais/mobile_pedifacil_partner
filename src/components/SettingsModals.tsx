@@ -16,9 +16,12 @@ import {
   Animated,
   PanResponder,
   Easing,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles/theme/colors';
+import { establishmentSettingsService, CardFlag as CardFlagType, Schedule } from '../services/establishmentSettingsService';
 
 type CardFlag = {
   name: string;
@@ -61,7 +64,7 @@ export function SettingsModals({
   ]);
 
   // Estado para horários de funcionamento
-  const [scheduleData, setScheduleData] = useState({
+  const [scheduleData, setScheduleData] = useState<Schedule>({
     segunda: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
     terca: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
     quarta: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
@@ -74,6 +77,9 @@ export function SettingsModals({
   // Estado para configuração de retirada
   const [allowPickup, setAllowPickup] = useState(true);
   const [pickupTime, setPickupTime] = useState('15');
+
+  // Estado de carregamento
+  const [loading, setLoading] = useState(false);
 
   // Estado para controlar as animações dos modais individualmente
   const [closing, setClosing] = useState(false);
@@ -208,28 +214,152 @@ export function SettingsModals({
     }));
   };
 
-  const saveDeliveryTime = () => {
-    // Aqui poderia salvar os dados no backend ou em algum contexto
-    console.log('Tempo de entrega atualizado:', { minDeliveryTime, maxDeliveryTime });
-    setDeliveryTimeModal(false);
+  // Efeito para carregar dados de configuração quando o componente montar
+  useEffect(() => {
+    initializeSettings();
+  }, []);
+
+  // Inicializar configurações
+  const initializeSettings = async () => {
+    try {
+      await establishmentSettingsService.initializeSettings();
+    } catch (error) {
+      console.error('Erro ao inicializar configurações:', error);
+    }
   };
 
-  const saveCardFlags = () => {
-    // Aqui poderia salvar os dados no backend ou em algum contexto
-    console.log('Bandeiras de cartão atualizadas:', cardFlags);
-    setCardFlagsModal(false);
+  // Efeito para carregar dados quando os modais são abertos
+  useEffect(() => {
+    if (cardFlagsModal) {
+      loadCardFlags();
+    }
+  }, [cardFlagsModal]);
+
+  useEffect(() => {
+    if (deliveryTimeModal) {
+      loadDeliveryTime();
+    }
+  }, [deliveryTimeModal]);
+
+  useEffect(() => {
+    if (pickupModal) {
+      loadPickupSettings();
+    }
+  }, [pickupModal]);
+
+  useEffect(() => {
+    if (scheduleModal) {
+      loadSchedule();
+    }
+  }, [scheduleModal]);
+
+  // Funções para carregar dados
+  const loadCardFlags = async () => {
+    try {
+      setLoading(true);
+      const flags = await establishmentSettingsService.getCardFlags();
+      if (flags.length > 0) {
+        setCardFlags(flags);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar bandeiras de cartão:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const saveSchedule = () => {
-    // Aqui poderia salvar os dados no backend ou em algum contexto
-    console.log('Horários de funcionamento atualizados:', scheduleData);
-    setScheduleModal(false);
+  const loadDeliveryTime = async () => {
+    try {
+      setLoading(true);
+      const { minTime, maxTime } = await establishmentSettingsService.getDeliveryTime();
+      setMinDeliveryTime(minTime);
+      setMaxDeliveryTime(maxTime);
+    } catch (error) {
+      console.error('Erro ao carregar tempo de entrega:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const savePickupSettings = () => {
-    // Aqui poderia salvar os dados no backend ou em algum contexto
-    console.log('Configurações de retirada atualizadas:', { allowPickup, pickupTime });
-    setPickupModal(false);
+  const loadPickupSettings = async () => {
+    try {
+      setLoading(true);
+      const { enabled, estimatedTime } = await establishmentSettingsService.getPickupSettings();
+      setAllowPickup(enabled);
+      setPickupTime(estimatedTime);
+    } catch (error) {
+      console.error('Erro ao carregar configurações de retirada:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadSchedule = async () => {
+    try {
+      setLoading(true);
+      const schedule = await establishmentSettingsService.getSchedule();
+      setScheduleData(schedule);
+    } catch (error) {
+      console.error('Erro ao carregar horários de funcionamento:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveDeliveryTime = async () => {
+    try {
+      setLoading(true);
+      await establishmentSettingsService.saveDeliveryTime(minDeliveryTime, maxDeliveryTime);
+      Alert.alert('Sucesso', 'Tempo de entrega atualizado com sucesso!');
+      closeModal(setDeliveryTimeModal);
+    } catch (error) {
+      console.error('Erro ao salvar tempo de entrega:', error);
+      Alert.alert('Erro', 'Não foi possível salvar o tempo de entrega. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveCardFlags = async () => {
+    try {
+      setLoading(true);
+      await establishmentSettingsService.saveCardFlags(cardFlags);
+      Alert.alert('Sucesso', 'Bandeiras de cartão atualizadas com sucesso!');
+      closeModal(setCardFlagsModal);
+    } catch (error) {
+      console.error('Erro ao salvar bandeiras de cartão:', error);
+      Alert.alert('Erro', 'Não foi possível salvar as bandeiras de cartão. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveSchedule = async () => {
+    try {
+      setLoading(true);
+      await establishmentSettingsService.saveSchedule(scheduleData);
+      Alert.alert('Sucesso', 'Horários de funcionamento atualizados com sucesso!');
+      closeModal(setScheduleModal);
+    } catch (error) {
+      console.error('Erro ao salvar horários de funcionamento:', error);
+      Alert.alert('Erro', 'Não foi possível salvar os horários de funcionamento. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const savePickupSettings = async () => {
+    try {
+      setLoading(true);
+      await establishmentSettingsService.savePickupSettings(allowPickup, pickupTime);
+      Alert.alert('Sucesso', 'Configurações de retirada atualizadas com sucesso!');
+      closeModal(setPickupModal);
+    } catch (error) {
+      console.error('Erro ao salvar configurações de retirada:', error);
+      Alert.alert('Erro', 'Não foi possível salvar as configurações de retirada. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Função para renderizar a barra visual no topo do modal (estilo iOS)
@@ -237,6 +367,25 @@ export function SettingsModals({
     <View style={styles.modalHandleContainer}>
       <View style={styles.modalHandle} />
     </View>
+  );
+
+  // Modificar os botões de salvar para mostrar indicadores de carregamento
+  const renderSaveButton = (
+    onPress: () => void, 
+    text: string = 'Salvar',
+    isLoading: boolean = loading
+  ) => (
+    <TouchableOpacity
+      style={styles.saveButton}
+      onPress={onPress}
+      disabled={isLoading}
+    >
+      {isLoading ? (
+        <ActivityIndicator size="small" color="#FFF" />
+      ) : (
+        <Text style={styles.saveButtonText}>{text}</Text>
+      )}
+    </TouchableOpacity>
   );
 
   return (
@@ -287,9 +436,7 @@ export function SettingsModals({
                 />
               </View>
 
-              <TouchableOpacity style={styles.saveButton} onPress={saveDeliveryTime}>
-                <Text style={styles.saveButtonText}>Salvar</Text>
-              </TouchableOpacity>
+              {renderSaveButton(saveDeliveryTime)}
             </ScrollView>
           </View>
         </View>
@@ -346,9 +493,7 @@ export function SettingsModals({
                 </View>
               ))}
 
-              <TouchableOpacity style={styles.saveButton} onPress={saveCardFlags}>
-                <Text style={styles.saveButtonText}>Salvar</Text>
-              </TouchableOpacity>
+              {renderSaveButton(saveCardFlags)}
             </ScrollView>
           </View>
         </View>
@@ -417,9 +562,7 @@ export function SettingsModals({
                 </View>
               ))}
 
-              <TouchableOpacity style={styles.saveButton} onPress={saveSchedule}>
-                <Text style={styles.saveButtonText}>Salvar</Text>
-              </TouchableOpacity>
+              {renderSaveButton(saveSchedule)}
             </ScrollView>
           </View>
         </View>
@@ -474,9 +617,7 @@ export function SettingsModals({
                 )}
               </View>
 
-              <TouchableOpacity style={styles.saveButton} onPress={savePickupSettings}>
-                <Text style={styles.saveButtonText}>Salvar</Text>
-              </TouchableOpacity>
+              {renderSaveButton(savePickupSettings)}
             </ScrollView>
           </View>
         </View>
