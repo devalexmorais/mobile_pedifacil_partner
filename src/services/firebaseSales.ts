@@ -46,6 +46,8 @@ export interface Order {
   items: OrderItem[];
   total: number;
   deliveryFee?: number;
+  cardFeeValue?: number;
+  finalPrice?: number;
   paymentMethod: PaymentMethodType;
   paymentData?: any; // Dados originais de pagamento
   status: 'pending' | 'delivered' | 'cancelled' | string;
@@ -149,7 +151,9 @@ const firebaseSalesService = {
                 sellerId: data.sellerId ? String(data.sellerId) : undefined,
                 customerId: data.customerId ? String(data.customerId) : data.customer?.id ? String(data.customer.id) : undefined,
                 customerAddress: data.customerAddress ? String(data.customerAddress) : data.customer?.address ? String(data.customer.address) : undefined,
-                deliveryFee: Number(data.deliveryFee) || 0
+                deliveryFee: Number(data.deliveryFee) || 0,
+                cardFeeValue: Number(data.cardFeeValue) || 0,
+                finalPrice: Number(data.finalPrice) || Number(data.total) || 0
               };
               
               // Se não tiver total calculado, calcular a partir dos itens
@@ -210,6 +214,8 @@ const firebaseSalesService = {
           // Garantir que valores numéricos sejam números
           order.total = Number(order.total) || 0;
           if (order.deliveryFee) order.deliveryFee = Number(order.deliveryFee) || 0;
+          if (order.cardFeeValue) order.cardFeeValue = Number(order.cardFeeValue) || 0;
+          if (order.finalPrice) order.finalPrice = Number(order.finalPrice) || order.total || 0;
           
           // Garantir que strings sejam strings
           order.customerName = String(order.customerName || 'Cliente');
@@ -283,7 +289,9 @@ const firebaseSalesService = {
         sellerId: data.sellerId ? String(data.sellerId) : undefined,
         customerId: data.customerId ? String(data.customerId) : data.customer?.id ? String(data.customer.id) : undefined,
         customerAddress: data.customerAddress ? String(data.customerAddress) : data.customer?.address ? String(data.customer.address) : undefined,
-        deliveryFee: Number(data.deliveryFee) || 0
+        deliveryFee: Number(data.deliveryFee) || 0,
+        cardFeeValue: Number(data.cardFeeValue) || 0,
+        finalPrice: Number(data.finalPrice) || Number(data.total) || 0
       };
       
       // Se não tiver total calculado, calcular a partir dos itens

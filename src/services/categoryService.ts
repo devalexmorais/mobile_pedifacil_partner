@@ -5,9 +5,14 @@ import {
   QueryDocumentSnapshot,
   query,
   where,
-  collectionGroup
+  collectionGroup,
+  addDoc,
+  doc,
+  setDoc,
+  serverTimestamp
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { getAuth } from 'firebase/auth';
 
 interface Subcategory {
   id: string;
@@ -91,6 +96,70 @@ export const categoryService = {
     } catch (error) {
       console.error('Erro ao buscar todas as subcategorias:', error);
       throw new Error('Não foi possível carregar as subcategorias');
+    }
+  },
+
+  // Novo método para criar categoria personalizada para o parceiro
+  async createPartnerCategory(name: string): Promise<Category> {
+    try {
+      console.log('Criando categoria personalizada:', name);
+      
+      const auth = getAuth();
+      const userId = auth.currentUser?.uid;
+      
+      if (!userId) {
+        throw new Error('Usuário não autenticado');
+      }
+      
+      // Coleção de categorias específicas do parceiro
+      const partnerCategoriesRef = collection(db, 'partners', userId, 'categories');
+      
+      const newCategory = {
+        name,
+        createdAt: serverTimestamp(),
+        createdBy: userId
+      };
+      
+      const docRef = await addDoc(partnerCategoriesRef, newCategory);
+      
+      console.log('Categoria criada com ID:', docRef.id);
+      
+      return {
+        id: docRef.id,
+        name
+      };
+    } catch (error: any) {
+      console.error('Erro ao criar categoria personalizada:', error);
+      throw new Error('Não foi possível criar a categoria: ' + error.message);
+    }
+  },
+  
+  // Método para buscar categorias personalizadas do parceiro
+  async getPartnerCategories(): Promise<Category[]> {
+    try {
+      console.log('Buscando categorias personalizadas do parceiro...');
+      
+      const auth = getAuth();
+      const userId = auth.currentUser?.uid;
+      
+      if (!userId) {
+        throw new Error('Usuário não autenticado');
+      }
+      
+      // Coleção de categorias específicas do parceiro
+      const partnerCategoriesRef = collection(db, 'partners', userId, 'categories');
+      const snapshot = await getDocs(partnerCategoriesRef);
+      
+      const categories = snapshot.docs.map(doc => ({
+        id: doc.id,
+        name: doc.data().name
+      }));
+      
+      console.log('Categorias personalizadas encontradas:', categories);
+      return categories;
+    } catch (error: any) {
+      console.error('Erro ao buscar categorias personalizadas:', error);
+      throw new Error('Não foi possível carregar suas categorias: ' + error.message);
     }
   }
 };

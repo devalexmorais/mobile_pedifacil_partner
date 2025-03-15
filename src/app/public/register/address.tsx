@@ -27,8 +27,11 @@ interface AddressFormData {
   number: string;
   complement?: string;
   neighborhood: string;
+  neighborhoodName: string;
   city: string;
+  cityName: string;
   state: string;
+  stateName: string;
 }
 
 export default function RegisterAddress() {
@@ -47,8 +50,11 @@ export default function RegisterAddress() {
     number: '',
     complement: '',
     neighborhood: '',
+    neighborhoodName: '',
     city: '',
-    state: ''
+    cityName: '',
+    state: '',
+    stateName: ''
   });
   const [errors, setErrors] = useState({
     street: '',
@@ -98,7 +104,12 @@ export default function RegisterAddress() {
       setLoading(true);
       const citiesData = await addressService.getCities(stateId);
       setCities(citiesData);
-      updateFormData({ city: '', neighborhood: '' });
+      updateFormData({ 
+        city: '', 
+        cityName: '',
+        neighborhood: '', 
+        neighborhoodName: '' 
+      });
     } catch (error) {
       Alert.alert('Erro', 'Não foi possível carregar as cidades');
     } finally {
@@ -111,7 +122,10 @@ export default function RegisterAddress() {
       setLoading(true);
       const neighborhoodsData = await addressService.getNeighborhoods(stateId, cityId);
       setNeighborhoods(neighborhoodsData);
-      updateFormData({ neighborhood: '' });
+      updateFormData({ 
+        neighborhood: '',
+        neighborhoodName: '' 
+      });
     } catch (error) {
       Alert.alert('Erro', 'Não foi possível carregar os bairros');
     } finally {
@@ -165,8 +179,11 @@ export default function RegisterAddress() {
       number: values.number,
       complement: values.complement || '',
       neighborhood: values.neighborhood,
+      neighborhoodName: values.neighborhoodName,
       city: values.city,
-      state: values.state
+      cityName: values.cityName,
+      state: values.state,
+      stateName: values.stateName
     };
 
     // Log dos parâmetros finais que serão enviados
@@ -207,9 +224,17 @@ export default function RegisterAddress() {
             <View style={[styles.pickerContainer, errors.state && styles.pickerError]}>
               <Picker
                 selectedValue={formData.state}
-                onValueChange={(itemValue) =>
-                  updateFormData({ state: itemValue, city: '', neighborhood: '' })
-                }
+                onValueChange={(itemValue) => {
+                  const selectedState = states.find(state => state.id === itemValue);
+                  updateFormData({ 
+                    state: itemValue, 
+                    stateName: selectedState?.name || '', 
+                    city: '', 
+                    cityName: '',
+                    neighborhood: '', 
+                    neighborhoodName: '' 
+                  });
+                }}
                 style={styles.picker}
                 itemStyle={styles.pickerItem}
               >
@@ -228,9 +253,15 @@ export default function RegisterAddress() {
             <View style={[styles.pickerContainer, errors.city && styles.pickerError]}>
               <Picker
                 selectedValue={formData.city}
-                onValueChange={(itemValue) =>
-                  updateFormData({ city: itemValue, neighborhood: '' })
-                }
+                onValueChange={(itemValue) => {
+                  const selectedCity = cities.find(city => city.id === itemValue);
+                  updateFormData({ 
+                    city: itemValue, 
+                    cityName: selectedCity?.name || '',
+                    neighborhood: '', 
+                    neighborhoodName: '' 
+                  });
+                }}
                 style={styles.picker}
                 enabled={!!formData.state}
                 itemStyle={styles.pickerItem}
@@ -250,7 +281,13 @@ export default function RegisterAddress() {
             <View style={[styles.pickerContainer, errors.neighborhood && styles.pickerError]}>
               <Picker
                 selectedValue={formData.neighborhood}
-                onValueChange={(itemValue) => updateFormData({ neighborhood: itemValue })}
+                onValueChange={(itemValue) => {
+                  const selectedNeighborhood = neighborhoods.find(n => n.id === itemValue);
+                  updateFormData({ 
+                    neighborhood: itemValue,
+                    neighborhoodName: selectedNeighborhood?.name || '' 
+                  });
+                }}
                 style={styles.picker}
                 enabled={!!formData.city}
                 itemStyle={styles.pickerItem}
@@ -296,7 +333,11 @@ export default function RegisterAddress() {
 
         <TouchableOpacity
           style={[styles.button, loading && styles.buttonDisabled]}
-          onPress={() => handleSubmit(formData)}
+          onPress={() => {
+            if (validate()) {
+              handleSubmit(formData);
+            }
+          }}
           disabled={loading}
         >
           {loading ? (

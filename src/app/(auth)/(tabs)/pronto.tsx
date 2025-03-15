@@ -1,18 +1,14 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, FlatList, TouchableOpacity, Text } from 'react-native';
+import { View, StyleSheet, FlatList, TouchableOpacity, Text, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { usePedidos } from '../../../contexts/PedidosContext';
 import { EmptyState } from '../../../components/EmptyState';
 import { Pedido } from '../../../contexts/PedidosContext';
 
-// Estendendo o tipo Pedido para incluir status
-interface PedidoWithStatus extends Pedido {
-  status?: string;
-}
-
 export default function Pronto() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { pedidosProntos, marcarComoEmEntrega, marcarComoEntregue } = usePedidos();
+  const [isProcessing, setIsProcessing] = useState(false);
 
   if (pedidosProntos.length === 0) {
     return (
@@ -24,12 +20,54 @@ export default function Pronto() {
     );
   }
 
+  const handleEmEntrega = async (pedidoId: string) => {
+    if (isProcessing) return;
+    
+    try {
+      setIsProcessing(true);
+      await marcarComoEmEntrega(pedidoId);
+      
+      Alert.alert(
+        'Pedido Enviado',
+        'Pedido marcado como em entrega com sucesso!',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('Erro ao enviar pedido para entrega:', error);
+      Alert.alert(
+        'Erro',
+        'Não foi possível enviar o pedido para entrega. Tente novamente.'
+      );
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const renderPedido = ({ item }: { item: Pedido }) => {
     const isExpanded = expandedId === item.id;
     const isPickup = item.deliveryMode === 'pickup';
 
     // Formata o endereço completo
     const endereco = `${item.address.street}, ${item.address.number}${item.address.complement ? ` - ${item.address.complement}` : ''}\n${item.address.neighborhood}, ${item.address.city} - ${item.address.state}`;
+
+    // Formata a data de criação corretamente
+    const formatarDataHora = (timestamp: any) => {
+      try {
+        if (timestamp?.seconds) {
+          // Se for um timestamp do Firestore, converter para Date
+          const data = new Date(timestamp.seconds * 1000);
+          return data.toLocaleTimeString('pt-BR');
+        } else if (timestamp instanceof Date) {
+          return timestamp.toLocaleTimeString('pt-BR');
+        } else if (typeof timestamp === 'string') {
+          return new Date(timestamp).toLocaleTimeString('pt-BR');
+        }
+        return 'Data não disponível';
+      } catch (error) {
+        console.error('Erro ao formatar data:', error);
+        return 'Data não disponível';
+      }
+    };
 
     return (
       <View style={styles.pedidoCard}>
@@ -40,7 +78,7 @@ export default function Pronto() {
         >
           <View style={styles.headerLeft}>
             <Text style={styles.orderTime}>
-              Pedido feito às {new Date(item.createdAt).toLocaleTimeString('pt-BR')}
+              Pedido feito às {formatarDataHora(item.createdAt)}
             </Text>
             <Text style={styles.paymentMethod}>
               Pagamento: {item.payment.method.toUpperCase()}
@@ -89,8 +127,9 @@ export default function Pronto() {
 
         {/* Botões de ação */}
         <TouchableOpacity 
-          style={[styles.deliveryButton, isPickup && styles.pickupButton]}
-          onPress={() => marcarComoEmEntrega(item.id)}
+          style={[styles.deliveryButton, isPickup && styles.pickupButton, isProcessing && styles.disabledButton]}
+          onPress={() => handleEmEntrega(item.id)}
+          disabled={isProcessing}
         >
           <Ionicons name={isPickup ? "hand-left" : "bicycle"} size={22} color="#fff" />
           <Text style={styles.deliveryButtonText}>
@@ -247,20 +286,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  deliveredButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#4CAF50',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    marginTop: 16,
-    gap: 8,
-  },
-  deliveredButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
+  disabledButton: {
+    opacity: 0.7,
+    backgroundColor: '#aaa',
   },
 }); 

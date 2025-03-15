@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, FlatList, TouchableOpacity, Text } from 'react-native';
+import { View, StyleSheet, FlatList, TouchableOpacity, Text, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { usePedidos } from '../../../contexts/PedidosContext';
 import { EmptyState } from '../../../components/EmptyState';
@@ -8,6 +8,7 @@ import { Pedido } from '../../../contexts/PedidosContext';
 export default function EmEntrega() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { pedidosEmEntrega, marcarComoEntregue } = usePedidos();
+  const [isProcessing, setIsProcessing] = useState(false);
 
   if (pedidosEmEntrega.length === 0) {
     return (
@@ -19,12 +20,55 @@ export default function EmEntrega() {
     );
   }
 
+  const handleEntregaConfirmada = async (pedidoId: string) => {
+    if (isProcessing) return;
+    
+    try {
+      setIsProcessing(true);
+      await marcarComoEntregue(pedidoId);
+      
+      // Exibir alerta após a entrega ser confirmada
+      Alert.alert(
+        'Pedido Concluído',
+        'Pedido marcado como entregue com sucesso! A taxa do aplicativo foi aplicada automaticamente.',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('Erro ao confirmar entrega:', error);
+      Alert.alert(
+        'Erro',
+        'Não foi possível confirmar a entrega. Tente novamente.'
+      );
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const renderPedido = ({ item }: { item: Pedido }) => {
     const isExpanded = expandedId === item.id;
     const isPickup = item.deliveryMode === 'pickup';
 
     // Formata o endereço completo
     const endereco = `${item.address.street}, ${item.address.number}${item.address.complement ? ` - ${item.address.complement}` : ''}\n${item.address.neighborhood}, ${item.address.city} - ${item.address.state}`;
+
+    // Formata a data de criação corretamente
+    const formatarDataHora = (timestamp: any) => {
+      try {
+        if (timestamp?.seconds) {
+          // Se for um timestamp do Firestore, converter para Date
+          const data = new Date(timestamp.seconds * 1000);
+          return data.toLocaleTimeString('pt-BR');
+        } else if (timestamp instanceof Date) {
+          return timestamp.toLocaleTimeString('pt-BR');
+        } else if (typeof timestamp === 'string') {
+          return new Date(timestamp).toLocaleTimeString('pt-BR');
+        }
+        return 'Data não disponível';
+      } catch (error) {
+        console.error('Erro ao formatar data:', error);
+        return 'Data não disponível';
+      }
+    };
 
     return (
       <View style={styles.pedidoCard}>
@@ -35,7 +79,7 @@ export default function EmEntrega() {
         >
           <View style={styles.headerLeft}>
             <Text style={styles.orderTime}>
-              Pedido feito às {new Date(item.createdAt).toLocaleTimeString('pt-BR')}
+              Pedido feito às {formatarDataHora(item.createdAt)}
             </Text>
             <Text style={styles.paymentMethod}>
               Pagamento: {item.payment.method.toUpperCase()}
@@ -79,8 +123,9 @@ export default function EmEntrega() {
         )}
 
         <TouchableOpacity 
-          style={[styles.deliveredButton, isPickup && styles.pickupButton]}
-          onPress={() => marcarComoEntregue(item.id)}
+          style={[styles.deliveredButton, isPickup && styles.pickupButton, isProcessing && styles.disabledButton]}
+          onPress={() => handleEntregaConfirmada(item.id)}
+          disabled={isProcessing}
         >
           <Ionicons name="checkmark-done" size={22} color="#fff" />
           <Text style={styles.deliveredButtonText}>
@@ -236,5 +281,9 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  disabledButton: {
+    opacity: 0.7,
+    backgroundColor: '#aaa',
   },
 }); 

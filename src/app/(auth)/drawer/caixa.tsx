@@ -371,13 +371,37 @@ export default function Caixa() {
                   </View>
                 ) : null}
 
+                {/* Valor após taxa de cartão */}
+                {selectedOrder.finalPrice && selectedOrder.cardFeeValue && 
+                  Number(selectedOrder.finalPrice) !== Number(selectedOrder.total) ? (
+                  <View style={[styles.totalContainer]}>
+                    <Text style={styles.totalLabel}>Total do Pedido</Text>
+                    <Text style={styles.modalTotalValue}>
+                      R$ {Number(selectedOrder.finalPrice).toFixed(2)}
+                    </Text>
+                  </View>
+                ) : null}
+                {/* Taxa de cartão */}
+                {selectedOrder.cardFeeValue && Number(selectedOrder.cardFeeValue) > 0 ? (
+                  <View style={styles.deliveryFeeContainer}>
+                    <View style={styles.itemRow}>
+                      <View style={styles.itemNameContainer}>
+                        <Ionicons name="card-outline" size={16} color={colors.red[600]} style={styles.deliveryIcon} />
+                        <Text style={styles.itemName}>Taxa de Cartão (descontada)</Text>
+                      </View>
+                      <Text style={[styles.itemPrice, { color: colors.red[600] }]}>
+                        - R$ {Number(selectedOrder.cardFeeValue).toFixed(2)}
+                      </Text>
+                    </View>
+                  </View>
+                ) : null}
+
                 <View style={styles.totalContainer}>
-                  <Text style={styles.totalLabel}>Total do Pedido</Text>
+                  <Text style={styles.totalLabel}>Valor Recebido (após taxa)</Text>
                   <Text style={styles.modalTotalValue}>
                     R$ {Number(selectedOrder.total || 0).toFixed(2)}
                   </Text>
                 </View>
-
                 <View style={styles.paymentInfo}>
                   <Ionicons 
                     name={getPaymentInfo(selectedOrder.paymentMethod || 'cash', selectedOrder.paymentData).icon as any}

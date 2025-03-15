@@ -15,8 +15,6 @@ interface ProductFormModalProps {
   onSave: () => void;
   onUpdateProduct: (updates: Partial<NewProduct>) => void;
   onPickImage: () => void;
-  availableCategories: CategoryOption[];
-  handleAddCategory: (name: string) => void;
   formatPrice: (value: string) => string;
   unformatPrice: (value: string) => string;
   addVariation: () => void;
@@ -38,8 +36,6 @@ export function ProductFormModal({
   onSave,
   onUpdateProduct,
   onPickImage,
-  availableCategories,
-  handleAddCategory,
   formatPrice,
   unformatPrice,
   addVariation,
@@ -66,6 +62,7 @@ export function ProductFormModal({
         description: editingProduct.description || '',
         price: formatPrice((editingProduct.price * 100).toString()),
         category: editingProduct.category,
+        categoryId: editingProduct.categoryId || '',
         isActive: editingProduct.isActive,
         isPromotion: editingProduct.isPromotion || false,
         promotionalPrice: null,
@@ -108,8 +105,6 @@ export function ProductFormModal({
               product={newProduct}
               onUpdate={onUpdateProduct}
               onPickImage={onPickImage}
-              availableCategories={availableCategories}
-              handleAddCategory={handleAddCategory}
               formatPrice={formatPrice}
             />
 

@@ -101,6 +101,16 @@ export default function AuthLayout() {
           ),
         }}
       />
+            <Drawer.Screen
+        name="drawer/caixa"
+        options={{
+          title: 'Caixa',
+          headerShown: true,
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="calculator-outline" size={size} color={color} />
+          ),
+        }}
+      />
       <Drawer.Screen
         name="drawer/profile"
         options={{
@@ -141,16 +151,7 @@ export default function AuthLayout() {
           ),
         }}
       />
-      <Drawer.Screen
-        name="drawer/caixa"
-        options={{
-          title: 'Caixa',
-          headerShown: true,
-          drawerIcon: ({ color, size }) => (
-            <Ionicons name="calculator-outline" size={size} color={color} />
-          ),
-        }}
-      />
+
       <Drawer.Screen
         name="drawer/faturas"
         options={{

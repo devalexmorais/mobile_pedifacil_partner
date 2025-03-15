@@ -23,6 +23,7 @@ import { ProductFormModal } from '@/components/ProductCatalog/ProductFormModal';
 import { ProductDetailsModal } from '@/components/ProductCatalog/ProductDetailsModal';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage } from '../../../config/firebase';
+import { categoryService } from '@/services/categoryService';
 
 interface ProductOption {
   name: string;
@@ -83,6 +84,7 @@ interface NewProduct {
   description: string;
   price: string;
   category: string;
+  categoryId: string;
   isActive: boolean;
   isPromotion: boolean;
   promotionalPrice: string | null;
@@ -112,6 +114,7 @@ export default function ProductCatalog() {
     description: '',
     price: '',
     category: '',
+    categoryId: '',
     isActive: true,
     isPromotion: false,
     promotionalPrice: null,
@@ -197,21 +200,48 @@ export default function ProductCatalog() {
       const user = auth.currentUser;
       if (!user) return;
 
-      const categoriesRef = collection(db, 'partners', user.uid, 'categories');
-      const categoriesSnapshot = await getDocs(categoriesRef);
-      
-      const categoriesData = categoriesSnapshot.docs.map(doc => ({
-        id: doc.id,
-        name: doc.data().name,
-      }));
+      // Buscamos tanto categorias globais quanto as personalizadas do parceiro
+      const categoriesData = [];
+
+      // 1. Buscar categorias personalizadas do parceiro
+      try {
+        const partnerCategories = await categoryService.getPartnerCategories();
+        categoriesData.push(...partnerCategories);
+        console.log('Categorias personalizadas carregadas:', partnerCategories.length);
+      } catch (error) {
+        console.error('Erro ao carregar categorias personalizadas:', error);
+        // Continua mesmo se falhar
+      }
+
+      // 2. Categorias do parceiro salvas diretamente (para compatibilidade)
+      try {
+        const categoriesRef = collection(db, 'partners', user.uid, 'categories');
+        const categoriesSnapshot = await getDocs(categoriesRef);
+        
+        const localCategories = categoriesSnapshot.docs.map(doc => ({
+          id: doc.id,
+          name: doc.data().name,
+        }));
+
+        // Filtra para não adicionar categorias duplicadas
+        for (const category of localCategories) {
+          if (!categoriesData.some(c => c.id === category.id)) {
+            categoriesData.push(category);
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao carregar categorias locais:', error);
+        // Continua mesmo se falhar
+      }
 
       setAvailableCategories(categoriesData);
+      console.log('Total de categorias disponíveis:', categoriesData.length);
     } catch (error) {
-      console.error('Erro ao carregar categorias:', error);
+      console.error('Erro geral ao carregar categorias:', error);
     }
   };
 
-  const handleAddProduct = () => {
+  const handleAddProduct = async () => {
     const totalProducts = categories.reduce((acc, category) => 
       acc + category.products.length, 0);
 
@@ -221,6 +251,9 @@ export default function ProductCatalog() {
       return;
     }
 
+    // Recarrega as categorias antes de abrir o modal
+    await loadCategories();
+    
     setIsEditing(false);
     setEditingProductId(null);
     setIsModalVisible(true);
@@ -232,6 +265,7 @@ export default function ProductCatalog() {
       description: '',
       price: '',
       category: '',
+      categoryId: '',
       isActive: true,
       isPromotion: false,
       promotionalPrice: null,
@@ -371,6 +405,9 @@ export default function ProductCatalog() {
 
   const handleEditProduct = async (product: Product) => {
     try {
+      // Recarrega as categorias antes de abrir o modal
+      await loadCategories();
+      
       setEditingProduct(product);
       setIsEditing(true);
       setIsModalVisible(true);
@@ -429,65 +466,57 @@ export default function ProductCatalog() {
 
   const handleCreateProduct = async () => {
     try {
-      if (!newProduct.name || !newProduct.price || !newProduct.category) {
-        Alert.alert('Erro', 'Preencha todos os campos obrigatórios');
-        return;
-      }
-
-      if (!isPremium && categories.reduce((acc, category) => acc + category.products.length, 0) >= limits.maxProducts) {
-        setShowLimitWarning(true);
-        return;
-      }
-
-      // Converte o preço formatado para número
-      const price = Number(unformatPrice(newProduct.price)) / 100;
-      if (isNaN(price)) {
-        Alert.alert('Erro', 'Preço inválido');
-        return;
-      }
-
+      setLoading(true);
+      
       const user = auth.currentUser;
-      if (!user) throw new Error('Usuário não autenticado');
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
 
-      // Converter as variações do formulário para o formato do ProductVariation
-      const variations: ProductVariation[] = newProduct.variations.map(variation => ({
-        name: variation.name,
-        options: [{
-          name: variation.description || '',
-          price: Number(unformatPrice(variation.price)) / 100 || 0
-        }]
-      }));
+      if (!newProduct.name.trim()) {
+        Alert.alert('Erro', 'O produto precisa ter um nome');
+        return;
+      }
 
-      // Converter as requiredSelections sem o price
-      const requiredSelections: RequiredSelection[] = newProduct.requiredSelections.map(selection => ({
-        name: selection.name || '',
-        minRequired: selection.minRequired || 1,
-        maxRequired: selection.maxRequired || 1,
-        options: selection.options.map(option => ({
-          name: option.name || ''
-        }))
-      }));
+      if (!newProduct.price.trim()) {
+        Alert.alert('Erro', 'O produto precisa ter um preço');
+        return;
+      }
 
+      if (!newProduct.category.trim()) {
+        Alert.alert('Erro', 'Selecione uma categoria para o produto');
+        return;
+      }
+
+      // Converter preço para número (de centavos para reais)
+      const price = parseFloat(unformatPrice(newProduct.price)) / 100;
+
+      // Processar variações
+      const variations = newProduct.variations.map(variation => {
+        return {
+          name: variation.name,
+          options: [{
+            name: variation.description,
+            price: parseFloat(unformatPrice(variation.price)) / 100,
+          }],
+        };
+      });
+
+      // Conteúdo do documento do produto
       const productData = {
         name: newProduct.name,
         description: newProduct.description,
-        price: price,
+        price,
         category: newProduct.category,
+        categoryId: newProduct.categoryId,
         isActive: newProduct.isActive,
         isPromotion: newProduct.isPromotion,
-        promotionalPrice: newProduct.promotionalPrice ? 
-          parseFloat(newProduct.promotionalPrice.replace(',', '.')) : null,
-        image: newProduct.image,
+        createdAt: new Date(),
+        updatedAt: new Date(),
         sellerId: user.uid,
         variations,
-        requiredSelections,
-        extras: newProduct.extras.map(extra => ({
-          name: extra.name,
-          extraPrice: extra.extraPrice,
-          minRequired: extra.minRequired,
-          maxRequired: extra.maxRequired
-        })),
-        updatedAt: new Date()
+        requiredSelections: newProduct.requiredSelections,
+        extras: newProduct.extras,
       };
 
       let productId: string;
@@ -529,11 +558,19 @@ export default function ProductCatalog() {
       }
 
       handleCloseModal();
-      loadProducts();
+      
+      // Recarregar as listas após salvar
+      await Promise.all([
+        loadProducts(),
+        loadCategories()
+      ]);
+      
       Alert.alert('Sucesso', isEditing ? 'Produto atualizado com sucesso!' : 'Produto criado com sucesso!');
     } catch (error) {
       console.error('Erro ao salvar produto:', error);
       Alert.alert('Erro', 'Erro ao salvar produto');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -576,36 +613,31 @@ export default function ProductCatalog() {
 
   const handleAddCategory = async (categoryName: string) => {
     try {
-      const user = auth.currentUser;
-      if (!user) return;
+      if (!categoryName.trim()) {
+        Alert.alert('Erro', 'Informe um nome para a categoria');
+        return '';
+      }
 
       // Verifica se a categoria já existe
       const existingCategory = availableCategories.find(
         cat => cat.name.toLowerCase() === categoryName.toLowerCase()
       );
-
+      
       if (existingCategory) {
-        setNewProduct(prev => ({ ...prev, category: existingCategory.name }));
-        return;
+        return existingCategory.id;
       }
 
-      // Cria nova categoria
-      const categoriesRef = collection(db, 'partners', user.uid, 'categories');
-      const newCategoryRef = await addDoc(categoriesRef, {
-        name: categoryName,
-        createdAt: new Date()
-      });
-
-      const newCategory = {
-        id: newCategoryRef.id,
-        name: categoryName
-      };
-
-      setAvailableCategories(prev => [...prev, newCategory]);
-      setNewProduct(prev => ({ ...prev, category: categoryName }));
+      // Usa o serviço de categorias para criar uma categoria personalizada
+      const newCategory = await categoryService.createPartnerCategory(categoryName);
+      
+      // Atualiza a lista de categorias
+      setAvailableCategories([...availableCategories, newCategory]);
+      
+      return newCategory.id;
     } catch (error) {
       console.error('Erro ao criar categoria:', error);
-      Alert.alert('Erro', 'Não foi possível criar a categoria');
+      Alert.alert('Erro', 'Não foi possível criar a categoria. Verifique suas permissões.');
+      return '';
     }
   };
 
@@ -1385,13 +1417,6 @@ const styles = StyleSheet.create({
     zIndex: 2,
     elevation: 3,
     marginTop: 4,
-  },
-  categoryOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
   },
   categoryIcon: {
     marginRight: 8,

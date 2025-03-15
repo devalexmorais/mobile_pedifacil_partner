@@ -1,11 +1,19 @@
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
-import { getAnalytics, logEvent } from 'firebase/analytics';
+import { getAnalytics, logEvent, isSupported } from 'firebase/analytics';
 import * as Crypto from 'expo-crypto';
+import { Platform } from 'react-native';
 
-// Inicializar o analytics
-const analytics = getAnalytics();
+// Inicializar o analytics apenas se estiver em um ambiente compatível
+let analytics = null;
+try {
+  if (Platform.OS === 'web' && isSupported()) {
+    analytics = getAnalytics();
+  }
+} catch (error) {
+  console.log('Analytics não suportado neste ambiente');
+}
 
 interface RegisterData {
   // Dados pessoais
@@ -41,8 +49,11 @@ interface RegisterPartnerData {
   number: string;
   complement?: string;
   neighborhood: string;
+  neighborhoodName?: string;
   city: string;
+  cityName?: string;
   state: string;
+  stateName?: string;
   
   // Dados do estabelecimento
   storeName: string;
@@ -124,8 +135,11 @@ export const registerService = {
           number: data.number,
           complement: data.complement || '',
           neighborhood: data.neighborhood,
+          neighborhoodName: data.neighborhoodName || '',
           city: data.city,
+          cityName: data.cityName || '',
           state: data.state,
+          stateName: data.stateName || '',
         },
         createdAt: new Date(),
         isActive: true,
@@ -156,10 +170,12 @@ export const registerService = {
       console.log('Dados do parceiro salvos com sucesso');
 
       try {
-        // Log de sucesso - em um try/catch separado pois analytics pode falhar em alguns ambientes
-        logEvent(analytics, 'registration_complete', {
-          userId: userId
-        });
+        // Log de sucesso apenas se analytics estiver disponível
+        if (analytics) {
+          logEvent(analytics, 'registration_complete', {
+            userId: userId
+          });
+        }
       } catch (analyticsError) {
         console.log('Erro ao registrar analytics:', analyticsError);
       }

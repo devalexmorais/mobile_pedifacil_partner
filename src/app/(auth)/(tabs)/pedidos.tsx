@@ -77,7 +77,19 @@ export default function Pedidos() {
           <View style={styles.infoRow}>
             <Ionicons name="time-outline" size={16} color="#666" />
             <Text style={styles.infoText}>
-              Feito às {new Date(item.createdAt).toLocaleTimeString('pt-BR')}
+              Feito às {(() => {
+                const timestamp = item.updatedAt;
+                const date = new Date(timestamp.seconds * 1000);
+                return date.toLocaleString('pt-BR', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  timeZone: 'America/Sao_Paulo',
+                  hour12: false
+                });
+              })()}
             </Text>
           </View>
           <View style={styles.infoRow}>
@@ -118,6 +130,7 @@ export default function Pedidos() {
                   <Ionicons name="card-outline" size={16} color="#666" />
                   <Text style={styles.infoText}>
                     Pagamento: {item.payment.method.toUpperCase()}
+                    {item.payment.cardFee?.flagName && ` - ${item.payment.cardFee.flagName}`}
                   </Text>
                 </View>
                 <View style={styles.infoRow}>
@@ -153,6 +166,12 @@ export default function Pedidos() {
                   <Text style={styles.valueLabel}>Subtotal:</Text>
                   <Text style={styles.valueText}>R$ {item.totalPrice.toFixed(2)}</Text>
                 </View>
+                {item.payment?.cardFee && (
+                  <View style={styles.valueRow}>
+                    <Text style={styles.valueLabel}>Taxa do Cartão ({item.payment.cardFee.flagName}):</Text>
+                    <Text style={styles.valueText}>- R$ {item.payment.cardFee.value.toFixed(2)}</Text>
+                  </View>
+                )}
                 <View style={styles.valueRow}>
                   <Text style={styles.valueLabel}>Taxa de Entrega:</Text>
                   <Text style={styles.valueText}>R$ {item.deliveryFee.toFixed(2)}</Text>

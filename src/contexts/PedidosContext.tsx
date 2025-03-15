@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { db } from '../config/firebase';
-import { collection, query, where, doc, updateDoc, onSnapshot, orderBy, getDoc, getDocs, DocumentData } from 'firebase/firestore';
+import { collection, query, where, doc, updateDoc, onSnapshot, orderBy, getDoc, getDocs, DocumentData, addDoc } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 
 type Address = {
@@ -23,6 +23,12 @@ export type OrderItem = {
 type Payment = {
   method: string;
   status: string;
+  cardFee?: {
+    value: number;
+    percentage: string;
+    flag: string;
+    flagName: string;
+  };
 };
 
 export type Pedido = {
@@ -35,7 +41,10 @@ export type Pedido = {
     state: string;
     street: string;
   };
-  createdAt: string;
+  createdAt: {
+    seconds: number;
+    nanoseconds: number;
+  };
   deliveryFee: number;
   deliveryMode: 'pickup' | 'delivery';
   finalPrice: number;
@@ -43,10 +52,19 @@ export type Pedido = {
   payment: {
     method: string;
     status: string;
+    cardFee?: {
+      value: number;
+      percentage: string;
+      flag: string;
+      flagName: string;
+    };
   };
   storeId: string;
   totalPrice: number;
-  updatedAt: string;
+  updatedAt: {
+    seconds: number;
+    nanoseconds: number;
+  };
   userId: string;
   userName?: string;
   status?: 'pending' | 'preparing' | 'ready' | 'out_for_delivery' | 'delivered' | 'cancelled';
@@ -137,7 +155,13 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           })) || [],
           payment: {
             method: data.payment?.method || '',
-            status: data.status || 'pending'
+            status: data.status || 'pending',
+            cardFee: data.payment?.cardFee ? {
+              value: Number(data.payment.cardFee.value) || 0,
+              percentage: data.payment.cardFee.percentage || '',
+              flag: data.payment.cardFee.flag || '',
+              flagName: data.payment.cardFee.flagName || ''
+            } : undefined
           },
           storeId: data.storeId || '',
           totalPrice: Number(data.totalPrice) || 0,
@@ -200,7 +224,13 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           })) || [],
           payment: {
             method: data.payment?.method || '',
-            status: data.status || ''
+            status: data.status || 'pending',
+            cardFee: data.payment?.cardFee ? {
+              value: Number(data.payment.cardFee.value) || 0,
+              percentage: data.payment.cardFee.percentage || '',
+              flag: data.payment.cardFee.flag || '',
+              flagName: data.payment.cardFee.flagName || ''
+            } : undefined
           },
           storeId: data.storeId || '',
           totalPrice: Number(data.totalPrice) || 0,
@@ -241,7 +271,13 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           })) || [],
           payment: {
             method: data.payment?.method || '',
-            status: data.status || ''
+            status: data.status || 'pending',
+            cardFee: data.payment?.cardFee ? {
+              value: Number(data.payment.cardFee.value) || 0,
+              percentage: data.payment.cardFee.percentage || '',
+              flag: data.payment.cardFee.flag || '',
+              flagName: data.payment.cardFee.flagName || ''
+            } : undefined
           },
           storeId: data.storeId || '',
           totalPrice: Number(data.totalPrice) || 0,
@@ -282,7 +318,13 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           })) || [],
           payment: {
             method: data.payment?.method || '',
-            status: data.status || ''
+            status: data.status || 'pending',
+            cardFee: data.payment?.cardFee ? {
+              value: Number(data.payment.cardFee.value) || 0,
+              percentage: data.payment.cardFee.percentage || '',
+              flag: data.payment.cardFee.flag || '',
+              flagName: data.payment.cardFee.flagName || ''
+            } : undefined
           },
           storeId: data.storeId || '',
           totalPrice: Number(data.totalPrice) || 0,
@@ -363,11 +405,85 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
     if (!user?.uid) return;
 
     try {
+      // Referência para o pedido original
       const pedidoRef = doc(db, 'partners', user.uid, 'orders', pedidoId);
+      
+      // Buscar dados do pedido
+      const pedidoDoc = await getDoc(pedidoRef);
+      if (!pedidoDoc.exists()) {
+        console.error('Pedido não encontrado');
+        return;
+      }
+      const pedidoData = pedidoDoc.data();
+      
+      // Buscar informações do estabelecimento para verificar se é premium
+      const partnerRef = doc(db, 'partners', user.uid);
+      const partnerDoc = await getDoc(partnerRef);
+      
+      if (!partnerDoc.exists()) {
+        console.error('Parceiro não encontrado');
+        return;
+      }
+      
+      const partnerData = partnerDoc.data();
+      const isPremium = partnerData.store?.isPremium || false;
+      
+      // Calcular a taxa com base no status premium
+      // Taxa menor para estabelecimentos premium (3%) e maior para não premium (5%)
+      const appFeePercentage = isPremium ? 0.03 : 0.05;
+      
+      // Calcular o valor base para aplicação da taxa (totalPrice - deliveryFee - cardFee)
+      const totalPrice = Number(pedidoData.totalPrice || 0);
+      const deliveryFee = Number(pedidoData.deliveryFee || 0);
+      
+      // Extrair a taxa de cartão se existir
+      const cardFeeValue = pedidoData.payment?.cardFee?.value 
+        ? Number(pedidoData.payment.cardFee.value) 
+        : 0;
+      
+      // Calcular o valor base para a taxa (excluindo taxas de entrega e cartão)
+      const baseValue = totalPrice - deliveryFee - cardFeeValue;
+      
+      // Aplicar a porcentagem da taxa sobre o valor base
+      const appFeeValue = baseValue * appFeePercentage;
+      
+      console.log(`Cálculo da taxa: ${baseValue} * ${appFeePercentage} = ${appFeeValue.toFixed(2)}`);
+      console.log(`Total: ${totalPrice}, Entrega: ${deliveryFee}, Taxa Cartão: ${cardFeeValue}`);
+      
+      // Atualizar o pedido original para marcar como entregue
       await updateDoc(pedidoRef, {
         status: 'delivered',
         updatedAt: new Date().toISOString()
       });
+      
+      // Preparar os dados de taxas
+      const appFeeData = {
+        orderId: pedidoId,
+        orderDate: pedidoData.createdAt,
+        completedAt: new Date().toISOString(),
+        storeId: pedidoData.storeId || user.uid,
+        customerId: pedidoData.userId,
+        paymentMethod: pedidoData.payment?.method || 'unknown',
+        orderBaseValue: baseValue,
+        orderTotalPrice: totalPrice,
+        orderDeliveryFee: deliveryFee,
+        orderCardFee: cardFeeValue,
+        appFee: {
+          percentage: appFeePercentage,
+          value: appFeeValue,
+          isPremiumRate: isPremium
+        },
+        settled: false,
+        invoiceId: null
+      };
+      
+      // Salvar apenas na coleção app_fees
+      const appFeesRef = collection(db, 'partners', user.uid, 'app_fees');
+      const appFeeDoc = await addDoc(appFeesRef, appFeeData);
+      console.log(`Taxa registrada com ID: ${appFeeDoc.id}`);
+      
+      console.log(`Pedido ${pedidoId} marcado como entregue com sucesso`);
+      console.log(`Taxa aplicada: ${(appFeePercentage * 100)}% (${isPremium ? 'Premium' : 'Normal'}) - Valor: ${appFeeValue.toFixed(2)}`);
     } catch (error) {
       console.error('Erro ao marcar pedido como entregue:', error);
     }

@@ -1,0 +1,11 @@
+// Permitir escrita na subcoleção products apenas para o parceiro
+match /products/{productId} {
+  allow read: if true;
+  allow create, update, delete: if isOwner(partnerId);
+}
+
+// Permitir escrita na subcoleção categories apenas para o parceiro
+match /categories/{categoryId} {
+  allow read: if true;
+  allow create, update, delete: if isOwner(partnerId);
+} 
