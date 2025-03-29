@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.pedifacil.deliverycliente",
+      "bundleIdentifier": "com.pedifacil.deliveryparceiros",
       "googleServicesFile": "./GoogleService-Info.plist"
     },
     "android": {
@@ -18,9 +18,8 @@
         "foregroundImage": "./assets/images/logo-black.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.pedifacil.deliverycliente",
+      "package": "com.pedifacil.deliveryparceiros",
       "googleServicesFile": "./google-services.json"
-      
     },
     "web": {
       "bundler": "metro",
@@ -58,7 +57,7 @@
         "origin": false
       },
       "eas": {
-        "projectId": "13473e79-6ba0-49dd-92d8-e363edf12f65"
+        "projectId": "9b4318e9-f138-4787-811a-fb7649720e3e"
       }
     },
     "owner": "alexmorais1910"
