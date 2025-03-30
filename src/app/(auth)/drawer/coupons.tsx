@@ -20,6 +20,7 @@ export default function Coupons() {
   // Estados para o formulário de edição
   const [editValue, setEditValue] = useState('');
   const [editValidUntil, setEditValidUntil] = useState('');
+  const [editValidUntilTime, setEditValidUntilTime] = useState('');
 
   // Estados para o modal de criação
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
@@ -27,6 +28,7 @@ export default function Coupons() {
   const [newCouponDiscountType, setNewCouponDiscountType] = useState<'percentage' | 'fixed'>('percentage');
   const [newCouponValue, setNewCouponValue] = useState('');
   const [newCouponValidUntil, setNewCouponValidUntil] = useState('');
+  const [newCouponValidUntilTime, setNewCouponValidUntilTime] = useState('');
 
   // Carregar cupons do Firebase
   useEffect(() => {
@@ -42,8 +44,8 @@ export default function Coupons() {
       
       // Atualizar status dos cupons
       const updatedCoupons = coupons.map(coupon => {
-        const isExpired = isCouponExpired(coupon.validUntil);
-        const validity = isExpired ? 'Expirado' : `Válido até ${formatDate(coupon.validUntil)}`;
+        const isExpired = isCouponExpired(coupon.validUntil, coupon.validUntilTime);
+        const validity = isExpired ? 'Expirado' : `Válido até ${formatDate(coupon.validUntil, coupon.validUntilTime)}`;
         
         return {
           ...coupon,
@@ -63,21 +65,22 @@ export default function Coupons() {
   };
 
   // Função para verificar se um cupom está expirado
-  const isCouponExpired = (validUntil: string): boolean => {
-    const endDate = new Date(validUntil);
-    const today = new Date();
-    
-    // Reseta as horas para comparar apenas as datas
-    today.setHours(0, 0, 0, 0);
-    endDate.setHours(0, 0, 0, 0);
-    
-    return endDate < today;
+  const isCouponExpired = (validUntil: string, validUntilTime: string): boolean => {
+    const endDate = new Date(`${validUntil}T${validUntilTime}`);
+    const now = new Date();
+    return endDate < now;
   };
 
-  // Função para formatar a data
-  const formatDate = (dateString: string): string => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('pt-BR');
+  // Função para formatar a data e hora
+  const formatDate = (dateString: string, timeString: string): string => {
+    const date = new Date(`${dateString}T${timeString}`);
+    return date.toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   // Função para formatar o código do cupom
@@ -87,10 +90,21 @@ export default function Coupons() {
     return formattedCode;
   };
 
+  // Função para validar o formato da hora
+  const validateTimeFormat = (time: string): boolean => {
+    const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+    return timeRegex.test(time);
+  };
+
   // Função para criar cupom
   const handleCreateCoupon = async () => {
-    if (!newCouponCode.trim() || !newCouponValue || !newCouponValidUntil || !user?.uid) {
+    if (!newCouponCode.trim() || !newCouponValue || !newCouponValidUntil || !newCouponValidUntilTime || !user?.uid) {
       alert('Por favor, preencha todos os campos obrigatórios');
+      return;
+    }
+
+    if (!validateTimeFormat(newCouponValidUntilTime)) {
+      alert('Por favor, insira uma hora válida no formato HH:mm (ex: 23:00)');
       return;
     }
 
@@ -107,6 +121,7 @@ export default function Coupons() {
         discountType: newCouponDiscountType,
         value,
         validUntil: newCouponValidUntil,
+        validUntilTime: newCouponValidUntilTime,
         isActive: true,
         usedBy: []
       };
@@ -118,6 +133,7 @@ export default function Coupons() {
       setNewCouponCode('');
       setNewCouponValue('');
       setNewCouponValidUntil('');
+      setNewCouponValidUntilTime('');
       setNewCouponDiscountType('percentage');
     } catch (error) {
       console.error('Erro ao criar cupom:', error);
@@ -132,6 +148,7 @@ export default function Coupons() {
     
     setEditValue(coupon.value.toString());
     setEditValidUntil(coupon.validUntil);
+    setEditValidUntilTime(coupon.validUntilTime);
     
     setIsEditModalVisible(true);
   };
@@ -147,9 +164,15 @@ export default function Coupons() {
         return;
       }
 
+      if (!validateTimeFormat(editValidUntilTime)) {
+        alert('Por favor, insira uma hora válida no formato HH:mm (ex: 23:00)');
+        return;
+      }
+
       const updates = {
         value,
-        validUntil: editValidUntil
+        validUntil: editValidUntil,
+        validUntilTime: editValidUntilTime
       };
       
       await couponService.updateCoupon(user.uid, selectedCoupon.id, updates);
@@ -225,6 +248,20 @@ export default function Coupons() {
                 activeOutlineColor={colors.orange}
                 placeholder="DD/MM/AAAA"
               />
+              
+              <Text style={styles.inputLabel}>Hora de validade</Text>
+              <TextInput
+                mode="outlined"
+                value={editValidUntilTime}
+                onChangeText={setEditValidUntilTime}
+                style={styles.input}
+                outlineColor={colors.gray[300]}
+                activeOutlineColor={colors.orange}
+                placeholder="HH:mm"
+              />
+              <Text style={styles.helperText}>
+                Digite a hora no formato HH:mm (ex: 23:00)
+              </Text>
               
               <View style={styles.buttonContainer}>
                 <Button 
@@ -344,6 +381,7 @@ export default function Coupons() {
               <View style={styles.formSection}>
                 <Text style={styles.sectionTitle}>Validade e Limites</Text>
                 
+                <Text style={styles.inputLabel}>Data de validade</Text>
                 <TextInput
                   mode="outlined"
                   value={newCouponValidUntil}
@@ -354,6 +392,21 @@ export default function Coupons() {
                   placeholder="DD/MM/AAAA"
                   right={<TextInput.Icon icon="calendar" color={colors.orange} />}
                 />
+
+                <Text style={styles.inputLabel}>Hora de validade</Text>
+                <TextInput
+                  mode="outlined"
+                  value={newCouponValidUntilTime}
+                  onChangeText={setNewCouponValidUntilTime}
+                  style={styles.input}
+                  outlineColor={colors.gray[300]}
+                  activeOutlineColor={colors.orange}
+                  placeholder="HH:mm"
+                  right={<TextInput.Icon icon="clock-outline" color={colors.orange} />}
+                />
+                <Text style={styles.helperText}>
+                  Digite a hora no formato HH:mm (ex: 23:00)
+                </Text>
               </View>
             </View>
           </ScrollView>

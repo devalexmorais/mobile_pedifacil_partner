@@ -69,6 +69,14 @@ export type Pedido = {
   userName?: string;
   status?: 'pending' | 'preparing' | 'ready' | 'out_for_delivery' | 'delivered' | 'cancelled';
   observations?: string;
+  coupon?: string;
+  hasCoupon: boolean;
+  couponCode: string;
+  couponApplied?: {
+    validUntil: string;
+    validUntilTime: string;
+    value: number;
+  };
 };
 
 type PedidosContextData = {
@@ -169,7 +177,11 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           userId: data.userId || '',
           userName: userName,
           status: data.status || 'pending',
-          observations: data.observations || ''
+          observations: data.observations || '',
+          coupon: data.coupon || '',
+          hasCoupon: data.hasCoupon || false,
+          couponCode: data.couponCode || '',
+          couponApplied: data.couponApplied || undefined
         } as Pedido;
       });
 
@@ -237,7 +249,11 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           updatedAt: data.updatedAt || new Date().toISOString(),
           userId: data.userId || '',
           status: data.status || 'pending',
-          observations: data.observations || ''
+          observations: data.observations || '',
+          coupon: data.coupon || '',
+          hasCoupon: data.hasCoupon || false,
+          couponCode: data.couponCode || '',
+          couponApplied: data.couponApplied || undefined
         } as Pedido;
       });
       setPedidosCozinha(pedidos);
@@ -284,7 +300,11 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           updatedAt: data.updatedAt || new Date().toISOString(),
           userId: data.userId || '',
           status: data.status || 'pending',
-          observations: data.observations || ''
+          observations: data.observations || '',
+          coupon: data.coupon || '',
+          hasCoupon: data.hasCoupon || false,
+          couponCode: data.couponCode || '',
+          couponApplied: data.couponApplied || undefined
         } as Pedido;
       });
       setPedidosProntos(pedidos);
@@ -331,7 +351,11 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           updatedAt: data.updatedAt || new Date().toISOString(),
           userId: data.userId || '',
           status: data.status || 'pending',
-          observations: data.observations || ''
+          observations: data.observations || '',
+          coupon: data.coupon || '',
+          hasCoupon: data.hasCoupon || false,
+          couponCode: data.couponCode || '',
+          couponApplied: data.couponApplied || undefined
         } as Pedido;
       });
       setPedidosEmEntrega(pedidos);
@@ -455,6 +479,64 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         status: 'delivered',
         updatedAt: new Date().toISOString()
       });
+      
+      // Se o pedido tiver um cupom, adicionar à lista de cupons usados pelo usuário
+      if (pedidoData.hasCoupon && pedidoData.couponCode && pedidoData.userId) {
+        console.log('Dados do cupom encontrados:', {
+          hasCoupon: pedidoData.hasCoupon,
+          couponCode: pedidoData.couponCode,
+          userId: pedidoData.userId,
+          couponApplied: pedidoData.couponApplied
+        });
+
+        const userRef = doc(db, 'users', pedidoData.userId);
+        console.log('Referência do usuário criada:', userRef.path);
+        
+        // Criar referência para a subcoleção usedCoupons
+        const usedCouponsRef = collection(userRef, 'usedCoupons');
+        
+        // Verificar se o cupom já existe na subcoleção
+        const usedCouponsQuery = query(usedCouponsRef, where('code', '==', pedidoData.couponCode));
+        const existingCoupons = await getDocs(usedCouponsQuery);
+        
+        if (existingCoupons.empty) {
+          try {
+            // Extrair dados do cupom do objeto couponApplied
+            const couponData = {
+              validUntil: pedidoData.couponApplied?.validUntil || '',
+              validUntilTime: pedidoData.couponApplied?.validUntilTime || '',
+              value: Number(pedidoData.couponApplied?.value) || 0
+            };
+
+            // Adicionar novo cupom à subcoleção com as informações adicionais
+            await addDoc(usedCouponsRef, {
+              code: pedidoData.couponCode,
+              usedAt: new Date().toISOString(),
+              orderId: pedidoId,
+              usedBy: pedidoData.userId,
+              validUntil: couponData.validUntil,
+              validUntilTime: couponData.validUntilTime,
+              value: couponData.value
+            });
+            console.log('Cupom adicionado à subcoleção usedCoupons com sucesso:', {
+              code: pedidoData.couponCode,
+              validUntil: couponData.validUntil,
+              validUntilTime: couponData.validUntilTime,
+              value: couponData.value
+            });
+          } catch (error) {
+            console.error('Erro ao adicionar cupom à subcoleção:', error);
+          }
+        } else {
+          console.log('Cupom já existe na subcoleção usedCoupons');
+        }
+      } else {
+        console.log('Pedido não possui cupom ou dados necessários:', {
+          hasCoupon: pedidoData.hasCoupon,
+          couponCode: pedidoData.couponCode,
+          userId: pedidoData.userId
+        });
+      }
       
       // Preparar os dados de taxas
       const appFeeData = {

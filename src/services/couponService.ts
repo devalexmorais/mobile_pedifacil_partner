@@ -8,6 +8,7 @@ export interface Coupon {
   discountType: 'percentage' | 'fixed';
   value: number;
   validUntil: string;
+  validUntilTime: string;
   isActive: boolean;
   usedBy: string[];
   createdAt?: string;

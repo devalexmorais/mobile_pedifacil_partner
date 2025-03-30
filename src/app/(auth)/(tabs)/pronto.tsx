@@ -7,7 +7,7 @@ import { Pedido } from '../../../contexts/PedidosContext';
 
 export default function Pronto() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const { pedidosProntos, marcarComoEmEntrega, marcarComoEntregue } = usePedidos();
+  const { pedidosProntos, marcarComoEmEntrega } = usePedidos();
   const [isProcessing, setIsProcessing] = useState(false);
 
   if (pedidosProntos.length === 0) {
