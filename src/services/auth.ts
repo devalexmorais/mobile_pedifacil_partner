@@ -1,6 +1,14 @@
-import auth from '@react-native-firebase/auth';
+import { auth } from '@/config/firebase';
 import firestore from '@react-native-firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signOut,
+  onAuthStateChanged as firebaseOnAuthStateChanged,
+  PhoneAuthProvider,
+  User as FirebaseUser
+} from 'firebase/auth';
 
 export type User = {
   id: string;
@@ -48,7 +56,7 @@ const tokenListeners: TokenListener[] = [];
 export const authService = {
   async login({ email, password }: { email: string; password: string }): Promise<User> {
     try {
-      const userCredential = await auth().signInWithEmailAndPassword(email, password);
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const { user } = userCredential;
 
       if (!user) {
@@ -64,6 +72,7 @@ export const authService = {
 
       const token = await user.getIdToken();
       await AsyncStorage.setItem('@auth_token', token);
+      await AsyncStorage.setItem('@user_data', JSON.stringify({ id: user.uid, ...userData }));
 
       // Notificar os listeners sobre a mudança no token
       tokenListeners.forEach(listener => listener(token));
@@ -83,8 +92,9 @@ export const authService = {
 
   async logout(): Promise<void> {
     try {
-      await auth().signOut();
+      await signOut(auth);
       await AsyncStorage.removeItem('@auth_token');
+      await AsyncStorage.removeItem('@user_data');
       
       // Notificar os listeners sobre o logout
       tokenListeners.forEach(listener => listener(null));
@@ -99,7 +109,7 @@ export const authService = {
       const { email, password, ...userData } = data;
       
       // Criar usuário no Firebase Auth
-      const userCredential = await auth().createUserWithEmailAndPassword(email, password);
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const { user } = userCredential;
 
       if (!user) {
@@ -115,6 +125,7 @@ export const authService = {
 
       const token = await user.getIdToken();
       await AsyncStorage.setItem('@auth_token', token);
+      await AsyncStorage.setItem('@user_data', JSON.stringify({ id: user.uid, email: user.email, ...userData }));
 
       // Notificar os listeners sobre o novo token
       tokenListeners.forEach(listener => listener(token));
@@ -135,9 +146,14 @@ export const authService = {
 
   async getCurrentUser(): Promise<User | null> {
     try {
-      const user = auth().currentUser;
+      const user = auth.currentUser;
       
       if (!user) {
+        // Tentar recuperar do AsyncStorage
+        const storedUser = await AsyncStorage.getItem('@user_data');
+        if (storedUser) {
+          return JSON.parse(storedUser);
+        }
         return null;
       }
 
@@ -148,10 +164,15 @@ export const authService = {
         return null;
       }
 
-      return {
+      const currentUser = {
         id: user.uid,
         ...userData,
       };
+
+      // Atualizar AsyncStorage
+      await AsyncStorage.setItem('@user_data', JSON.stringify(currentUser));
+
+      return currentUser;
     } catch (error) {
       console.error('Erro ao obter usuário atual:', error);
       return null;
@@ -159,16 +180,26 @@ export const authService = {
   },
 
   onAuthStateChanged(callback: (user: User | null) => void) {
-    return auth().onAuthStateChanged(async (firebaseUser) => {
+    return firebaseOnAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         const userDoc = await firestore().collection('stores').doc(firebaseUser.uid).get();
         const userData = userDoc.data() as Omit<User, 'id'>;
 
-        callback({
+        const user = {
           id: firebaseUser.uid,
           ...userData,
-        });
+        };
+
+        // Atualizar AsyncStorage
+        await AsyncStorage.setItem('@user_data', JSON.stringify(user));
+        const token = await firebaseUser.getIdToken();
+        await AsyncStorage.setItem('@auth_token', token);
+
+        callback(user);
       } else {
+        // Limpar dados do AsyncStorage
+        await AsyncStorage.removeItem('@user_data');
+        await AsyncStorage.removeItem('@auth_token');
         callback(null);
       }
     });
@@ -176,7 +207,16 @@ export const authService = {
 
   async getToken(): Promise<string | null> {
     try {
-      return await AsyncStorage.getItem('@auth_token');
+      const token = await AsyncStorage.getItem('@auth_token');
+      if (!token) {
+        const user = auth.currentUser;
+        if (user) {
+          const newToken = await user.getIdToken();
+          await AsyncStorage.setItem('@auth_token', newToken);
+          return newToken;
+        }
+      }
+      return token;
     } catch (error) {
       console.error('Erro ao obter token:', error);
       return null;
@@ -195,9 +235,10 @@ export const authService = {
 
   async sendPhoneVerificationCode(phoneNumber: string): Promise<void> {
     try {
-      const confirmation = await auth().verifyPhoneNumber(phoneNumber);
-      // Armazenar o verificationId para uso posterior
-      await AsyncStorage.setItem('@phone_verification_id', confirmation.verificationId);
+      // Implementar verificação de telefone usando o método apropriado do Firebase
+      // Esta funcionalidade pode precisar ser implementada de forma diferente
+      // dependendo da versão do Firebase que você está usando
+      throw new Error('Verificação de telefone não implementada');
     } catch (error: any) {
       console.error('Erro ao enviar código:', error);
       throw new Error('Erro ao enviar código de verificação');
@@ -206,29 +247,12 @@ export const authService = {
 
   async verifyPhoneCode(code: string): Promise<void> {
     try {
-      const verificationId = await AsyncStorage.getItem('@phone_verification_id');
-      
-      if (!verificationId) {
-        throw new Error('Nenhuma verificação de telefone em andamento');
-      }
-
-      const credential = auth.PhoneAuthProvider.credential(verificationId, code);
-      
-      // Vincular o número de telefone à conta do usuário
-      const currentUser = auth().currentUser;
-      if (currentUser) {
-        await currentUser.linkWithCredential(credential);
-      } else {
-        throw new Error('Usuário não está autenticado');
-      }
-
-      // Limpar o verificationId após o uso
-      await AsyncStorage.removeItem('@phone_verification_id');
+      // Implementar verificação de código de telefone usando o método apropriado do Firebase
+      // Esta funcionalidade pode precisar ser implementada de forma diferente
+      // dependendo da versão do Firebase que você está usando
+      throw new Error('Verificação de código de telefone não implementada');
     } catch (error: any) {
       console.error('Erro ao verificar código:', error);
-      if (error.code === 'auth/invalid-verification-code') {
-        throw new Error('Código de verificação inválido');
-      }
       throw new Error('Erro ao verificar código');
     }
   },

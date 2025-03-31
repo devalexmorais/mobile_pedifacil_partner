@@ -37,11 +37,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (!token) {
           setLoading(false);
+          router.replace('/');
           return;
         }
+
+        // Aguarda um pequeno delay para garantir que o Firebase esteja pronto
+        setTimeout(() => {
+          if (auth.currentUser) {
+            router.replace('/(auth)/(tabs)/pedidos');
+          }
+        }, 1000);
       } catch (error) {
         console.error('Erro ao verificar autenticação:', error);
         setLoading(false);
+        router.replace('/');
       }
     };
 
@@ -50,13 +59,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('Estado de autenticação alterado:', !!user);
       
       if (user) {
-        // Atualizar token quando o usuário estiver autenticado
-        const token = await user.getIdToken();
-        await AsyncStorage.setItem('@auth_token', token);
+        try {
+          // Atualizar token quando o usuário estiver autenticado
+          const token = await user.getIdToken();
+          await AsyncStorage.setItem('@auth_token', token);
+          
+          // Aguarda um pequeno delay para garantir que o Firebase esteja pronto
+          setTimeout(() => {
+            router.replace('/(auth)/(tabs)/pedidos');
+          }, 1000);
+        } catch (error) {
+          console.error('Erro ao atualizar token:', error);
+          router.replace('/');
+        }
+      } else {
+        // Se não estiver autenticado, redireciona para a tela inicial
+        router.replace('/');
       }
       
       setUser(user);
-      await checkAuthStatus();
+      setLoading(false);
     });
 
     // Verificar autenticação inicial
