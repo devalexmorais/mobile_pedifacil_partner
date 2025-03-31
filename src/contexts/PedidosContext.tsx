@@ -453,8 +453,8 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
       const isPremium = partnerData.store?.isPremium || false;
       
       // Calcular a taxa com base no status premium
-      // Taxa menor para estabelecimentos premium (3%) e maior para não premium (5%)
-      const appFeePercentage = isPremium ? 0.03 : 0.05;
+      // Taxa menor para estabelecimentos premium (5%) e maior para não premium (8%)
+      const appFeePercentage = isPremium ? 0.05 : 0.08;
       
       // Calcular o valor base para aplicação da taxa (totalPrice - deliveryFee - cardFee)
       const totalPrice = Number(pedidoData.totalPrice || 0);
