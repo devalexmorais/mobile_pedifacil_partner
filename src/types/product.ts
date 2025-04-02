@@ -2,12 +2,38 @@ export interface Product {
   id: string;
   name: string;
   description: string;
-  price: string;
-  image: string;
+  price: number;
   category: string;
-  productType: 'simple' | 'additional' | 'combo';
+  categoryId: string;
+  image?: string;
   isActive: boolean;
-  optionGroups: OptionGroup[];
+  isPromotion: boolean;
+  promotion?: Promotion;
+  createdAt: Date;
+  updatedAt: Date;
+  sellerId: string;
+  variations: {
+    name: string;
+    options: {
+      name: string;
+      price?: number;
+    }[];
+  }[];
+  requiredSelections: {
+    name: string;
+    minRequired: number;
+    maxRequired: number;
+    options: {
+      name: string;
+      price?: number;
+    }[];
+  }[];
+  extras: {
+    name: string;
+    extraPrice: number;
+    minRequired: number;
+    maxRequired: number;
+  }[];
 }
 
 export interface Promotion {

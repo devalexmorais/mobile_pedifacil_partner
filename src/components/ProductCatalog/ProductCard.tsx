@@ -9,6 +9,12 @@ interface Product {
   price: number;
   image?: string;
   isActive: boolean;
+  isPromotion?: boolean;
+  promotionalPrice?: number;
+  promotion?: {
+    discountType: 'percentage' | 'fixed';
+    discountValue: number;
+  };
 }
 
 interface ProductCardProps {
@@ -19,6 +25,7 @@ interface ProductCardProps {
   onEdit: () => void;
   onDelete: () => void;
   onPress: () => void;
+  onTogglePromotion?: () => void;
   defaultImage: string;
 }
 
@@ -30,8 +37,26 @@ export function ProductCard({
   onEdit,
   onDelete,
   onPress,
+  onTogglePromotion,
   defaultImage
 }: ProductCardProps) {
+  const calculatePromotionalPrice = () => {
+    if (!product.promotion) return null;
+
+    const originalPrice = product.price;
+    const { discountType, discountValue } = product.promotion;
+
+    // Se for desconto fixo, subtrai o valor diretamente
+    if (discountType === 'fixed') {
+      return originalPrice - discountValue;
+    }
+    
+    // Se for porcentagem, calcula a porcentagem do preço
+    return originalPrice * (1 - discountValue / 100);
+  };
+
+  const promotionalPrice = calculatePromotionalPrice();
+
   return (
     <TouchableOpacity onPress={onPress}>
       <View style={[
@@ -44,9 +69,28 @@ export function ProductCard({
           style={styles.productImage}
         />
         <View style={styles.productInfo}>
-          <Text style={styles.productName}>{product.name}</Text>
-          <Text style={styles.productDescription}>{product.description}</Text>
-          <Text style={styles.productPrice}>R$ {product.price.toFixed(2)}</Text>
+          <View>
+            <Text style={styles.productName}>{product.name}</Text>
+            <Text style={styles.productDescription} numberOfLines={2}>
+              {product.description}
+            </Text>
+          </View>
+          <View>
+            {product.isPromotion ? (
+              <View>
+                <Text style={[styles.productPrice, styles.originalPrice]}>
+                  R$ {product.price.toFixed(2)}
+                </Text>
+                <Text style={[styles.productPrice, styles.promotionalPrice]}>
+                  R$ {promotionalPrice?.toFixed(2)}
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.productPrice}>
+                R$ {product.price.toFixed(2)}
+              </Text>
+            )}
+          </View>
         </View>
         <View style={styles.productActions}>
           {!isPremium && isExceedingLimit && (
@@ -62,9 +106,21 @@ export function ProductCard({
             <Ionicons
               name={product.isActive ? "checkmark-circle" : "close-circle"}
               size={24}
-              color={product.isActive ? "#4CAF50" : "#FF3B30"}
+              color={product.isActive ? "#4CAF50" : "#666"}
             />
           </TouchableOpacity>
+          {isPremium && (
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={onTogglePromotion}
+            >
+              <Ionicons
+                name={product.isPromotion ? "pricetag" : "pricetag-outline"}
+                size={20}
+                color={product.isPromotion ? "#FFA500" : "#666"}
+              />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             onPress={onEdit}
             style={styles.actionButton}
@@ -127,10 +183,25 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 2,
   },
+  priceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   productPrice: {
     fontSize: 14,
     fontWeight: '600',
     color: '#FFA500',
+  },
+  originalPrice: {
+    textDecorationLine: 'line-through',
+    color: '#999',
+    fontSize: 12,
+  },
+  promotionalPrice: {
+    color: '#FF6B6B',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   productActions: {
     justifyContent: 'space-between',

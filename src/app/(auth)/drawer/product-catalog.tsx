@@ -21,9 +21,11 @@ import { CategoryList } from '@/components/ProductCatalog/CategoryList';
 import { ProductCard } from '@/components/ProductCatalog/ProductCard';
 import { ProductFormModal } from '@/components/ProductCatalog/ProductFormModal';
 import { ProductDetailsModal } from '@/components/ProductCatalog/ProductDetailsModal';
+import { PromotionModal } from '@/components/ProductCatalog/PromotionModal';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage } from '../../../config/firebase';
 import { categoryService } from '@/services/categoryService';
+import { Product, Promotion } from '@/types/product';
 
 interface ProductOption {
   name: string;
@@ -47,23 +49,6 @@ interface Extra {
   extraPrice: number;
   minRequired: number;
   maxRequired: number;
-}
-
-interface Product {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  category: string;
-  image?: string;
-  isActive: boolean;
-  isPromotion: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-  sellerId: string;
-  variations: ProductVariation[];
-  requiredSelections: RequiredSelection[];
-  extras: Extra[];
 }
 
 interface Category {
@@ -134,7 +119,15 @@ export default function ProductCatalog() {
   const [showDowngradeModal, setShowDowngradeModal] = useState(false);
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [isPromotionModalVisible, setIsPromotionModalVisible] = useState(false);
+  const [selectedProductForPromotion, setSelectedProductForPromotion] = useState<Product | null>(null);
   
+  // Adiciona a categoria de promoções
+  const promotionCategory: CategoryOption = {
+    id: 'promotions',
+    name: 'Promoções'
+  };
+
   useEffect(() => {
     loadProducts();
     loadCategories();
@@ -157,6 +150,7 @@ export default function ProductCatalog() {
       const productsData = productsSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
+        isPromotion: doc.data().isPromotion || false,
         createdAt: doc.data().createdAt?.toDate(),
         updatedAt: doc.data().updatedAt?.toDate()
       })) as Product[];
@@ -174,12 +168,12 @@ export default function ProductCatalog() {
 
       // Agrupar produtos por categoria
       const groupedProducts = filteredProducts.reduce((acc, product) => {
-        const category = acc.find(cat => cat.name === product.category);
+        const category = acc.find(cat => cat.id === product.categoryId);
         if (category) {
           category.products.push(product);
         } else {
           acc.push({
-            id: product.category,
+            id: product.categoryId,
             name: product.category,
             products: [product]
           });
@@ -234,8 +228,9 @@ export default function ProductCatalog() {
         // Continua mesmo se falhar
       }
 
-      setAvailableCategories(categoriesData);
-      console.log('Total de categorias disponíveis:', categoriesData.length);
+      // Adiciona a categoria de promoções no início da lista
+      setAvailableCategories([promotionCategory, ...categoriesData]);
+      console.log('Total de categorias disponíveis:', categoriesData.length + 1);
     } catch (error) {
       console.error('Erro geral ao carregar categorias:', error);
     }
@@ -510,7 +505,7 @@ export default function ProductCatalog() {
         category: newProduct.category,
         categoryId: newProduct.categoryId,
         isActive: newProduct.isActive,
-        isPromotion: newProduct.isPromotion,
+        isPromotion: false, // Garante que isPromotion seja sempre definido
         createdAt: new Date(),
         updatedAt: new Date(),
         sellerId: user.uid,
@@ -647,13 +642,35 @@ export default function ProductCatalog() {
     return text.toLowerCase().includes(search.toLowerCase());
   };
 
+  const calculatePromotionalPrice = (product: Product) => {
+    if (!product.isPromotion || !product.promotion) return product.price;
+    
+    const { discountType, discountValue } = product.promotion;
+    if (discountType === 'percentage') {
+      return product.price * (1 - discountValue / 100);
+    } else {
+      return product.price - discountValue;
+    }
+  };
+
   const filteredCategories = categories.map(category => ({
     ...category,
     products: category.products.filter(product => 
       safeStringCompare(product.name, searchText)
-    )
+    ).map(product => ({
+      ...product,
+      promotionalPrice: product.isPromotion ? calculatePromotionalPrice(product) : undefined
+    }))
   })).filter(category => category.products.length > 0);
 
+  const displayCategories = selectedCategory === 'promotions' 
+    ? filteredCategories.map(category => ({
+        ...category,
+        products: category.products.filter(product => product.isPromotion)
+      }))
+    : selectedCategory 
+      ? filteredCategories.filter(category => category.id === selectedCategory)
+      : filteredCategories;
 
   const removeVariation = (index: number) => {
     setNewProduct(prev => ({
@@ -891,6 +908,92 @@ export default function ProductCatalog() {
     removeExtra,
   };
 
+  const handleTogglePromotion = async (product: Product) => {
+    if (!isPremium) {
+      Alert.alert(
+        'Funcionalidade Premium',
+        'A funcionalidade de promoções está disponível apenas para assinantes premium.',
+        [
+          {
+            text: 'Fazer Upgrade',
+            onPress: handleUpgrade,
+          },
+          {
+            text: 'Cancelar',
+            style: 'cancel',
+          },
+        ]
+      );
+      return;
+    }
+
+    setSelectedProductForPromotion(product);
+    setIsPromotionModalVisible(true);
+  };
+
+  const handleSavePromotion = async (promotion: Promotion) => {
+    try {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      const productRef = doc(db, 'partners', user.uid, 'products', promotion.productId);
+      await updateDoc(productRef, {
+        isPromotion: true,
+        promotion,
+        updatedAt: new Date()
+      });
+
+      setIsPromotionModalVisible(false);
+      setSelectedProductForPromotion(null);
+      loadProducts(); // Recarrega a lista de produtos
+      Alert.alert('Sucesso', 'Promoção adicionada com sucesso!');
+    } catch (error) {
+      console.error('Erro ao salvar promoção:', error);
+      Alert.alert('Erro', 'Não foi possível salvar a promoção');
+    }
+  };
+
+  const handleRemovePromotion = async (product: Product) => {
+    try {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      Alert.alert(
+        'Remover Promoção',
+        'Tem certeza que deseja remover a promoção deste produto?',
+        [
+          {
+            text: 'Cancelar',
+            style: 'cancel'
+          },
+          {
+            text: 'Remover',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                const productRef = doc(db, 'partners', user.uid, 'products', product.id);
+                await updateDoc(productRef, {
+                  isPromotion: false,
+                  promotion: null,
+                  updatedAt: new Date()
+                });
+
+                loadProducts(); // Recarrega a lista de produtos
+                Alert.alert('Sucesso', 'Promoção removida com sucesso!');
+              } catch (error) {
+                console.error('Erro ao remover promoção:', error);
+                Alert.alert('Erro', 'Não foi possível remover a promoção');
+              }
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('Erro ao remover promoção:', error);
+      Alert.alert('Erro', 'Não foi possível remover a promoção');
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -911,7 +1014,7 @@ export default function ProductCatalog() {
       />
 
       <CategoryList 
-        categories={categories}
+        categories={availableCategories}
         selectedCategory={selectedCategory}
         onSelectCategory={setSelectedCategory}
       />
@@ -921,24 +1024,29 @@ export default function ProductCatalog() {
         contentContainerStyle={styles.productsListContent}
         showsVerticalScrollIndicator={false}
       >
-        {filteredCategories
-          .filter(category => !selectedCategory || category.id === selectedCategory)
-          .map(category => (
+        {displayCategories.map(category => (
           <View key={category.id} style={styles.categorySection}>
-            <Text style={styles.categoryTitle}>{category.name}</Text>
-            {category.products.map(product => (
+            {selectedCategory !== 'promotions' && (
+              <Text style={styles.categoryTitle}>{category.name}</Text>
+            )}
+            {category.products
+              .filter(product => selectedCategory === 'promotions' ? product.isPromotion : !product.isPromotion)
+              .map(product => (
                 <ProductCard
-                key={product.id}
+                  key={product.id}
                   product={product}
                   isExceedingLimit={isProductExceedingLimit(product)}
                   isPremium={isPremium}
                   onToggleAvailability={() => toggleProductAvailability(product)}
                   onEdit={() => handleEditProduct(product)}
                   onDelete={() => handleDeleteProduct(product)}
-                onPress={() => handleProductPress(product)}
+                  onTogglePromotion={selectedCategory === 'promotions' 
+                    ? () => handleRemovePromotion(product)
+                    : () => handleTogglePromotion(product)}
+                  onPress={() => handleProductPress(product)}
                   defaultImage={defaultProductImage}
                 />
-            ))}
+              ))}
           </View>
         ))}
       </ScrollView>
@@ -1076,6 +1184,16 @@ export default function ProductCatalog() {
           </View>
         </View>
       </Modal>
+
+      <PromotionModal
+        visible={isPromotionModalVisible}
+        onClose={() => {
+          setIsPromotionModalVisible(false);
+          setSelectedProductForPromotion(null);
+        }}
+        onSave={handleSavePromotion}
+        product={selectedProductForPromotion}
+      />
     </SafeAreaView>
   );
 }
@@ -1751,5 +1869,16 @@ const styles = StyleSheet.create({
   productStatusLabel: {
     fontSize: 12,
     marginTop: 4,
+  },
+  promotionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  promotionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFA500',
   },
 });
