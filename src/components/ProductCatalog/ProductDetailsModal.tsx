@@ -70,14 +70,14 @@ export function ProductDetailsModal({
     <Modal
       visible={visible}
       animationType="slide"
-      transparent={true}
+      transparent={false}
       onRequestClose={onClose}
     >
       <View style={styles.modalContainer}>
         <View style={styles.modalContent}>
           <View style={styles.header}>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={24} color="#333" />
+              <Ionicons name="arrow-back" size={24} color="#333" />
             </TouchableOpacity>
             <Text style={styles.modalTitle}>Detalhes do Produto</Text>
             <View style={styles.headerSpacer} />
@@ -199,104 +199,107 @@ export function ProductDetailsModal({
 const styles = StyleSheet.create({
   modalContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: '#fff',
   },
   modalContent: {
+    flex: 1,
     backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '90%',
-    minHeight: '60%',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
+    backgroundColor: '#fff',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
   closeButton: {
-    padding: 4,
+    padding: 8,
   },
   modalTitle: {
     flex: 1,
     textAlign: 'center',
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
   },
   headerSpacer: {
-    width: 28,
+    width: 40,
   },
   scrollContent: {
     flex: 1,
   },
   productImage: {
     width: '100%',
-    height: 200,
+    height: 280,
   },
   infoSection: {
-    padding: 16,
+    padding: 24,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
   },
   productName: {
-    fontSize: 22,
+    fontSize: 26,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 4,
+    marginBottom: 10,
   },
   productCategory: {
-    fontSize: 14,
+    fontSize: 16,
     color: '#666',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   productPrice: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#FFA500',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   productStatus: {
-    fontSize: 14,
+    fontSize: 16,
     color: '#666',
+    marginBottom: 12,
   },
   promotionLabel: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFA500',
     alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
     marginTop: 8,
   },
   promotionText: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: 'bold',
-    marginLeft: 4,
+    marginLeft: 6,
   },
   section: {
-    padding: 16,
+    padding: 24,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   description: {
-    fontSize: 15,
+    fontSize: 16,
     color: '#333',
-    lineHeight: 22,
+    lineHeight: 24,
   },
   variationItem: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   variationName: {
     fontSize: 16,

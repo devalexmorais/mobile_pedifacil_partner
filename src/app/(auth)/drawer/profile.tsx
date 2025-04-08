@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Auth, getAuth } from 'firebase/auth';
 import { EditableField } from '../../../components/EditableField';
 import * as ImagePicker from 'expo-image-picker';
+import { ProfileSkeleton } from '../../../components/skeleton';
 
 // Inicializar auth com tipagem correta
 const auth: Auth = getAuth();
@@ -285,11 +286,7 @@ export default function Profile() {
   }, []);
 
   if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#FFA500" />
-      </View>
-    );
+    return <ProfileSkeleton />;
   }
 
   if (!partnerData) {
@@ -551,11 +548,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: '#333',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   errorContainer: {
     flex: 1,

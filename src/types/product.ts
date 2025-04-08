@@ -26,6 +26,7 @@ export interface Product {
     options: {
       name: string;
       price?: number;
+      isActive?: boolean;
     }[];
   }[];
   extras: {

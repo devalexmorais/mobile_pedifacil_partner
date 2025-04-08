@@ -50,6 +50,10 @@ export function ProductFormModal({
 }: ProductFormModalProps) {
   useEffect(() => {
     if (isEditing && editingProduct) {
+      if (newProduct.name === editingProduct.name) {
+        return;
+      }
+      
       const formVariations: FormVariation[] = (editingProduct.variations || []).map(variation => ({
         name: variation.name,
         description: variation.options?.[0]?.name || '',
@@ -72,7 +76,8 @@ export function ProductFormModal({
           minRequired: selection.minRequired,
           maxRequired: selection.maxRequired,
           options: selection.options.map(option => ({
-            name: option.name
+            name: option.name,
+            isActive: option.isActive !== false
           }))
         })) || [],
         extras: editingProduct.extras || [],

@@ -1,12 +1,15 @@
-import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 interface RequiredSelection {
   name: string;
   minRequired: number;
   maxRequired: number;
-  options: { name: string }[];
+  options: {
+    name: string;
+    isActive?: boolean;
+  }[];
 }
 
 interface ProductRequiredSelectionsProps {
@@ -106,20 +109,39 @@ export function ProductRequiredSelections({ selections, onUpdate }: ProductRequi
             <View key={optionIndex} style={styles.optionContainer}>
               <View style={styles.itemHeader}>
                 <Text style={styles.itemTitle}>Opção {optionIndex + 1}</Text>
-                <TouchableOpacity 
-                  style={styles.removeButton}
-                  onPress={() => {
-                    const newSelections = [...selections];
-                    newSelections[selectionIndex].options = 
-                      newSelections[selectionIndex].options.filter((_, i) => i !== optionIndex);
-                    onUpdate(newSelections);
-                  }}
-                >
-                  <Ionicons name="close-circle" size={24} color="#FF3B30" />
-                </TouchableOpacity>
+                <View style={styles.optionActions}>
+                  <TouchableOpacity 
+                    style={[styles.toggleButton, !option.isActive && styles.toggleButtonInactive]}
+                    onPress={() => {
+                      const newSelections = [...selections];
+                      newSelections[selectionIndex].options[optionIndex].isActive = !option.isActive;
+                      onUpdate(newSelections);
+                    }}
+                  >
+                    <View style={styles.toggleButtonCircle} />
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.removeButton}
+                    onPress={() => {
+                      const newSelections = [...selections];
+                      if (newSelections[selectionIndex].options.length <= 1) {
+                        Alert.alert(
+                          'Aviso',
+                          'Não é possível remover a última opção de uma seleção obrigatória. Adicione outra opção primeiro ou remova a seleção inteira.'
+                        );
+                        return;
+                      }
+                      newSelections[selectionIndex].options = 
+                        newSelections[selectionIndex].options.filter((_, i) => i !== optionIndex);
+                      onUpdate(newSelections);
+                    }}
+                  >
+                    <Ionicons name="trash-outline" size={24} color="#FF3B30" />
+                  </TouchableOpacity>
+                </View>
               </View>
               <TextInput
-                style={styles.input}
+                style={[styles.input, !option.isActive && styles.inputInactive]}
                 value={option.name}
                 onChangeText={(text) => {
                   const newSelections = [...selections];
@@ -127,6 +149,7 @@ export function ProductRequiredSelections({ selections, onUpdate }: ProductRequi
                   onUpdate(newSelections);
                 }}
                 placeholder="Nome da opção"
+                editable={option.isActive !== false}
               />
             </View>
           ))}
@@ -255,5 +278,33 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 14,
     fontWeight: '500',
+  },
+  optionActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  toggleButton: {
+    width: 40,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#4CAF50',
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+    padding: 2,
+  },
+  toggleButtonInactive: {
+    backgroundColor: '#ccc',
+    alignItems: 'flex-start',
+  },
+  toggleButtonCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+  },
+  inputInactive: {
+    backgroundColor: '#f5f5f5',
+    color: '#999',
   },
 }); 

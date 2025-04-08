@@ -26,10 +26,12 @@ import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'fire
 import { storage } from '../../../config/firebase';
 import { categoryService } from '@/services/categoryService';
 import { Product, Promotion } from '@/types/product';
+import { ProductCatalogSkeleton } from '@/components/skeleton';
 
 interface ProductOption {
   name: string;
   price?: number;
+  isActive?: boolean;
 }
 
 interface ProductVariation {
@@ -41,7 +43,10 @@ interface RequiredSelection {
   name: string;
   minRequired: number;
   maxRequired: number;
-  options: ProductOption[];
+  options: {
+    name: string;
+    isActive?: boolean;
+  }[];
 }
 
 interface Extra {
@@ -400,12 +405,41 @@ export default function ProductCatalog() {
 
   const handleEditProduct = async (product: Product) => {
     try {
-      // Recarrega as categorias antes de abrir o modal
-      await loadCategories();
+      // Não recarregamos as categorias aqui para evitar recarregamento desnecessário
+      // await loadCategories();
       
       setEditingProduct(product);
       setIsEditing(true);
       setIsModalVisible(true);
+
+      // Atualiza o formulário com os dados do produto
+      setNewProduct({
+        name: product.name,
+        description: product.description || '',
+        price: formatPrice((product.price * 100).toString()),
+        category: product.category,
+        categoryId: product.categoryId || '',
+        isActive: product.isActive,
+        isPromotion: product.isPromotion || false,
+        promotionalPrice: null,
+        variations: product.variations.map(variation => ({
+          name: variation.name,
+          description: variation.options?.[0]?.name || '',
+          price: formatPrice(((variation.options?.[0]?.price ?? 0) * 100).toString()),
+          isAvailable: true
+        })),
+        requiredSelections: product.requiredSelections.map(selection => ({
+          name: selection.name,
+          minRequired: selection.minRequired,
+          maxRequired: selection.maxRequired,
+          options: selection.options.map(option => ({
+            name: option.name,
+            isActive: option.isActive !== false // Garante que o campo isActive seja carregado
+          }))
+        })),
+        extras: product.extras || [],
+        image: product.image || null
+      });
     } catch (error) {
       console.error('Erro ao carregar produto para edição:', error);
       Alert.alert('Erro', 'Não foi possível carregar o produto para edição');
@@ -483,6 +517,20 @@ export default function ProductCatalog() {
         return;
       }
 
+      // Validar se todas as seleções obrigatórias têm pelo menos uma opção ativa
+      const invalidSelections = newProduct.requiredSelections.filter(
+        selection => selection.options.filter(option => option.isActive !== false).length === 0
+      );
+
+      if (invalidSelections.length > 0) {
+        Alert.alert(
+          'Erro',
+          'Todas as seleções obrigatórias precisam ter pelo menos uma opção ativa. Por favor, ative ou adicione opções para as seguintes seleções:\n\n' +
+          invalidSelections.map(s => s.name || 'Seleção sem nome').join('\n')
+        );
+        return;
+      }
+
       // Converter preço para número (de centavos para reais)
       const price = parseFloat(unformatPrice(newProduct.price)) / 100;
 
@@ -497,25 +545,36 @@ export default function ProductCatalog() {
         };
       });
 
+      // Processar seleções obrigatórias
+      const requiredSelections = newProduct.requiredSelections.map(selection => ({
+        name: selection.name,
+        minRequired: selection.minRequired,
+        maxRequired: selection.maxRequired,
+        options: selection.options.map(option => ({
+          name: option.name,
+          isActive: option.isActive !== false
+        }))
+      }));
+
       // Conteúdo do documento do produto
-      const productData = {
+      const productData: Omit<Product, 'id' | 'image'> = {
         name: newProduct.name,
         description: newProduct.description,
         price,
         category: newProduct.category,
         categoryId: newProduct.categoryId,
         isActive: newProduct.isActive,
-        isPromotion: false, // Garante que isPromotion seja sempre definido
+        isPromotion: false,
         createdAt: new Date(),
         updatedAt: new Date(),
         sellerId: user.uid,
         variations,
-        requiredSelections: newProduct.requiredSelections,
+        requiredSelections,
         extras: newProduct.extras,
       };
 
       let productId: string;
-      let imageUrl: string | null = null;
+      let imageUrl: string | undefined = undefined;
 
       if (isEditing && editingProduct) {
         // Caso de edição
@@ -527,12 +586,35 @@ export default function ProductCatalog() {
         }
 
         const productRef = doc(db, 'partners', user.uid, 'products', productId);
+        
+        // Atualiza o documento no Firestore
         await updateDoc(productRef, {
           ...productData,
-          ...(imageUrl && { image: imageUrl }), // Atualiza a imagem apenas se houver uma nova
+          ...(imageUrl && { image: imageUrl }),
           updatedAt: new Date()
         });
 
+        // Atualiza o estado local sem recarregar
+        const updatedProduct: Product = {
+          ...productData,
+          id: productId,
+          image: imageUrl || editingProduct.image
+        };
+
+        // Atualiza o produto na lista de categorias sem recarregar
+        setCategories(prevCategories => 
+          prevCategories.map(category => ({
+            ...category,
+            products: category.products.map(p => 
+              p.id === productId ? updatedProduct : p
+            )
+          }))
+        );
+
+        // Fecha o modal e mostra mensagem de sucesso
+        handleCloseModal();
+        Alert.alert('Sucesso', 'Produto atualizado com sucesso!');
+        
       } else {
         // Caso de criação
         const productRef = doc(collection(db, 'partners', user.uid, 'products'));
@@ -543,24 +625,31 @@ export default function ProductCatalog() {
           imageUrl = await uploadProductImage(newProduct.image, productId);
         }
 
-        await setDoc(productRef, {
+        const newProductData: Product = {
           ...productData,
           id: productId,
-          image: imageUrl,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        });
-      }
+          image: imageUrl
+        };
 
-      handleCloseModal();
-      
-      // Recarregar as listas após salvar
-      await Promise.all([
-        loadProducts(),
-        loadCategories()
-      ]);
-      
-      Alert.alert('Sucesso', isEditing ? 'Produto atualizado com sucesso!' : 'Produto criado com sucesso!');
+        // Salva o novo produto no Firestore
+        await setDoc(productRef, newProductData);
+
+        // Atualiza o estado local sem recarregar
+        setCategories(prevCategories => 
+          prevCategories.map(category => 
+            category.id === newProduct.categoryId
+              ? {
+                  ...category,
+                  products: [...category.products, newProductData]
+                }
+              : category
+          )
+        );
+
+        // Fecha o modal e mostra mensagem de sucesso
+        handleCloseModal();
+        Alert.alert('Sucesso', 'Produto criado com sucesso!');
+      }
     } catch (error) {
       console.error('Erro ao salvar produto:', error);
       Alert.alert('Erro', 'Erro ao salvar produto');
@@ -995,11 +1084,7 @@ export default function ProductCatalog() {
   };
 
   if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#FFA500" />
-      </View>
-    );
+    return <ProductCatalogSkeleton />;
   }
 
   return (
