@@ -30,7 +30,7 @@ export default function EmEntrega() {
       // Exibir alerta após a entrega ser confirmada
       Alert.alert(
         'Pedido Concluído',
-        'Pedido marcado como entregue com sucesso! A taxa do aplicativo foi aplicada automaticamente.',
+        'Pedido marcado como entregue com sucesso!',
         [{ text: 'OK' }]
       );
     } catch (error) {
@@ -81,9 +81,6 @@ export default function EmEntrega() {
             <Text style={styles.orderTime}>
               Pedido feito às {formatarDataHora(item.createdAt)}
             </Text>
-            <Text style={styles.paymentMethod}>
-              Pagamento: {item.payment.method.toUpperCase()}
-            </Text>
           </View>
           <View style={styles.headerRight}>
             <Ionicons 
@@ -98,9 +95,9 @@ export default function EmEntrega() {
         <View style={styles.itemsList}>
           {item.items.map((itemPedido, index) => (
             <View key={index} style={styles.itemRow}>
-              <Ionicons name="radio-button-off" size={18} color="#666" />
+              <Text style={styles.quantityText}>{itemPedido.quantity}×</Text>
               <Text style={styles.itemText}>
-                {itemPedido.quantity}x {itemPedido.name}
+                {itemPedido.name}
               </Text>
             </View>
           ))}
@@ -108,6 +105,11 @@ export default function EmEntrega() {
 
         {isExpanded && (
           <View style={styles.expandedContent}>
+            <View style={styles.infoSection}>
+              <Text style={styles.sectionTitle}>Cliente:</Text>
+              <Text style={styles.infoText}>{item.userName}</Text>
+            </View>
+
             <View style={styles.infoSection}>
               <Text style={styles.sectionTitle}>Tipo de Pedido:</Text>
               <Text style={styles.infoText}>{isPickup ? 'Retirada no local' : 'Entrega'}</Text>
@@ -194,12 +196,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   orderTime: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
   },
   paymentMethod: {
-    fontSize: 14,
-    color: '#666',
+    display: 'none',
   },
   expandIcon: {
     marginLeft: 8,
@@ -213,11 +215,20 @@ const styles = StyleSheet.create({
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  quantityText: {
+    fontSize: 16,
+    color: '#666',
+    marginRight: 12,
+    fontWeight: '500',
   },
   itemText: {
-    fontSize: 14,
-    color: '#444',
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
     flex: 1,
   },
   expandedContent: {

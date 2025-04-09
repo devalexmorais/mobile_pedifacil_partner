@@ -103,15 +103,50 @@ export default function Pedidos() {
         {/* Lista de Itens */}
         <View style={styles.content}>
           <Text style={styles.sectionTitle}>Itens do Pedido</Text>
-          {item.items.map((produto, index) => (
-            <View key={index} style={styles.itemRow}>
-              <Text style={styles.itemQuantity}>{produto.quantity}x</Text>
-              <Text style={styles.itemName}>{produto.name}</Text>
-              <Text style={styles.itemPrice}>
-                R$ {(produto.price * produto.quantity).toFixed(2)}
-              </Text>
-            </View>
-          ))}
+          {item.items.map((produto, index) => {
+            // Calcular preço total do item incluindo opcionais
+            let precoItemComOpcionais = produto.price * produto.quantity;
+            if (produto.options && produto.options.length > 0) {
+              produto.options.forEach(option => {
+                precoItemComOpcionais += (option.price || 0);
+              });
+            }
+            
+            return (
+              <View key={index} style={styles.itemContainer}>
+                <View style={styles.itemRow}>
+                  <Text style={styles.itemQuantity}>{produto.quantity}x</Text>
+                  <Text style={styles.itemName}>{produto.name}</Text>
+                  <Text style={styles.itemPrice}>
+                    R$ {(produto.price * produto.quantity).toFixed(2)}
+                  </Text>
+                </View>
+                {produto.options && produto.options.length > 0 && (
+                  <View style={styles.optionsContainer}>
+                    {produto.options.map((option, optionIndex) => (
+                      <View key={`option-${optionIndex}`} style={styles.optionRow}>
+                        <Text style={styles.optionQuantity}>1x</Text>
+                        <Text style={styles.optionName}>{option.name}</Text>
+                        <Text style={styles.optionPrice}>
+                          R$ {(option.price || 0).toFixed(2)}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                
+                {/* Total do item com opcionais */}
+                {produto.options && produto.options.length > 0 && (
+                  <View style={styles.itemTotalRow}>
+                    <Text style={styles.itemTotalLabel}>Total:</Text>
+                    <Text style={styles.itemTotalValue}>
+                      R$ {precoItemComOpcionais.toFixed(2)}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            );
+          })}
         </View>
 
         {/* Informações do Cliente e Detalhes */}
@@ -129,8 +164,11 @@ export default function Pedidos() {
                 <View style={styles.infoRow}>
                   <Ionicons name="card-outline" size={16} color="#666" />
                   <Text style={styles.infoText}>
-                    Pagamento: {item.payment.method.toUpperCase()}
+                    Pagamento: {item.payment.method === 'money' ? 'DINHEIRO' : item.payment.method.toUpperCase()}
                     {item.payment.cardFee?.flagName && ` - ${item.payment.cardFee.flagName}`}
+                    {item.payment.method === 'money' && item.payment.troco && (
+                      ` - Troco para R$ ${Number(item.payment.troco).toFixed(2)} (R$ ${(Number(item.payment.troco) - item.finalPrice).toFixed(2)})`
+                    )}
                   </Text>
                 </View>
                 <View style={styles.infoRow}>
@@ -329,26 +367,85 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
   },
+  itemContainer: {
+    marginBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    paddingBottom: 4,
+  },
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   itemQuantity: {
     fontSize: 14,
     fontWeight: '500',
     color: '#666',
     width: 40,
+    textAlign: 'left',
   },
   itemName: {
     flex: 1,
     fontSize: 14,
     color: '#333',
+    fontWeight: '500',
   },
   itemPrice: {
     fontSize: 14,
     color: '#333',
     fontWeight: '500',
+    minWidth: 80,
+    textAlign: 'right',
+  },
+  optionsContainer: {
+    marginLeft: 20,
+    marginBottom: 4,
+  },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  optionQuantity: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: '#666',
+    width: 40,
+    textAlign: 'left',
+  },
+  optionName: {
+    flex: 1,
+    fontSize: 14,
+    color: '#666',
+  },
+  optionPrice: {
+    fontSize: 14,
+    color: '#666',
+    minWidth: 80,
+    textAlign: 'right',
+  },
+  itemTotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    marginTop: 4,
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  itemTotalLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginRight: 8,
+  },
+  itemTotalValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    minWidth: 80,
+    textAlign: 'right',
   },
   details: {
     padding: 16,

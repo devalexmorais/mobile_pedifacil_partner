@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, ActivityIndicator, Share } from 'react-native';
 import { colors } from '@/styles/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import firebaseSalesService from '@/services/firebaseSales';
@@ -63,12 +63,33 @@ const getPaymentInfo = (method: string | undefined, paymentData?: any) => {
   return paymentInfo;
 };
 
+// Adicionar uma função auxiliar para extrair userName do daySummary quando o pedido é selecionado
+const findOrderWithDetails = (orderId: string, ordersList: Order[]): Order | null => {
+  const foundOrder = ordersList?.find(order => order.id === orderId);
+  if (foundOrder) {
+    console.log('ENCONTROU PEDIDO COMPLETO:', JSON.stringify(foundOrder, null, 2));
+    return foundOrder;
+  }
+  return null;
+};
+
 export default function Caixa() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [daySummary, setDaySummary] = useState<DaySummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Efeito para registrar os dados do pedido selecionado
+  useEffect(() => {
+    if (selectedOrder) {
+      console.log('DADOS DO PEDIDO COMPLETOS:', JSON.stringify(selectedOrder, null, 2));
+      console.log('DADOS DO CLIENTE:', JSON.stringify({
+        userName: selectedOrder.userName,
+        customerName: selectedOrder.customerName
+      }, null, 2));
+    }
+  }, [selectedOrder]);
 
   // Buscar dados do Firebase quando a data mudar
   useEffect(() => {
@@ -77,6 +98,12 @@ export default function Caixa() {
         setLoading(true);
         setError(null);
         const summary = await firebaseSalesService.getDaySales(selectedDate);
+        
+        // Inspecionar os dados recebidos
+        if (summary && Array.isArray(summary.ordersList) && summary.ordersList.length > 0) {
+          console.log('AMOSTRA DE PEDIDO:', JSON.stringify(summary.ordersList[0], null, 2));
+        }
+        
         setDaySummary(summary);
       } catch (err) {
         console.error('Erro ao buscar vendas:', err);
@@ -117,6 +144,59 @@ export default function Caixa() {
     } catch (error) {
       console.error('Erro ao formatar data:', error);
       return 'Data inválida';
+    }
+  };
+
+  const handleShareReceipt = async (order: Order) => {
+    try {
+      const receiptText = `
+PEDIFÁCIL - RECIBO DE PEDIDO
+--------------------------------
+Número do Pedido: ${order.id || 'N/A'}
+Data: ${formatTime(order)}
+Status: ${order.status === 'delivered' ? 'Entregue' : 
+         order.status === 'cancelled' ? 'Cancelado' : 'Pendente'}
+
+CLIENTE
+--------------------------------
+Nome: ${order.userName || order.customerName || 'Não informado'}
+Endereço: ${order.customerAddress || 'Não informado'}
+Telefone: ${order.customerPhone || 'Não informado'}
+
+ITENS DO PEDIDO
+--------------------------------
+${Array.isArray(order.items) ? order.items.map(item => 
+  `${item.quantity}x ${item.name} - R$ ${(Number(item.price) * Number(item.quantity)).toFixed(2)}`
+).join('\n') : 'Nenhum item'}
+
+${order.deliveryFee ? `Taxa de Entrega: R$ ${Number(order.deliveryFee).toFixed(2)}\n` : ''}
+${order.cardFeeValue ? `Taxa de Cartão: R$ ${Number(order.cardFeeValue).toFixed(2)}\n` : ''}
+
+TOTAL
+--------------------------------
+Subtotal: R$ ${Number(order.total).toFixed(2)}
+${order.finalPrice && order.finalPrice !== order.total ? 
+  `Total Final: R$ ${Number(order.finalPrice).toFixed(2)}` : ''}
+
+FORMA DE PAGAMENTO
+--------------------------------
+${getPaymentInfo(order.paymentMethod || 'cash', order.paymentData).name}
+
+ESTABELECIMENTO
+--------------------------------
+PediFácil Partner
+${order.storeName ? `\n${order.storeName}` : ''}
+${order.storeAddress ? `\n${order.storeAddress}` : ''}
+${order.storePhone ? `\n${order.storePhone}` : ''}
+${order.storeCNPJ ? `\nCNPJ: ${order.storeCNPJ}` : ''}
+`;
+
+      await Share.share({
+        message: receiptText,
+        title: 'Recibo do Pedido',
+      });
+    } catch (error) {
+      console.error('Erro ao compartilhar recibo:', error);
     }
   };
 
@@ -239,12 +319,22 @@ export default function Caixa() {
                       key={String(order.id || Math.random())}
                       style={styles.orderCard}
                       onPress={() => {
-                        // Verifica se o pedido tem todos os dados necessários
-                        const safeOrder = {...order};
+                        // Recuperar o pedido completo com todos os detalhes
+                        const detailedOrder = findOrderWithDetails(order.id, daySummary?.ordersList || []) || order;
+                        
+                        // Verificar se o pedido tem todos os dados necessários
+                        const safeOrder = {...detailedOrder};
                         if (!safeOrder.items || !Array.isArray(safeOrder.items)) {
                           // Cria items vazios se não existir
                           safeOrder.items = [];
                         }
+                        
+                        // Inspecionar especificamente o userName e outros dados importantes
+                        console.log(`PEDIDO ${safeOrder.id} SELECIONADO:`, JSON.stringify({
+                          userName: safeOrder.userName,
+                          customerName: safeOrder.customerName
+                        }, null, 2));
+                        
                         setSelectedOrder(safeOrder);
                       }}
                     >
@@ -292,64 +382,172 @@ export default function Caixa() {
       <Modal
         visible={!!selectedOrder}
         animationType="slide"
-        transparent
+        presentationStyle="fullScreen"
         onRequestClose={() => setSelectedOrder(null)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
+              <TouchableOpacity 
+                onPress={() => setSelectedOrder(null)}
+                style={styles.backButton}
+              >
+                <Ionicons name="arrow-back" size={24} color={colors.gray[600]} />
+              </TouchableOpacity>
               <Text style={styles.modalTitle}>Detalhes do Pedido</Text>
-              <TouchableOpacity onPress={() => setSelectedOrder(null)}>
-                <Ionicons name="close" size={24} color={colors.gray[600]} />
+              <TouchableOpacity 
+                onPress={() => selectedOrder && handleShareReceipt(selectedOrder)}
+                style={styles.shareButton}
+              >
+                <Ionicons name="print-outline" size={24} color={colors.gray[600]} />
               </TouchableOpacity>
             </View>
 
             {selectedOrder ? (
               <ScrollView style={styles.modalScroll}>
-                <View style={styles.timeInfo}>
-                  <View style={styles.timeRow}>
-                    <Ionicons name="time-outline" size={18} color={colors.gray[600]} />
-                    <Text style={styles.timeText}>
-                      Pedido: <Text>{formatTime(selectedOrder)}</Text>
+                <View style={styles.orderInfoCard}>
+                  <View style={[
+                    styles.orderStatusBadge,
+                    {
+                      backgroundColor: selectedOrder.status === 'delivered' 
+                        ? colors.green[50] 
+                        : selectedOrder.status === 'cancelled' 
+                          ? colors.red[50] 
+                          : colors.yellow[50],
+                      borderColor: selectedOrder.status === 'delivered' 
+                        ? colors.green[200] 
+                        : selectedOrder.status === 'cancelled' 
+                          ? colors.red[200] 
+                          : colors.yellow[200],
+                    }
+                  ]}>
+                    <Ionicons 
+                      name={selectedOrder.status === 'delivered' ? 'checkmark-circle' : 
+                           selectedOrder.status === 'cancelled' ? 'close-circle' : 'time'} 
+                      size={20} 
+                      color={selectedOrder.status === 'delivered' ? colors.green[600] : 
+                           selectedOrder.status === 'cancelled' ? colors.red[600] : colors.yellow[600]} 
+                    />
+                    <Text style={[
+                      styles.orderStatusText,
+                      { 
+                        color: selectedOrder.status === 'delivered' ? colors.green[600] : 
+                             selectedOrder.status === 'cancelled' ? colors.red[600] : colors.yellow[600]
+                      }
+                    ]}>
+                      {selectedOrder.status === 'delivered' ? 'Entregue' : 
+                       selectedOrder.status === 'cancelled' ? 'Cancelado' : 'Pendente'}
                     </Text>
                   </View>
-                  <View style={styles.timeRow}>
+                
+                  <View style={styles.orderInfoRow}>
+                    <Ionicons name="receipt-outline" size={18} color={colors.gray[600]} />
+                    <Text style={styles.orderInfoText}>
+                      Pedido #{selectedOrder.id || 'N/A'}
+                    </Text>
+                  </View>
+                  <View style={styles.orderInfoRow}>
+                    <Ionicons name="time-outline" size={18} color={colors.gray[600]} />
+                    <Text style={styles.orderInfoText}>
+                      {formatTime(selectedOrder)}
+                    </Text>
+                  </View>
+                  
+                  {/* Tipo de entrega */}
+                  <View style={styles.orderInfoRow}>
                     <Ionicons 
-                      name={selectedOrder.status === 'delivered' ? 'checkmark-circle-outline' : 'alert-circle-outline'} 
+                      name={selectedOrder.deliveryMode === 'delivery' ? 'bicycle-outline' : 'walk-outline'} 
                       size={18} 
-                      color={selectedOrder.status === 'delivered' ? colors.green[600] : colors.red[500]} 
+                      color={colors.gray[600]} 
                     />
-                    <Text style={styles.timeText}>
-                      Status:{' '}
-                      <Text>
-                        {selectedOrder.status === 'delivered' ? 'Entregue' : 
-                         selectedOrder.status === 'cancelled' ? 'Cancelado' : 'Pendente'}
-                      </Text>
+                    <Text style={styles.orderInfoText}>
+                      {selectedOrder.deliveryMode === 'delivery' ? 'Entrega' : 'Retirada no local'}
                     </Text>
                   </View>
                 </View>
 
                 <View style={styles.customerSection}>
-                  <Text style={styles.sectionText}>{selectedOrder.customerName || 'Cliente'}</Text>
-                  {selectedOrder.customerAddress ? (
+                  <Text style={styles.sectionText}>Informações do Cliente</Text>
+                  <Text style={styles.customerName}>
+                    {selectedOrder.userName || selectedOrder.customerName || 'Cliente não identificado'}
+                  </Text>
+                  {selectedOrder.customerPhone && (
+                    <Text style={styles.addressText}>Tel: {selectedOrder.customerPhone}</Text>
+                  )}
+                  {selectedOrder.customerAddress && (
                     <Text style={styles.addressText}>{String(selectedOrder.customerAddress)}</Text>
-                  ) : null}
+                  )}
+                  
+                  {selectedOrder.address && selectedOrder.address.street && (
+                    <View style={styles.fullAddressContainer}>
+                      <Text style={styles.addressLabel}>Endereço de entrega:</Text>
+                      <Text style={styles.addressText}>
+                        {selectedOrder.address.street || ''}, {selectedOrder.address.number || ''}
+                        {selectedOrder.address.complement ? `, ${selectedOrder.address.complement}` : ''}
+                      </Text>
+                      <Text style={styles.addressText}>
+                        {selectedOrder.address.neighborhood || ''}, {selectedOrder.address.city || ''} - {selectedOrder.address.state || ''}
+                      </Text>
+                    </View>
+                  )}
                 </View>
 
                 <View style={styles.itemsContainer}>
-                  <Text style={styles.modalSectionTitle}>Itens do Pedido:</Text>
+                  <View style={styles.sectionHeaderRow}>
+                    <Ionicons name="restaurant-outline" size={20} color={colors.purple[600]} />
+                    <Text style={styles.modalSectionTitle}>Itens do Pedido</Text>
+                  </View>
                   {Array.isArray(selectedOrder.items) && selectedOrder.items.length > 0 ? (
                     selectedOrder.items.map((item) => (
-                      <View key={String(item.id || Math.random())} style={styles.itemRow}>
-                        <Text style={styles.itemQuantity}>
-                          {Number(item.quantity || 0)}x
-                        </Text>
-                        <Text style={styles.itemName}>
-                          {String(item.name || 'Item')}
-                        </Text>
-                        <Text style={styles.itemPrice}>
-                          R$ {Number((Number(item.price) || 0) * (Number(item.quantity) || 0)).toFixed(2)}
-                        </Text>
+                      <View key={String(item.id || Math.random())} style={styles.detailedItemCard}>
+                        <View style={styles.itemHeader}>
+                          <View style={styles.itemQuantityBadge}>
+                            <Text style={styles.itemQuantityText}>{Number(item.quantity || 0)}x</Text>
+                          </View>
+                          <Text style={styles.itemTitle}>
+                            {String(item.name || 'Item')}
+                          </Text>
+                          <Text style={styles.itemPriceText}>
+                            R$ {Number((Number(item.price) || 0) * (Number(item.quantity) || 0)).toFixed(2)}
+                          </Text>
+                        </View>
+                        
+                        {/* Extras e opções */}
+                        <View style={styles.itemDetailsContainer}>
+                          {item.options && Array.isArray(item.options) && item.options.length > 0 && (
+                            <View style={styles.optionsContainer}>
+                              <Text style={styles.optionsTitle}>Extras:</Text>
+                              {item.options.map((option, index) => option && (
+                                <View key={index} style={styles.optionRow}>
+                                  <Text style={styles.optionName}>• {option.name || 'Extra'}</Text>
+                                  <Text style={styles.optionPrice}>
+                                    {option.price && Number(option.price) > 0 ? `+ R$ ${Number(option.price).toFixed(2)}` : 'Grátis'}
+                                  </Text>
+                                </View>
+                              ))}
+                            </View>
+                          )}
+                          
+                          {/* Seleções obrigatórias */}
+                          {item.requiredSelections && Array.isArray(item.requiredSelections) && item.requiredSelections.length > 0 && (
+                            <View style={styles.selectionsContainer}>
+                              {item.requiredSelections.map((selection, index) => selection && (
+                                <View key={index} style={styles.selectionGroup}>
+                                  <Text style={styles.selectionTitle}>{selection.name || 'Seleção'}:</Text>
+                                  {Array.isArray(selection.options) && selection.options.map((option, optIndex) => option && (
+                                    <Text key={optIndex} style={styles.selectionOption}>• {option}</Text>
+                                  ))}
+                                </View>
+                              ))}
+                            </View>
+                          )}
+                        </View>
+
+                        <View style={styles.itemPriceRow}>
+                          <Text style={styles.itemUnitPrice}>
+                            R$ {Number(item.price || 0).toFixed(2)} cada
+                          </Text>
+                        </View>
                       </View>
                     ))
                   ) : (
@@ -357,60 +555,104 @@ export default function Caixa() {
                   )}
                 </View>
 
-                {selectedOrder.deliveryFee && Number(selectedOrder.deliveryFee) > 0 ? (
-                  <View style={styles.deliveryFeeContainer}>
-                    <View style={styles.itemRow}>
-                      <View style={styles.itemNameContainer}>
-                        <Ionicons name="bicycle-outline" size={16} color={colors.gray[600]} style={styles.deliveryIcon} />
-                        <Text style={styles.itemName}>Taxa de Entrega</Text>
-                      </View>
-                      <Text style={styles.itemPrice}>
-                        R$ {Number(selectedOrder.deliveryFee).toFixed(2)}
-                      </Text>
-                    </View>
+                <View style={styles.summarySection}>
+                  <View style={styles.sectionHeaderRow}>
+                    <Ionicons name="calculator-outline" size={20} color={colors.purple[600]} />
+                    <Text style={styles.modalSectionTitle}>Resumo do Pedido</Text>
                   </View>
-                ) : null}
-
-                {/* Valor após taxa de cartão */}
-                {selectedOrder.finalPrice && selectedOrder.cardFeeValue && 
-                  Number(selectedOrder.finalPrice) !== Number(selectedOrder.total) ? (
-                  <View style={[styles.totalContainer]}>
-                    <Text style={styles.totalLabel}>Total do Pedido</Text>
-                    <Text style={styles.modalTotalValue}>
-                      R$ {Number(selectedOrder.finalPrice).toFixed(2)}
+                  
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryText}>Subtotal</Text>
+                    <Text style={styles.summaryAmount}>
+                      R$ {Number(selectedOrder.originalPrice || selectedOrder.totalPrice || 0).toFixed(2)}
                     </Text>
                   </View>
-                ) : null}
-                {/* Taxa de cartão */}
-                {selectedOrder.cardFeeValue && Number(selectedOrder.cardFeeValue) > 0 ? (
-                  <View style={styles.deliveryFeeContainer}>
-                    <View style={styles.itemRow}>
-                      <View style={styles.itemNameContainer}>
-                        <Ionicons name="card-outline" size={16} color={colors.red[600]} style={styles.deliveryIcon} />
-                        <Text style={styles.itemName}>Taxa de Cartão (descontada)</Text>
+                  
+                  {selectedOrder.deliveryFee !== undefined ? (
+                    <View style={styles.summaryRow}>
+                      <View style={styles.summaryLabel}>
+                        <Ionicons name="bicycle-outline" size={16} color={colors.gray[600]} style={styles.summaryIcon} />
+                        <Text style={styles.summaryText}>Taxa de Entrega</Text>
                       </View>
-                      <Text style={[styles.itemPrice, { color: colors.red[600] }]}>
+                      <Text style={styles.summaryAmount}>
+                        {Number(selectedOrder.deliveryFee) > 0 
+                          ? `R$ ${Number(selectedOrder.deliveryFee).toFixed(2)}` 
+                          : 'Grátis'}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {selectedOrder.discountTotal && Number(selectedOrder.discountTotal) > 0 ? (
+                    <View style={styles.summaryRow}>
+                      <View style={styles.summaryLabel}>
+                        <Ionicons name="pricetag-outline" size={16} color={colors.green[600]} style={styles.summaryIcon} />
+                        <Text style={[styles.summaryText, {color: colors.green[600]}]}>Desconto</Text>
+                      </View>
+                      <Text style={[styles.summaryAmount, {color: colors.green[600]}]}>
+                        - R$ {Number(selectedOrder.discountTotal).toFixed(2)}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {selectedOrder.cardFeeValue && Number(selectedOrder.cardFeeValue) > 0 ? (
+                    <View style={styles.summaryRow}>
+                      <View style={styles.summaryLabel}>
+                        <Ionicons name="card-outline" size={16} color={colors.red[600]} style={styles.summaryIcon} />
+                        <Text style={styles.summaryText}>Taxa de Cartão</Text>
+                      </View>
+                      <Text style={[styles.summaryAmount, { color: colors.red[600] }]}>
                         - R$ {Number(selectedOrder.cardFeeValue).toFixed(2)}
                       </Text>
                     </View>
-                  </View>
-                ) : null}
+                  ) : null}
 
-                <View style={styles.totalContainer}>
-                  <Text style={styles.totalLabel}>Valor Recebido (após taxa)</Text>
-                  <Text style={styles.modalTotalValue}>
-                    R$ {Number(selectedOrder.total || 0).toFixed(2)}
-                  </Text>
+                  <View style={[styles.summaryRow, styles.totalRow]}>
+                    <View style={styles.summaryLabel}>
+                      <Ionicons name="cash-outline" size={18} color={colors.gray[800]} style={styles.summaryIcon} />
+                      <Text style={styles.totalText}>Total</Text>
+                    </View>
+                    <Text style={styles.totalValue}>
+                      R$ {Number(selectedOrder.finalPrice || selectedOrder.total || 0).toFixed(2)}
+                    </Text>
+                  </View>
                 </View>
-                <View style={styles.paymentInfo}>
-                  <Ionicons 
-                    name={getPaymentInfo(selectedOrder.paymentMethod || 'cash', selectedOrder.paymentData).icon as any}
-                    size={18} 
-                    color={getPaymentInfo(selectedOrder.paymentMethod || 'cash', selectedOrder.paymentData).color}
-                  />
-                  <Text style={styles.paymentText}>
-                    {getPaymentInfo(selectedOrder.paymentMethod || 'cash', selectedOrder.paymentData).name}
-                  </Text>
+
+                <View style={styles.paymentSection}>
+                  <View style={styles.sectionHeaderRow}>
+                    <Ionicons name="wallet-outline" size={20} color={colors.purple[600]} />
+                    <Text style={styles.sectionText}>Forma de Pagamento</Text>
+                  </View>
+                  
+                  <View style={styles.modalPaymentCard}>
+                    <View style={styles.paymentCardLeft}>
+                      <View style={[
+                        styles.paymentIconLarge,
+                        { backgroundColor: getPaymentInfo(selectedOrder.paymentMethod || 'cash', selectedOrder.paymentData).bg }
+                      ]}>
+                        <Ionicons 
+                          name={getPaymentInfo(selectedOrder.paymentMethod || 'cash', selectedOrder.paymentData).icon as any}
+                          size={28}
+                          color={getPaymentInfo(selectedOrder.paymentMethod || 'cash', selectedOrder.paymentData).color}
+                        />
+                      </View>
+                      
+                      <View style={styles.paymentDetails}>
+                        <Text style={styles.paymentMethodName}>
+                          {getPaymentInfo(selectedOrder.paymentMethod || 'cash', selectedOrder.paymentData).name}
+                        </Text>
+                        <Text style={styles.paymentStatus}>
+                          {selectedOrder.status === 'delivered' ? 'Pagamento confirmado' : 'Aguardando confirmação'}
+                        </Text>
+                      </View>
+                    </View>
+                    
+                    <View style={styles.paymentAmountContainer}>
+                      <Text style={styles.paymentAmountLabel}>Valor pago</Text>
+                      <Text style={styles.paymentAmount}>
+                        R$ {Number(selectedOrder.total || 0).toFixed(2)}
+                      </Text>
+                    </View>
+                  </View>
                 </View>
               </ScrollView>
             ) : (
@@ -580,21 +822,20 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: colors.gray[100],
     justifyContent: 'flex-end',
   },
   modalContent: {
+    flex: 1,
     backgroundColor: colors.white,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
     padding: 16,
-    maxHeight: '80%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
+    paddingTop: 16,
   },
   modalTitle: {
     fontSize: 20,
@@ -604,21 +845,187 @@ const styles = StyleSheet.create({
   modalScroll: {
     maxHeight: '100%',
   },
-  timeInfo: {
+  orderInfoCard: {
     backgroundColor: colors.white,
     padding: 16,
     borderRadius: 12,
     marginBottom: 16,
   },
-  timeRow: {
+  orderInfoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 8,
   },
-  timeText: {
+  orderInfoText: {
     fontSize: 14,
     color: colors.gray[700],
     marginLeft: 8,
+  },
+  customerName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.gray[800],
+    marginTop: 8,
+  },
+  itemDetails: {
+    flex: 1,
+    marginRight: 8,
+  },
+  itemUnitPrice: {
+    fontSize: 12,
+    color: colors.gray[600],
+    marginTop: 2,
+  },
+  summarySection: {
+    backgroundColor: colors.white,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[100],
+  },
+  summaryLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  summaryIcon: {
+    marginRight: 8,
+  },
+  summaryText: {
+    fontSize: 14,
+    color: colors.gray[700],
+  },
+  summaryAmount: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.gray[800],
+  },
+  totalRow: {
+    borderBottomWidth: 0,
+    marginTop: 8,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: colors.gray[200],
+  },
+  totalValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.gray[800],
+  },
+  paymentSection: {
+    backgroundColor: colors.white,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  modalPaymentCard: {
+    flexDirection: 'row',
+    backgroundColor: colors.white,
+    padding: 20,
+    borderRadius: 16,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    marginTop: 12,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+  },
+  paymentCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  paymentIconLarge: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 18,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+  },
+  paymentDetails: {
+    justifyContent: 'center',
+  },
+  paymentMethodName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.gray[800],
+    marginBottom: 6,
+  },
+  paymentStatus: {
+    fontSize: 13,
+    color: colors.green[600],
+    fontWeight: '500',
+  },
+  paymentAmountContainer: {
+    alignItems: 'flex-end',
+    backgroundColor: colors.gray[50],
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  paymentAmountLabel: {
+    fontSize: 12,
+    color: colors.gray[600],
+    marginBottom: 4,
+    fontWeight: '500',
+  },
+  paymentAmount: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.gray[800],
+  },
+  loadingContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: colors.gray[600],
+  },
+  errorContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: colors.gray[700],
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: colors.purple[500],
+    borderRadius: 8,
+  },
+  retryText: {
+    color: colors.white,
+    fontWeight: '500',
+  },
+  backButton: {
+    padding: 8,
+  },
+  shareButton: {
+    padding: 8,
   },
   customerSection: {
     backgroundColor: colors.white,
@@ -628,8 +1035,9 @@ const styles = StyleSheet.create({
   },
   sectionText: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '600',
     color: colors.gray[800],
+    marginBottom: 8,
   },
   addressText: {
     fontSize: 14,
@@ -671,81 +1079,133 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: colors.gray[800],
   },
-  totalContainer: {
-    backgroundColor: colors.white,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  customerSource: {
+    fontSize: 12,
+    color: colors.gray[500],
+    marginBottom: 8,
+    fontStyle: 'italic'
   },
-  totalLabel: {
+  fullAddressContainer: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.gray[100],
+  },
+  addressLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.gray[700],
+    marginBottom: 4,
+  },
+  detailedItemCard: {
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+  },
+  itemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  itemQuantityBadge: {
+    backgroundColor: colors.purple[100],
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginRight: 8,
+  },
+  itemQuantityText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.purple[700],
+  },
+  itemTitle: {
+    flex: 1,
     fontSize: 16,
     fontWeight: '600',
     color: colors.gray[800],
   },
-  modalTotalValue: {
-    fontSize: 18,
+  itemPriceText: {
+    fontSize: 16,
     fontWeight: '700',
     color: colors.gray[800],
   },
-  paymentInfo: {
-    backgroundColor: colors.white,
-    padding: 16,
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
+  itemDetailsContainer: {
+    paddingVertical: 8,
   },
-  paymentText: {
+  optionsContainer: {
+    marginBottom: 8,
+  },
+  optionsTitle: {
     fontSize: 14,
-    color: colors.gray[800],
-    marginLeft: 8,
+    fontWeight: '600',
+    color: colors.gray[700],
+    marginBottom: 4,
   },
-  deliveryFeeContainer: {
-    backgroundColor: colors.white,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-  },
-  itemNameContainer: {
-    flex: 1,
+  optionRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 2,
   },
-  deliveryIcon: {
-    marginRight: 8,
-  },
-  loadingContainer: {
-    padding: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: colors.gray[600],
-  },
-  errorContainer: {
-    padding: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  errorText: {
-    marginTop: 12,
+  optionName: {
     fontSize: 14,
     color: colors.gray[700],
-    textAlign: 'center',
   },
-  retryButton: {
-    marginTop: 16,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: colors.purple[500],
-    borderRadius: 8,
-  },
-  retryText: {
-    color: colors.white,
+  optionPrice: {
+    fontSize: 14,
     fontWeight: '500',
+    color: colors.gray[700],
+  },
+  selectionsContainer: {
+    marginTop: 8,
+  },
+  selectionGroup: {
+    marginBottom: 8,
+  },
+  selectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.gray[700],
+    marginBottom: 4,
+  },
+  selectionOption: {
+    fontSize: 14,
+    color: colors.gray[700],
+    paddingVertical: 2,
+  },
+  itemPriceRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.gray[100],
+  },
+  totalText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.gray[800],
+  },
+  orderStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  orderStatusText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
   },
 }); 

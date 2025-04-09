@@ -10,6 +10,19 @@ export interface OrderItem {
   name: string;
   quantity: number;
   price: number;
+  
+  // Campos adicionais para opções e seleções
+  options?: {
+    id: string;
+    name: string;
+    price: number;
+  }[];
+  requiredSelections?: {
+    name: string;
+    options: string[];
+  }[];
+  productId?: string;
+  totalPrice?: number;
 }
 
 // Função auxiliar para validar método de pagamento
@@ -39,19 +52,37 @@ const validatePaymentMethod = (paymentData: any): PaymentMethodType => {
 
 export interface Order {
   id: string;
-  sellerId?: string;
-  customerId?: string;
-  customerName: string;
-  customerAddress?: string;
   items: OrderItem[];
   total: number;
+  status: 'pending' | 'delivered' | 'cancelled';
+  createdAt: any;
+  customerName?: string;
+  userName?: string;
+  customerAddress?: string;
+  customerPhone?: string;
+  storeName?: string;
+  storeAddress?: string;
+  storePhone?: string;
+  storeCNPJ?: string;
+  paymentMethod?: PaymentMethodType;
+  paymentData?: any;
   deliveryFee?: number;
   cardFeeValue?: number;
   finalPrice?: number;
-  paymentMethod: PaymentMethodType;
-  paymentData?: any; // Dados originais de pagamento
-  status: 'pending' | 'delivered' | 'cancelled' | string;
-  createdAt: Timestamp;
+  
+  // Campos adicionais para exibir mais detalhes
+  deliveryMode?: 'pickup' | 'delivery';
+  address?: {
+    street: string;
+    number: string;
+    complement?: string;
+    neighborhood: string;
+    city: string;
+    state: string;
+  };
+  totalPrice?: number;
+  originalPrice?: number;
+  discountTotal?: number;
 }
 
 export interface DaySummary {
@@ -141,6 +172,7 @@ const firebaseSalesService = {
               const orderData: Order = {
                 id: doc.id,
                 customerName: String(data.customerName || data.customer?.name || 'Cliente'),
+                userName: String(data.userName || ''),
                 items: normalizedItems,
                 total: Number(data.total) || 0,
                 paymentMethod: validatePaymentMethod(data.paymentMethod || data.payment),
@@ -148,9 +180,12 @@ const firebaseSalesService = {
                 status: orderStatus,
                 createdAt: data.createdAt,
                 // Opcionais
-                sellerId: data.sellerId ? String(data.sellerId) : undefined,
-                customerId: data.customerId ? String(data.customerId) : data.customer?.id ? String(data.customer.id) : undefined,
                 customerAddress: data.customerAddress ? String(data.customerAddress) : data.customer?.address ? String(data.customer.address) : undefined,
+                customerPhone: data.customerPhone ? String(data.customerPhone) : data.customer?.phone ? String(data.customer.phone) : undefined,
+                storeName: data.storeName ? String(data.storeName) : undefined,
+                storeAddress: data.storeAddress ? String(data.storeAddress) : undefined,
+                storePhone: data.storePhone ? String(data.storePhone) : undefined,
+                storeCNPJ: data.storeCNPJ ? String(data.storeCNPJ) : undefined,
                 deliveryFee: Number(data.deliveryFee) || 0,
                 cardFeeValue: Number(data.cardFeeValue) || 0,
                 finalPrice: Number(data.finalPrice) || Number(data.total) || 0
@@ -218,8 +253,14 @@ const firebaseSalesService = {
           if (order.finalPrice) order.finalPrice = Number(order.finalPrice) || order.total || 0;
           
           // Garantir que strings sejam strings
+          if (order.userName) order.userName = String(order.userName);
           order.customerName = String(order.customerName || 'Cliente');
           if (order.customerAddress) order.customerAddress = String(order.customerAddress);
+          if (order.customerPhone) order.customerPhone = String(order.customerPhone);
+          if (order.storeName) order.storeName = String(order.storeName);
+          if (order.storeAddress) order.storeAddress = String(order.storeAddress);
+          if (order.storePhone) order.storePhone = String(order.storePhone);
+          if (order.storeCNPJ) order.storeCNPJ = String(order.storeCNPJ);
           if (order.status) order.status = String(order.status);
           
           return order;
@@ -279,6 +320,7 @@ const firebaseSalesService = {
       const orderData: Order = {
         id: orderDoc.id,
         customerName: String(data.customerName || data.customer?.name || 'Cliente'),
+        userName: String(data.userName || ''),
         items: normalizedItems,
         total: Number(data.total) || 0,
         paymentMethod: validatePaymentMethod(data.paymentMethod || data.payment),
@@ -286,9 +328,12 @@ const firebaseSalesService = {
         status: String(data.status || 'pending'),
         createdAt: data.createdAt,
         // Opcionais
-        sellerId: data.sellerId ? String(data.sellerId) : undefined,
-        customerId: data.customerId ? String(data.customerId) : data.customer?.id ? String(data.customer.id) : undefined,
         customerAddress: data.customerAddress ? String(data.customerAddress) : data.customer?.address ? String(data.customer.address) : undefined,
+        customerPhone: data.customerPhone ? String(data.customerPhone) : data.customer?.phone ? String(data.customer.phone) : undefined,
+        storeName: data.storeName ? String(data.storeName) : undefined,
+        storeAddress: data.storeAddress ? String(data.storeAddress) : undefined,
+        storePhone: data.storePhone ? String(data.storePhone) : undefined,
+        storeCNPJ: data.storeCNPJ ? String(data.storeCNPJ) : undefined,
         deliveryFee: Number(data.deliveryFee) || 0,
         cardFeeValue: Number(data.cardFeeValue) || 0,
         finalPrice: Number(data.finalPrice) || Number(data.total) || 0
@@ -312,6 +357,11 @@ const firebaseSalesService = {
       if (orderData.deliveryFee) orderData.deliveryFee = Number(orderData.deliveryFee) || 0;
       orderData.customerName = String(orderData.customerName || 'Cliente');
       if (orderData.customerAddress) orderData.customerAddress = String(orderData.customerAddress);
+      if (orderData.customerPhone) orderData.customerPhone = String(orderData.customerPhone);
+      if (orderData.storeName) orderData.storeName = String(orderData.storeName);
+      if (orderData.storeAddress) orderData.storeAddress = String(orderData.storeAddress);
+      if (orderData.storePhone) orderData.storePhone = String(orderData.storePhone);
+      if (orderData.storeCNPJ) orderData.storeCNPJ = String(orderData.storeCNPJ);
       if (orderData.status) orderData.status = String(orderData.status);
 
       return orderData;

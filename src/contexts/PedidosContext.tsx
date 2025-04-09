@@ -18,6 +18,15 @@ export type OrderItem = {
   productId: string;
   quantity: number;
   totalPrice: number;
+  options?: {
+    id: string;
+    name: string;
+    price: number;
+  }[];
+  requiredSelections?: {
+    name: string;
+    options: string[];
+  }[];
 };
 
 type Payment = {
@@ -29,6 +38,8 @@ type Payment = {
     flag: string;
     flagName: string;
   };
+  troco?: number;
+  changeFor?: string;
 };
 
 export type Pedido = {
@@ -58,6 +69,8 @@ export type Pedido = {
       flag: string;
       flagName: string;
     };
+    troco?: number;
+    changeFor?: string;
   };
   storeId: string;
   totalPrice: number;
@@ -67,6 +80,7 @@ export type Pedido = {
   };
   userId: string;
   userName?: string;
+  customerPhone?: string;
   status?: 'pending' | 'preparing' | 'ready' | 'out_for_delivery' | 'delivered' | 'cancelled';
   observations?: string;
   coupon?: string;
@@ -86,6 +100,7 @@ type PedidosContextData = {
   pedidosEmEntrega: Pedido[];
   aceitarPedido: (pedido: Pedido) => void;
   recusarPedido: (pedidoId: string) => void;
+  cancelarPedido: (pedidoId: string) => void;
   marcarComoPronto: (pedidoId: string) => void;
   marcarComoEmEntrega: (pedidoId: string) => void;
   marcarComoEntregue: (pedidoId: string) => void;
@@ -156,6 +171,8 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           finalPrice: Number(data.finalPrice) || 0,
           items: data.items?.map((item: any) => ({
             name: item.name || '',
+            options: item.options || [],
+            requiredSelections: item.requiredSelections || [],
             price: Number(item.price) || 0,
             productId: item.productId || '',
             quantity: Number(item.quantity) || 0,
@@ -169,7 +186,8 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
               percentage: data.payment.cardFee.percentage || '',
               flag: data.payment.cardFee.flag || '',
               flagName: data.payment.cardFee.flagName || ''
-            } : undefined
+            } : undefined,
+            changeFor: data.payment?.changeFor || ''
           },
           storeId: data.storeId || '',
           totalPrice: Number(data.totalPrice) || 0,
@@ -229,6 +247,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           items: data.items?.map((item: any) => ({
             name: item.name || '',
             options: item.options || [],
+            requiredSelections: item.requiredSelections || [],
             price: Number(item.price) || 0,
             productId: item.productId || '',
             quantity: Number(item.quantity) || 0,
@@ -242,12 +261,14 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
               percentage: data.payment.cardFee.percentage || '',
               flag: data.payment.cardFee.flag || '',
               flagName: data.payment.cardFee.flagName || ''
-            } : undefined
+            } : undefined,
+            changeFor: data.payment?.changeFor || ''
           },
           storeId: data.storeId || '',
           totalPrice: Number(data.totalPrice) || 0,
           updatedAt: data.updatedAt || new Date().toISOString(),
           userId: data.userId || '',
+          userName: data.userName || '',
           status: data.status || 'pending',
           observations: data.observations || '',
           coupon: data.coupon || '',
@@ -280,6 +301,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           items: data.items?.map((item: any) => ({
             name: item.name || '',
             options: item.options || [],
+            requiredSelections: item.requiredSelections || [],
             price: Number(item.price) || 0,
             productId: item.productId || '',
             quantity: Number(item.quantity) || 0,
@@ -293,12 +315,14 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
               percentage: data.payment.cardFee.percentage || '',
               flag: data.payment.cardFee.flag || '',
               flagName: data.payment.cardFee.flagName || ''
-            } : undefined
+            } : undefined,
+            changeFor: data.payment?.changeFor || ''
           },
           storeId: data.storeId || '',
           totalPrice: Number(data.totalPrice) || 0,
           updatedAt: data.updatedAt || new Date().toISOString(),
           userId: data.userId || '',
+          userName: data.userName || '',
           status: data.status || 'pending',
           observations: data.observations || '',
           coupon: data.coupon || '',
@@ -331,6 +355,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           items: data.items?.map((item: any) => ({
             name: item.name || '',
             options: item.options || [],
+            requiredSelections: item.requiredSelections || [],
             price: Number(item.price) || 0,
             productId: item.productId || '',
             quantity: Number(item.quantity) || 0,
@@ -344,12 +369,14 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
               percentage: data.payment.cardFee.percentage || '',
               flag: data.payment.cardFee.flag || '',
               flagName: data.payment.cardFee.flagName || ''
-            } : undefined
+            } : undefined,
+            changeFor: data.payment?.changeFor || ''
           },
           storeId: data.storeId || '',
           totalPrice: Number(data.totalPrice) || 0,
           updatedAt: data.updatedAt || new Date().toISOString(),
           userId: data.userId || '',
+          userName: data.userName || '',
           status: data.status || 'pending',
           observations: data.observations || '',
           coupon: data.coupon || '',
@@ -394,6 +421,20 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
       });
     } catch (error) {
       console.error('Erro ao recusar pedido:', error);
+    }
+  };
+
+  const cancelarPedido = async (pedidoId: string) => {
+    if (!user?.uid) return;
+
+    try {
+      const pedidoRef = doc(db, 'partners', user.uid, 'orders', pedidoId);
+      await updateDoc(pedidoRef, {
+        status: 'cancelled',
+        updatedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Erro ao cancelar pedido:', error);
     }
   };
 
@@ -579,6 +620,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
       pedidosEmEntrega,
       aceitarPedido,
       recusarPedido,
+      cancelarPedido,
       marcarComoPronto,
       marcarComoEmEntrega,
       marcarComoEntregue,
