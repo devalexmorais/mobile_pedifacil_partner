@@ -13,24 +13,35 @@ import { colors } from '@/styles/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useNavigation, DrawerActions } from '@react-navigation/native';
+import { db } from '@/config/firebase';
+import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
+import { useAuth } from '@/contexts/AuthContext';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
-interface InvoiceSummary {
-  totalOrders: number;
-  totalSales: number;
-  totalDiscounts: number;
-  percentageFee: number;
-  calculatedFee: number;
+interface InvoiceDetail {
+  id: string;
+  orderDate: Timestamp;
+  orderTotalPrice: number;
+  paymentMethod: string;
+  percentage: number;
+  value: number;
 }
 
 interface Invoice {
   id: string;
-  month: string;
-  year: string;
-  amount: number;
-  dueDate: string;
-  status: 'pending' | 'paid' | 'overdue';
-  paymentDate?: string;
-  summary: InvoiceSummary;
+  appFeeIds: string[];
+  createdAt: Timestamp;
+  cycleEnd: Timestamp;
+  cycleStart: Timestamp;
+  details: InvoiceDetail[];
+  dueDate: Timestamp;
+  paidAt: Timestamp | null;
+  paymentStatus: 'pending' | 'paid' | 'overdue';
+  status: string;
+  storeId: string;
+  totalFee: number;
+  updatedAt: Timestamp;
 }
 
 const formatCurrency = (value: number): string => {
@@ -38,6 +49,14 @@ const formatCurrency = (value: number): string => {
     style: 'currency',
     currency: 'BRL',
   }).format(value);
+};
+
+const formatDate = (date: Timestamp): string => {
+  return format(date.toDate(), 'dd/MM/yyyy', { locale: ptBR });
+};
+
+const getMonthYear = (date: Timestamp): string => {
+  return format(date.toDate(), 'MMMM yyyy', { locale: ptBR });
 };
 
 export default function Faturas() {
@@ -49,72 +68,44 @@ export default function Faturas() {
 
   const router = useRouter();
   const navigation = useNavigation();
+  const { user } = useAuth();
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchInvoices = async () => {
+      if (!user?.uid) return;
+      
       setIsLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      try {
+        const invoicesRef = collection(db, 'partners', user.uid, 'invoices');
+        const q = query(
+          invoicesRef,
+          orderBy('createdAt', 'desc')
+        );
 
-      const mockInvoices: Invoice[] = [
-        {
-          id: '1',
-          month: 'Janeiro',
-          year: '2024',
-          amount: 1840.00,
-          dueDate: '10/01/2024',
-          status: 'paid',
-          paymentDate: '09/01/2024',
-          summary: {
-            totalOrders: 380,
-            totalSales: 23000.00,
-            totalDiscounts: 800.00,
-            percentageFee: 8,
-            calculatedFee: 1840.00,
-          }
-        },
-        {
-          id: '2',
-          month: 'Fevereiro',
-          year: '2024',
-          amount: 2080.00,
-          dueDate: '10/02/2024',
-          status: 'paid',
-          paymentDate: '08/02/2024',
-          summary: {
-            totalOrders: 410,
-            totalSales: 26000.00,
-            totalDiscounts: 1000.00,
-            percentageFee: 8,
-            calculatedFee: 2080.00,
-          }
-        },
-        {
-          id: '3',
-          month: 'Março',
-          year: '2024',
-          amount: 2280.00,
-          dueDate: '10/03/2024',
-          status: 'pending',
-          summary: {
-            totalOrders: 450,
-            totalSales: 28500.00,
-            totalDiscounts: 1200.00,
-            percentageFee: 8,
-            calculatedFee: 2280.00,
-          }
-        },
-      ];
+        const querySnapshot = await getDocs(q);
+        const fetchedInvoices: Invoice[] = [];
 
-      setInvoices(mockInvoices);
-      setCurrentInvoice(mockInvoices.find(inv => inv.status === 'pending') || null);
-      setIsLoading(false);
+        querySnapshot.forEach((doc) => {
+          fetchedInvoices.push({
+            id: doc.id,
+            ...doc.data()
+          } as Invoice);
+        });
+
+        setInvoices(fetchedInvoices);
+        const pendingInvoice = fetchedInvoices.find(inv => inv.paymentStatus === 'pending');
+        setCurrentInvoice(pendingInvoice || null);
+      } catch (error) {
+        console.error('Erro ao buscar faturas:', error);
+      } finally {
+        setIsLoading(false);
+      }
     };
 
-    fetchData();
-  }, []);
+    fetchInvoices();
+  }, [user?.uid]);
 
-
-  const getStatusColor = (status: Invoice['status']) => {
+  const getStatusColor = (status: Invoice['paymentStatus']) => {
     switch (status) {
       case 'paid':
         return colors.green[500];
@@ -127,7 +118,7 @@ export default function Faturas() {
     }
   };
 
-  const getStatusText = (status: Invoice['status']) => {
+  const getStatusText = (status: Invoice['paymentStatus']) => {
     switch (status) {
       case 'paid':
         return 'Pago';
@@ -166,7 +157,7 @@ export default function Faturas() {
             </View>
             <View style={styles.currentInvoiceContent}>
               <Text style={styles.currentInvoiceMonth}>
-                {currentInvoice.month} {currentInvoice.year}
+                {getMonthYear(currentInvoice.cycleStart)}
               </Text>
               
               <View style={styles.summaryContainer}>
@@ -174,28 +165,22 @@ export default function Faturas() {
                   <View style={styles.summaryItem}>
                     <Text style={styles.summaryLabel}>Volume de Vendas</Text>
                     <Text style={styles.summaryValue}>
-                      {formatCurrency(currentInvoice.summary.totalSales)}
+                      {formatCurrency(currentInvoice.totalFee)}
                     </Text>
                   </View>
                   <View style={styles.summaryItem}>
                     <Text style={styles.summaryLabel}>Total de Pedidos</Text>
                     <Text style={styles.summaryValue}>
-                      {currentInvoice.summary.totalOrders}
+                      {currentInvoice.details.length}
                     </Text>
                   </View>
                 </View>
                 
                 <View style={styles.summaryRow}>
                   <View style={styles.summaryItem}>
-                    <Text style={styles.summaryLabel}>Descontos Aplicados</Text>
-                    <Text style={styles.summaryValue}>
-                      {formatCurrency(currentInvoice.summary.totalDiscounts)}
-                    </Text>
-                  </View>
-                  <View style={styles.summaryItem}>
                     <Text style={styles.summaryLabel}>Taxa do Sistema</Text>
                     <Text style={styles.summaryValue}>
-                      {currentInvoice.summary.percentageFee}%
+                      {currentInvoice.details.reduce((total, detail) => total + detail.percentage, 0)}%
                     </Text>
                   </View>
                 </View>
@@ -204,12 +189,12 @@ export default function Faturas() {
               <View style={styles.totalContainer}>
                 <Text style={styles.totalLabel}>Total a Pagar</Text>
                 <Text style={styles.totalValue}>
-                  {formatCurrency(currentInvoice.amount)}
+                  {formatCurrency(currentInvoice.totalFee)}
                 </Text>
               </View>
               
               <Text style={styles.currentInvoiceDueDate}>
-                Vencimento: {currentInvoice.dueDate}
+                Vencimento: {formatDate(currentInvoice.dueDate)}
               </Text>
             </View>
             <TouchableOpacity style={styles.payButton}>
@@ -230,23 +215,23 @@ export default function Faturas() {
               >
                 <View style={styles.invoiceInfo}>
                   <Text style={styles.invoiceMonth}>
-                    {invoice.month} {invoice.year}
+                    {getMonthYear(invoice.cycleStart)}
                   </Text>
                   <Text style={styles.invoiceDueDate}>
-                    Vencimento: {invoice.dueDate}
+                    Vencimento: {formatDate(invoice.dueDate)}
                   </Text>
-                  {invoice.paymentDate && (
+                  {invoice.paidAt && (
                     <Text style={styles.invoicePaymentDate}>
-                      Pago em: {invoice.paymentDate}
+                      Pago em: {formatDate(invoice.paidAt)}
                     </Text>
                   )}
                 </View>
                 <View style={styles.invoiceDetails}>
                   <Text style={styles.invoiceAmount}>
-                    {formatCurrency(invoice.amount)}
+                    {formatCurrency(invoice.totalFee)}
                   </Text>
-                  <Text style={[styles.invoiceStatus, { color: getStatusColor(invoice.status) }]}>
-                    {getStatusText(invoice.status)}
+                  <Text style={[styles.invoiceStatus, { color: getStatusColor(invoice.paymentStatus) }]}>
+                    {getStatusText(invoice.paymentStatus)}
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -277,7 +262,7 @@ export default function Faturas() {
             {selectedInvoice && (
               <>
                 <Text style={styles.modalMonth}>
-                  {selectedInvoice.month} {selectedInvoice.year}
+                  {getMonthYear(selectedInvoice.cycleStart)}
                 </Text>
 
                 <View style={styles.summaryContainer}>
@@ -285,28 +270,22 @@ export default function Faturas() {
                     <View style={styles.summaryItem}>
                       <Text style={styles.summaryLabel}>Volume de Vendas</Text>
                       <Text style={styles.summaryValue}>
-                        {formatCurrency(selectedInvoice.summary.totalSales)}
+                        {formatCurrency(selectedInvoice.totalFee)}
                       </Text>
                     </View>
                     <View style={styles.summaryItem}>
                       <Text style={styles.summaryLabel}>Total de Pedidos</Text>
                       <Text style={styles.summaryValue}>
-                        {selectedInvoice.summary.totalOrders}
+                        {selectedInvoice.details.length}
                       </Text>
                     </View>
                   </View>
                   
                   <View style={styles.summaryRow}>
                     <View style={styles.summaryItem}>
-                      <Text style={styles.summaryLabel}>Descontos Aplicados</Text>
-                      <Text style={styles.summaryValue}>
-                        {formatCurrency(selectedInvoice.summary.totalDiscounts)}
-                      </Text>
-                    </View>
-                    <View style={styles.summaryItem}>
                       <Text style={styles.summaryLabel}>Taxa do Sistema</Text>
                       <Text style={styles.summaryValue}>
-                        {selectedInvoice.summary.percentageFee}%
+                        {selectedInvoice.details.reduce((total, detail) => total + detail.percentage, 0)}%
                       </Text>
                     </View>
                   </View>
@@ -317,28 +296,28 @@ export default function Faturas() {
                     <Text style={styles.modalInfoLabel}>Status:</Text>
                     <Text style={[
                       styles.modalInfoValue,
-                      { color: getStatusColor(selectedInvoice.status) }
+                      { color: getStatusColor(selectedInvoice.paymentStatus) }
                     ]}>
-                      {getStatusText(selectedInvoice.status)}
+                      {getStatusText(selectedInvoice.paymentStatus)}
                     </Text>
                   </View>
 
                   <View style={styles.modalInfoRow}>
                     <Text style={styles.modalInfoLabel}>Vencimento:</Text>
-                    <Text style={styles.modalInfoValue}>{selectedInvoice.dueDate}</Text>
+                    <Text style={styles.modalInfoValue}>{formatDate(selectedInvoice.dueDate)}</Text>
                   </View>
 
-                  {selectedInvoice.paymentDate && (
+                  {selectedInvoice.paidAt && (
                     <View style={styles.modalInfoRow}>
                       <Text style={styles.modalInfoLabel}>Pago em:</Text>
-                      <Text style={styles.modalInfoValue}>{selectedInvoice.paymentDate}</Text>
+                      <Text style={styles.modalInfoValue}>{formatDate(selectedInvoice.paidAt)}</Text>
                     </View>
                   )}
 
                   <View style={styles.totalContainer}>
                     <Text style={styles.totalLabel}>Total</Text>
                     <Text style={styles.totalValue}>
-                      {formatCurrency(selectedInvoice.amount)}
+                      {formatCurrency(selectedInvoice.totalFee)}
                     </Text>
                   </View>
                 </View>
