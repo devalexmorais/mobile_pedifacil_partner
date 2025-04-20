@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { usePedidos } from '../../../contexts/PedidosContext';
 import { EmptyState } from '../../../components/EmptyState';
 import { Pedido } from '../../../contexts/PedidosContext';
+import { notificationService } from '../../../services/notificationService';
 
 export default function Pronto() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -20,12 +21,18 @@ export default function Pronto() {
     );
   }
 
-  const handleEmEntrega = async (pedidoId: string) => {
+  const handleEmEntrega = async (pedidoId: string, userId: string) => {
     if (isProcessing) return;
     
     try {
       setIsProcessing(true);
       await marcarComoEmEntrega(pedidoId);
+      
+      // Enviar notificação de pedido em entrega
+      await notificationService.sendOrderNotification(
+        userId,
+        notificationService.getOrderStatusMessage('delivery', pedidoId, userId)
+      );
       
       Alert.alert(
         'Pedido Enviado',
@@ -239,7 +246,7 @@ export default function Pronto() {
         {/* Botões de ação */}
         <TouchableOpacity 
           style={[styles.deliveryButton, isPickup && styles.pickupButton, isProcessing && styles.disabledButton]}
-          onPress={() => handleEmEntrega(item.id)}
+          onPress={() => handleEmEntrega(item.id, item.userId)}
           disabled={isProcessing}
         >
           <Ionicons name={isPickup ? "hand-left" : "bicycle"} size={22} color="#fff" />

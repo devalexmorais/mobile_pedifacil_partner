@@ -7,7 +7,8 @@ import { StatusBar } from 'react-native';
 import { MainEstablishmentButton } from '@/components/MainEstablishmentButton';
 import { signOut, getAuth } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { notificationService } from '../../services/notificationService';
 
 <StatusBar
   barStyle="light-content" // Define o estilo do texto (claro ou escuro)
@@ -16,7 +17,8 @@ import { useEffect } from 'react';
 
 function CustomDrawerContent(props: any) {
   const router = useRouter();
-
+  const isMounted = useRef(true);
+  
   const handleLogout = async () => {
     try {
       console.log('Iniciando processo de logout...');
@@ -29,27 +31,52 @@ function CustomDrawerContent(props: any) {
       await AsyncStorage.removeItem('@user_data');
       
       console.log('Logout bem sucedido, redirecionando...');
-      router.replace('/');
+      if (isMounted.current) {
+        // Usar setTimeout para adiar a navegação
+        setTimeout(() => {
+          router.replace('/');
+        }, 100);
+      }
     } catch (error) {
       console.error('Erro ao fazer logout:', error);
     }
   };
 
   useEffect(() => {
+    // Definir flag de componente montado
+    isMounted.current = true;
+    
     const checkAuthStatus = async () => {
       try {
         const token = await AsyncStorage.getItem('@auth_token');
-        if (!token) {
+        if (!token && isMounted.current) {
           console.log('Token não encontrado, redirecionando para login...');
-          router.replace('/');
+          // Usar setTimeout para adiar a navegação
+          setTimeout(() => {
+            router.replace('/');
+          }, 100);
         }
       } catch (error) {
         console.error('Erro ao verificar autenticação:', error);
-        router.replace('/');
+        if (isMounted.current) {
+          // Usar setTimeout para adiar a navegação
+          setTimeout(() => {
+            router.replace('/');
+          }, 100);
+        }
       }
     };
 
-    checkAuthStatus();
+    // Adiar a verificação para garantir que o componente esteja completamente montado
+    const timer = setTimeout(() => {
+      checkAuthStatus();
+    }, 500);
+    
+    // Limpar na desmontagem
+    return () => {
+      isMounted.current = false;
+      clearTimeout(timer);
+    };
   }, []);
 
   return (
@@ -76,6 +103,42 @@ function CustomDrawerContent(props: any) {
 }
 
 export default function AuthLayout() {
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Buscar contagem de notificações não lidas
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+
+    const fetchUnreadCount = async () => {
+      try {
+        // Verificar se o usuário está autenticado antes de buscar notificações
+        if (notificationService.isAuthenticated()) {
+          const count = await notificationService.getUnreadNotificationsCount();
+          setUnreadCount(count);
+        } else {
+          // Se não estiver autenticado, definir como 0
+          setUnreadCount(0);
+        }
+      } catch (error) {
+        console.error('Erro ao buscar notificações não lidas:', error);
+        setUnreadCount(0);
+      }
+    };
+
+    // Adiar a primeira busca
+    const timer = setTimeout(() => {
+      fetchUnreadCount();
+      
+      // Atualizar a cada 1 minuto
+      interval = setInterval(fetchUnreadCount, 60000);
+    }, 1000);
+    
+    return () => {
+      clearTimeout(timer);
+      if (interval) clearInterval(interval);
+    };
+  }, []);
+
   return (
     <Drawer
       screenOptions={{
@@ -98,6 +161,25 @@ export default function AuthLayout() {
           headerShown: true,
           drawerIcon: ({ color, size }) => (
             <Ionicons name="receipt-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Drawer.Screen
+        name="drawer/notifications"
+        options={{
+          title: 'Notificações',
+          headerShown: true,
+          drawerIcon: ({ color, size }) => (
+            <View style={{ width: 24, height: 24, marginRight: 0 }}>
+              <Ionicons name="notifications-outline" size={size} color={color} />
+              {unreadCount > 0 && (
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.notificationBadgeText}>
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </Text>
+                </View>
+              )}
+            </View>
           ),
         }}
       />
@@ -217,5 +299,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#FF3B30',
     fontWeight: '500',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    right: -6,
+    top: -4,
+    backgroundColor: '#FF3B30',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  notificationBadgeText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
 });

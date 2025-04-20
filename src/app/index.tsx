@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { signInWithEmailAndPassword, getAuth } from 'firebase/auth';
@@ -10,6 +10,8 @@ import { CustomInput } from '../components/CustomInput';
 import { getFirestore, collection, query, where, getDocs } from 'firebase/firestore';
 import { colors } from '@/styles/theme/colors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { pushNotificationService } from '../services/pushNotificationService';
+import { notificationService } from '../services/notificationService';
 
 // Esquema de validação
 const LoginSchema = Yup.object().shape({
@@ -26,6 +28,23 @@ const LoginSchema = Yup.object().shape({
 
 export default function Index() {
   const router = useRouter();
+
+  // Inicializar notificações push logo no carregamento do aplicativo
+  useEffect(() => {
+    const initializeNotifications = async () => {
+      try {
+        // Configurar notificações locais com Expo
+        await notificationService.setupPushNotifications();
+        
+        // Configurar notificações FCM para segundo plano
+        await pushNotificationService.requestUserPermission();
+      } catch (error) {
+        console.error('Erro ao inicializar notificações:', error);
+      }
+    };
+    
+    initializeNotifications();
+  }, []);
 
   const handleSignIn = async (values: { email: string; password: string }, { setErrors }: { setErrors: (errors: any) => void }) => {
     try {
@@ -54,6 +73,14 @@ export default function Index() {
         ...querySnapshot.docs[0].data()
       };
       await AsyncStorage.setItem('@user_data', JSON.stringify(userData));
+
+      // Obter e salvar token FCM após login bem-sucedido
+      try {
+        await pushNotificationService.getFCMToken();
+      } catch (fcmError) {
+        console.error('Erro ao obter token FCM:', fcmError);
+        // Não impede o login em caso de erro no FCM
+      }
 
       router.replace('/(auth)/(tabs)/pedidos');
     } catch (error: any) {

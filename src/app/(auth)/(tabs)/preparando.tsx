@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { usePedidos } from '@/contexts/PedidosContext';
 import { Pedido, OrderItem } from '@/contexts/PedidosContext';
 import { EmptyState } from '@/components/EmptyState';
+import { notificationService } from '@/services/notificationService';
 
 export default function Preparando() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -58,6 +59,35 @@ export default function Preparando() {
         }
       ]
     );
+  };
+
+  const handleMarcarComoPronto = async (pedidoId: string, userId: string) => {
+    if (isProcessing) return;
+    
+    try {
+      setIsProcessing(true);
+      await marcarComoPronto(pedidoId);
+      
+      // Enviar notificação de pedido pronto
+      await notificationService.sendOrderNotification(
+        userId,
+        notificationService.getOrderStatusMessage('ready', pedidoId, userId)
+      );
+      
+      Alert.alert(
+        'Pedido Pronto',
+        'Pedido marcado como pronto com sucesso!',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('Erro ao marcar pedido como pronto:', error);
+      Alert.alert(
+        'Erro',
+        'Não foi possível marcar o pedido como pronto. Tente novamente.'
+      );
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const renderPedido = ({ item }: { item: Pedido }) => {
@@ -175,7 +205,7 @@ export default function Preparando() {
           
           <TouchableOpacity 
             style={[styles.button, styles.readyButton, isProcessing && styles.disabledButton]}
-            onPress={() => marcarComoPronto(item.id)}
+            onPress={() => handleMarcarComoPronto(item.id, item.userId)}
             disabled={isProcessing}
           >
             <Ionicons name="checkmark-circle" size={22} color="#fff" />

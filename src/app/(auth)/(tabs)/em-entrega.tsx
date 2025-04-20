@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { usePedidos } from '../../../contexts/PedidosContext';
 import { EmptyState } from '../../../components/EmptyState';
 import { Pedido } from '../../../contexts/PedidosContext';
+import { notificationService } from '../../../services/notificationService';
 
 export default function EmEntrega() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -20,12 +21,18 @@ export default function EmEntrega() {
     );
   }
 
-  const handleEntregaConfirmada = async (pedidoId: string) => {
+  const handleEntregaConfirmada = async (pedidoId: string, userId: string) => {
     if (isProcessing) return;
     
     try {
       setIsProcessing(true);
       await marcarComoEntregue(pedidoId);
+      
+      // Enviar notificação de pedido entregue
+      await notificationService.sendOrderNotification(
+        userId,
+        notificationService.getOrderStatusMessage('completed', pedidoId, userId)
+      );
       
       // Exibir alerta após a entrega ser confirmada
       Alert.alert(
@@ -126,7 +133,7 @@ export default function EmEntrega() {
 
         <TouchableOpacity 
           style={[styles.deliveredButton, isPickup && styles.pickupButton, isProcessing && styles.disabledButton]}
-          onPress={() => handleEntregaConfirmada(item.id)}
+          onPress={() => handleEntregaConfirmada(item.id, item.userId)}
           disabled={isProcessing}
         >
           <Ionicons name="checkmark-done" size={22} color="#fff" />

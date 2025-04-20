@@ -14,6 +14,7 @@ import { EmptyState } from '../../../components/EmptyState';
 import { FloatingButton } from '../../../components/FloatingButton';
 import { colors } from '../../../styles/theme/colors';
 import { establishmentSettingsService } from '../../../services/establishmentSettingsService';
+import { notificationService } from '../../../services/notificationService';
 
 export default function Pedidos() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -46,6 +47,42 @@ export default function Pedidos() {
       </SafeAreaView>
     );
   }
+
+  const handleAceitarPedido = async (pedido: Pedido) => {
+    try {
+      await aceitarPedido(pedido);
+      
+      // Enviar notificação de pedido aceito
+      await notificationService.sendOrderNotification(
+        pedido.userId,
+        notificationService.getOrderStatusMessage('accepted', pedido.id, pedido.userId)
+      );
+    } catch (error) {
+      console.error('Erro ao aceitar pedido:', error);
+      Alert.alert(
+        'Erro',
+        'Não foi possível aceitar o pedido. Tente novamente.'
+      );
+    }
+  };
+
+  const handleRecusarPedido = async (pedidoId: string, userId: string) => {
+    try {
+      await recusarPedido(pedidoId);
+      
+      // Enviar notificação de pedido recusado
+      await notificationService.sendOrderNotification(
+        userId,
+        notificationService.getOrderStatusMessage('cancelled', pedidoId, userId)
+      );
+    } catch (error) {
+      console.error('Erro ao recusar pedido:', error);
+      Alert.alert(
+        'Erro',
+        'Não foi possível recusar o pedido. Tente novamente.'
+      );
+    }
+  };
 
   const renderPedido = ({ item }: { item: Pedido }) => {
     console.log('Renderizando pedido:', item);
@@ -228,14 +265,14 @@ export default function Pedidos() {
           <View style={styles.actions}>
             <TouchableOpacity 
               style={[styles.button, styles.rejectButton]}
-              onPress={() => recusarPedido(item.id)}
+              onPress={() => handleRecusarPedido(item.id, item.userId)}
             >
               <Ionicons name="close-circle-outline" size={20} color="#fff" />
               <Text style={styles.buttonText}>Recusar</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.button, styles.acceptButton]}
-              onPress={() => aceitarPedido(item)}
+              onPress={() => handleAceitarPedido(item)}
             >
               <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
               <Text style={styles.buttonText}>Aceitar</Text>

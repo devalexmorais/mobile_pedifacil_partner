@@ -216,4 +216,135 @@ exports.getUserRole = functions.https.onCall(async (data, context) => {
   } catch (error) {
     throw new functions.https.HttpsError('internal', error.message);
   }
+});
+
+// Função para detectar novas notificações e enviar push
+exports.sendNotificationOnCreate = functions.firestore
+  .document('partners/{partnerId}/notifications/{notificationId}')
+  .onCreate(async (snapshot, context) => {
+    try {
+      // Extrair o ID do parceiro e da notificação dos parâmetros de contexto
+      const partnerId = context.params.partnerId;
+      const notificationId = context.params.notificationId;
+      
+      console.log(`Nova notificação criada: ${notificationId} para parceiro: ${partnerId}`);
+      
+      // Obter os dados da notificação
+      const notificationData = snapshot.data();
+      
+      // Verificar se a notificação contém os dados necessários
+      if (!notificationData) {
+        console.error('Dados da notificação não encontrados');
+        return null;
+      }
+      
+      // Buscar o documento do parceiro para obter o token FCM
+      const partnerDoc = await admin.firestore()
+        .collection('partners')
+        .doc(partnerId)
+        .get();
+      
+      if (!partnerDoc.exists) {
+        console.error(`Parceiro não encontrado: ${partnerId}`);
+        return null;
+      }
+      
+      const partnerData = partnerDoc.data();
+      
+      // Verificar se o parceiro tem tokens FCM registrados
+      // Verificando tanto o formato fcmTokens quanto o formato notificationTokens para compatibilidade
+      let fcmToken = null;
+      
+      if (partnerData.fcmTokens && partnerData.fcmTokens.token) {
+        fcmToken = partnerData.fcmTokens.token;
+      } else if (partnerData.notificationTokens && partnerData.notificationTokens.expoToken) {
+        fcmToken = partnerData.notificationTokens.expoToken;
+      }
+      
+      if (!fcmToken) {
+        console.log(`Parceiro ${partnerId} não possui token FCM registrado`);
+        return null;
+      }
+      
+      // Preparar mensagem de notificação
+      const message = {
+        notification: {
+          title: notificationData.title || 'Nova notificação',
+          body: notificationData.body || 'Você recebeu uma nova notificação',
+        },
+        data: {
+          type: notificationData.type || 'general',
+          notificationId: notificationId,
+          partnerId: partnerId,
+          // Adicionar dados para navegação no app
+          screen: notificationData.screen || 'notifications',
+          clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+        },
+        token: fcmToken,
+      };
+      
+      // Enviar a notificação
+      const response = await admin.messaging().send(message);
+      console.log('Notificação enviada com sucesso:', response);
+      
+      // Atualizar o documento de notificação para indicar que foi enviado
+      await snapshot.ref.update({
+        sent: true,
+        sentAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      
+      return response;
+    } catch (error) {
+      console.error('Erro ao enviar notificação:', error);
+      return null;
+    }
+  });
+
+// Função HTTP para enviar uma notificação de teste
+exports.createTestNotification = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      'unauthenticated',
+      'Você precisa estar autenticado para realizar esta ação'
+    );
+  }
+
+  try {
+    const { partnerId, title, body, type, screen } = data;
+    
+    // Validar parâmetros
+    if (!partnerId) {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        'ID do parceiro é obrigatório'
+      );
+    }
+    
+    // Criar nova notificação
+    const notificationRef = admin.firestore()
+      .collection('partners')
+      .doc(partnerId)
+      .collection('notifications')
+      .doc();
+    
+    const notificationData = {
+      title: title || 'Notificação de teste',
+      body: body || 'Esta é uma notificação de teste',
+      type: type || 'test',
+      screen: screen || 'notifications',
+      read: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+    
+    await notificationRef.set(notificationData);
+    
+    return {
+      success: true,
+      message: 'Notificação de teste criada com sucesso',
+      notificationId: notificationRef.id
+    };
+  } catch (error) {
+    console.error('Erro ao criar notificação de teste:', error);
+    throw new functions.https.HttpsError('internal', 'Erro ao criar notificação de teste');
+  }
 }); 
