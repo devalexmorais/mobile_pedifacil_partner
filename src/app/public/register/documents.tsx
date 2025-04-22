@@ -35,6 +35,9 @@ interface DocumentsFormData {
   cnpj_or_cpf: string;
 }
 
+// Função para capitalizar a primeira letra de cada palavra
+const capitalizeWords = (s: string): string => s.replace(/\b\w/g, c => c.toUpperCase());
+
 export default function Documents() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -182,56 +185,135 @@ export default function Documents() {
 
       console.log('Parâmetros para registro:', params);
 
+      // Log detalhado de todos os dados
+      console.log('============ DADOS COMPLETOS DO CADASTRO ============');
+      console.log('Dados básicos:', {
+        name: params.name,
+        email: params.email,
+        phone: params.phone
+      });
+      
+      console.log('Endereço:', {
+        street: params.street,
+        number: params.number,
+        complement: params.complement,
+        neighborhood: params.neighborhood,
+        neighborhoodName: params.neighborhoodName,
+        city: params.city,
+        cityName: params.cityName,
+        state: params.state,
+        stateName: params.stateName
+      });
+      
+      console.log('Configurações:', {
+        delivery: params.delivery ? JSON.parse(String(params.delivery)) : null,
+        pickup: params.pickup ? JSON.parse(String(params.pickup)) : null,
+        paymentOptions: params.paymentOptions ? JSON.parse(String(params.paymentOptions)) : null,
+        schedule: params.schedule ? JSON.parse(String(params.schedule)) : null
+      });
+      
+      console.log('Documentos:', {
+        storeName: formData.storeName,
+        category: formData.category,
+        subcategory: formData.subcategory,
+        cnpj_or_cpf: formData.cnpj_or_cpf
+      });
+      console.log('===================================================');
+
       // Verificação mais detalhada dos dados
       if (!params.name || !params.email || !params.password || 
           !params.phone || !params.street || !params.number || 
-          !params.neighborhood || !params.city || !params.state) {
+          !params.neighborhood || !params.city || !params.state ||
+          !params.delivery || !params.pickup || !params.paymentOptions || !params.schedule) {
         Alert.alert('Erro', 'Dados de cadastro incompletos. Por favor, comece o cadastro novamente.');
         router.push('/public/register/basic-info');
         return;
       }
 
-      const result = await registerService.registerPartner({
-        name: String(params.name),
-        email: String(params.email),
-        password: String(params.password),
-        phone: String(params.phone),
-        street: String(params.street),
-        number: String(params.number),
-        complement: params.complement ? String(params.complement) : '',
-        neighborhood: String(params.neighborhood),
-        neighborhoodName: params.neighborhoodName ? String(params.neighborhoodName) : '',
-        city: String(params.city),
-        cityName: params.cityName ? String(params.cityName) : '',
-        state: String(params.state),
-        stateName: params.stateName ? String(params.stateName) : '',
-        storeName: formData.storeName,
-        category: formData.category,
-        subcategory: formData.subcategory,
-        cnpj_or_cpf: formData.cnpj_or_cpf,
-      });
+      try {
+        // Adiciona um pequeno atraso para evitar múltiplas chamadas rápidas
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        const result = await registerService.registerPartner({
+          name: String(params.name),
+          email: String(params.email),
+          password: String(params.password),
+          phone: String(params.phone),
+          street: String(params.street),
+          number: String(params.number),
+          complement: params.complement ? String(params.complement) : '',
+          neighborhood: String(params.neighborhood),
+          neighborhoodName: params.neighborhoodName ? String(params.neighborhoodName) : '',
+          city: String(params.city),
+          cityName: params.cityName ? String(params.cityName) : '',
+          state: String(params.state),
+          stateName: params.stateName ? String(params.stateName) : '',
+          storeName: formData.storeName,
+          category: formData.category,
+          subcategory: formData.subcategory,
+          cnpj_or_cpf: formData.cnpj_or_cpf,
+          delivery: params.delivery ? String(params.delivery) : '',
+          pickup: params.pickup ? String(params.pickup) : '',
+          paymentOptions: params.paymentOptions ? String(params.paymentOptions) : '',
+          schedule: params.schedule ? String(params.schedule) : '',
+        });
 
-      if ('error' in result) {
-        throw new Error(String(result.error));
+        if ('error' in result) {
+          throw new Error(String(result.error));
+        }
+
+        console.log('Usuário registrado com sucesso:', result);
+
+        Alert.alert(
+          'Sucesso!',
+          'Cadastro realizado com sucesso! Aguarde a aprovação do seu cadastro.',
+          [
+            {
+              text: 'OK',
+              onPress: () => router.replace('/(auth)/(tabs)/pedidos')
+            }
+          ]
+        );
+      } catch (authError: any) {
+        console.error('Erro específico no Firebase Auth:', authError);
+        
+        if (authError.code === 'auth/too-many-requests') {
+          Alert.alert(
+            'Limite de tentativas excedido',
+            'Detectamos muitas tentativas de cadastro. Por favor, tente novamente mais tarde ou entre em contato com o suporte.',
+            [
+              {
+                text: 'OK',
+                onPress: () => router.push('/')
+              }
+            ]
+          );
+        } else {
+          throw authError; // Repassa o erro para ser tratado no catch externo
+        }
       }
-
-      console.log('Usuário registrado com sucesso:', result);
-
-      Alert.alert(
-        'Sucesso!',
-        'Cadastro realizado com sucesso! Aguarde a aprovação do seu cadastro.',
-        [
-          {
-            text: 'OK',
-            onPress: () => router.replace('/(auth)/(tabs)/pedidos')
-          }
-        ]
-      );
       
     } catch (error: any) {
+      console.error('Erro detalhado no cadastro:', error);
+      
+      // Mensagens de erro personalizadas
+      let errorMessage = 'Não foi possível realizar o cadastro. Tente novamente.';
+      
+      if (error.message) {
+        if (error.message.includes('too-many-requests')) {
+          errorMessage = 'Muitas tentativas de cadastro. Por favor, aguarde alguns minutos e tente novamente mais tarde.';
+        } else if (error.message.includes('email-already-in-use')) {
+          errorMessage = 'Este e-mail já está cadastrado. Tente fazer login ou use outro e-mail.';
+        } else if (error.message.includes('invalid-email')) {
+          errorMessage = 'O e-mail informado é inválido. Verifique e tente novamente.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
       Alert.alert(
         'Erro no Cadastro',
-        error.message || 'Não foi possível realizar o cadastro. Tente novamente.'
+        errorMessage
       );
     } finally {
       setLoading(false);
@@ -253,7 +335,8 @@ export default function Documents() {
           <CustomInput
             label="Nome do Estabelecimento"
             value={formData.storeName}
-            onChangeText={(text) => updateFormData({ storeName: text })}
+            onChangeText={(text) => updateFormData({ storeName: capitalizeWords(text) })}
+            autoCapitalize="words"
             error={!!errors.storeName}
             placeholder="Digite o nome do seu estabelecimento"
           />

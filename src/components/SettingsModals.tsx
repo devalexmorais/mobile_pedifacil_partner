@@ -21,24 +21,53 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles/theme/colors';
-import { establishmentSettingsService, CardFlag as CardFlagType, Schedule } from '../services/establishmentSettingsService';
+import { establishmentSettingsService, Schedule } from '../services/establishmentSettingsService';
 
-type CardFlag = {
-  name: string;
+type PaymentMethod = {
+  type: string;
   enabled: boolean;
-  fee: string;
 };
 
-type SettingsModalsProps = {
+type CardBrands = {
+  visa: boolean;
+  mastercard: boolean;
+  elo: boolean;
+  amex: boolean;
+  hipercard: boolean;
+};
+
+type PaymentOptions = {
+  cartao: PaymentMethod & {
+    brands: CardBrands;
+  };
+  dinheiro: PaymentMethod;
+  pix: PaymentMethod;
+};
+
+interface SettingsModalsProps {
   scheduleModal: boolean;
   deliveryTimeModal: boolean;
   cardFlagsModal: boolean;
   pickupModal: boolean;
-  setScheduleModal: (visible: boolean) => void;
-  setDeliveryTimeModal: (visible: boolean) => void;
-  setCardFlagsModal: (visible: boolean) => void;
-  setPickupModal: (visible: boolean) => void;
-};
+  setScheduleModal: (value: boolean) => void;
+  setDeliveryTimeModal: (value: boolean) => void;
+  setCardFlagsModal: (value: boolean) => void;
+  setPickupModal: (value: boolean) => void;
+  settings: {
+    schedule: Schedule;
+    delivery: {
+      minTime: string;
+      maxTime: string;
+      minimumOrderAmount: string;
+    };
+    paymentOptions: PaymentOptions;
+    pickup: {
+      enabled: boolean;
+      estimatedTime: string;
+    };
+  } | null;
+  onSettingsChange: () => Promise<void>;
+}
 
 export function SettingsModals({
   scheduleModal,
@@ -48,164 +77,174 @@ export function SettingsModals({
   setScheduleModal,
   setDeliveryTimeModal,
   setCardFlagsModal,
-  setPickupModal
+  setPickupModal,
+  settings,
+  onSettingsChange
 }: SettingsModalsProps) {
-  // Estado para tempo mínimo e máximo de entrega
-  const [minDeliveryTime, setMinDeliveryTime] = useState('30');
-  const [maxDeliveryTime, setMaxDeliveryTime] = useState('45');
-
-  // Estado para bandeiras de cartão
-  const [cardFlags, setCardFlags] = useState<CardFlag[]>([
-    { name: 'Visa', enabled: true, fee: '2.5' },
-    { name: 'Mastercard', enabled: true, fee: '2.8' },
-    { name: 'Elo', enabled: true, fee: '3.0' },
-    { name: 'American Express', enabled: false, fee: '3.5' },
-    { name: 'Hipercard', enabled: false, fee: '3.2' }
-  ]);
-
+  // Estados para tempo de entrega
+  const [minDeliveryTime, setMinDeliveryTime] = useState(settings?.delivery?.minTime || '20');
+  const [maxDeliveryTime, setMaxDeliveryTime] = useState(settings?.delivery?.maxTime || '45');
+  
+  // Estado para retirada
+  const [allowPickup, setAllowPickup] = useState(settings?.pickup?.enabled || false);
+  const [pickupTime, setPickupTime] = useState(settings?.pickup?.estimatedTime || '15');
+  
+  // Estado para métodos de pagamento
+  const [paymentOptions, setPaymentOptions] = useState<PaymentOptions>(settings?.paymentOptions || {
+    cartao: {
+      type: 'Cartão',
+      enabled: true,
+      brands: {
+        visa: true,
+        mastercard: true,
+        elo: false,
+        amex: false,
+        hipercard: false
+      }
+    },
+    dinheiro: {
+      type: 'Dinheiro',
+      enabled: true
+    },
+    pix: {
+      type: 'PIX',
+      enabled: true
+    }
+  });
+  
   // Estado para horários de funcionamento
-  const [scheduleData, setScheduleData] = useState<Schedule>({
+  const [schedule, setSchedule] = useState<Schedule>(settings?.schedule || {
+    domingo: { isOpen: false, openTime: '00:00', closeTime: '00:00' },
     segunda: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
     terca: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
     quarta: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
     quinta: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
     sexta: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
-    sabado: { isOpen: true, openTime: '08:00', closeTime: '12:00' },
-    domingo: { isOpen: false, openTime: '00:00', closeTime: '00:00' }
+    sabado: { isOpen: true, openTime: '08:00', closeTime: '18:00' }
   });
 
-  // Estado para configuração de retirada
-  const [allowPickup, setAllowPickup] = useState(true);
-  const [pickupTime, setPickupTime] = useState('15');
-
-  // Estado de carregamento
-  const [loading, setLoading] = useState(false);
-
-  // Estado para controlar as animações dos modais individualmente
-  const [closing, setClosing] = useState(false);
-  
-  // Animação para o modal deslizar
-  const panY = useRef(new Animated.Value(0)).current;
-  const opacity = useRef(new Animated.Value(1)).current;
-  
-  const translateY = panY.interpolate({
-    inputRange: [-1, 0, 1, height],
-    outputRange: [0, 0, 1, height / 1.5],
-    extrapolate: 'clamp',
-  });
-
-  // Resetar o estado quando os modais forem abertos
+  // Atualizar estados quando as configurações mudarem
   useEffect(() => {
-    if (scheduleModal || deliveryTimeModal || cardFlagsModal || pickupModal) {
-      panY.setValue(0);
-      opacity.setValue(1);
-      setClosing(false);
+    if (settings) {
+      setMinDeliveryTime(settings.delivery.minTime);
+      setMaxDeliveryTime(settings.delivery.maxTime);
+      setAllowPickup(settings.pickup.enabled);
+      setPickupTime(settings.pickup.estimatedTime);
+      setPaymentOptions(settings.paymentOptions);
+      setSchedule(settings.schedule);
     }
-  }, [scheduleModal, deliveryTimeModal, cardFlagsModal, pickupModal]);
+  }, [settings]);
 
-  // Resetar a posição do modal
-  const resetModalPosition = () => {
-    setClosing(false);
-    Animated.spring(panY, {
-      toValue: 0,
-      useNativeDriver: true,
-      tension: 120,
-      friction: 8,
-    }).start();
+  // Função para salvar tempo de entrega
+  const handleSaveDeliveryTime = async () => {
+    try {
+      await establishmentSettingsService.saveDeliveryTime(minDeliveryTime, maxDeliveryTime);
+      await onSettingsChange();
+      Alert.alert('Sucesso', 'Tempo de entrega atualizado com sucesso!');
+      setDeliveryTimeModal(false);
+    } catch (error) {
+      console.error('Erro ao salvar tempo de entrega:', error);
+      Alert.alert('Erro', 'Não foi possível salvar o tempo de entrega. Tente novamente.');
+    }
   };
 
-  // Fechar o modal com animação
-  const closeModal = (setModal: (visible: boolean) => void) => {
-    if (closing) return; // Evitar chamadas múltiplas durante a animação
-    
-    setClosing(true);
-    
-    Animated.parallel([
-      Animated.timing(panY, {
-        toValue: height,
-        duration: 300,
-        useNativeDriver: true,
-        easing: Easing.out(Easing.ease),
-      }),
-      Animated.timing(opacity, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-        easing: Easing.out(Easing.ease),
-      })
-    ]).start(() => {
-      setModal(false);
-      // Resetamos os valores após o modal fechar completamente
-      setTimeout(() => {
-        panY.setValue(0);
-        opacity.setValue(1);
-        setClosing(false);
-      }, 100);
-    });
+  // Função para salvar configurações de retirada
+  const handleSavePickupSettings = async () => {
+    try {
+      await establishmentSettingsService.savePickupSettings(allowPickup, pickupTime);
+      await onSettingsChange();
+      Alert.alert('Sucesso', 'Configurações de retirada atualizadas com sucesso!');
+      setPickupModal(false);
+    } catch (error) {
+      console.error('Erro ao salvar configurações de retirada:', error);
+      Alert.alert('Erro', 'Não foi possível salvar as configurações de retirada. Tente novamente.');
+    }
   };
 
-  // Configuração do PanResponder para detectar gestos
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => !closing, // Não responder a gestos se estiver fechando
-      onMoveShouldSetPanResponder: () => !closing, // Não responder a gestos se estiver fechando
-      onPanResponderMove: (evt, gestureState) => {
-        // Só permitir arrastar para baixo
-        if (gestureState.dy > 0) {
-          panY.setValue(gestureState.dy);
-          // Diminuir a opacidade enquanto arrasta
-          const newOpacity = Math.max(1 - (gestureState.dy / (height / 2)), 0.5);
-          opacity.setValue(newOpacity);
-        }
-      },
-      onPanResponderRelease: (evt, gestureState) => {
-        // Se o usuário arrastou para baixo o suficiente, fechar o modal
-        if (gestureState.dy > 80 || gestureState.vy > 0.5) { // Também considera a velocidade
-          // Determinar qual modal está aberto e fechá-lo
-          if (scheduleModal) closeModal(setScheduleModal);
-          else if (deliveryTimeModal) closeModal(setDeliveryTimeModal);
-          else if (cardFlagsModal) closeModal(setCardFlagsModal);
-          else if (pickupModal) closeModal(setPickupModal);
-        } else {
-          // Caso contrário, retornar à posição original
-          resetModalPosition();
-        }
-      },
-    })
-  ).current;
-
-  // Função para escolher qual função de fechar chamar com base no modal ativo
-  const handleCloseActiveModal = () => {
-    if (scheduleModal) closeModal(setScheduleModal);
-    else if (deliveryTimeModal) closeModal(setDeliveryTimeModal);
-    else if (cardFlagsModal) closeModal(setCardFlagsModal);
-    else if (pickupModal) closeModal(setPickupModal);
-  };
-
-  const toggleCardFlag = (index: number) => {
-    const newFlags = [...cardFlags];
-    newFlags[index].enabled = !newFlags[index].enabled;
-    setCardFlags(newFlags);
-  };
-
-  const updateCardFlagFee = (index: number, fee: string) => {
-    const newFlags = [...cardFlags];
-    newFlags[index].fee = fee;
-    setCardFlags(newFlags);
-  };
-
-  const toggleDaySchedule = (day: keyof typeof scheduleData) => {
-    setScheduleData(prev => ({
+  // Função para atualizar método de pagamento
+  const handlePaymentMethodChange = (method: keyof PaymentOptions, enabled: boolean) => {
+    setPaymentOptions(prev => ({
       ...prev,
-      [day]: {
-        ...prev[day],
-        isOpen: !prev[day].isOpen
+      [method]: {
+        ...prev[method],
+        enabled
       }
     }));
   };
 
-  const updateDaySchedule = (day: keyof typeof scheduleData, field: 'openTime' | 'closeTime', value: string) => {
-    setScheduleData(prev => ({
+  // Função para atualizar bandeira de cartão
+  const handleCardBrandChange = (brand: keyof CardBrands, enabled: boolean) => {
+    setPaymentOptions(prev => ({
+      ...prev,
+      cartao: {
+        ...prev.cartao,
+        brands: {
+          ...prev.cartao.brands,
+          [brand]: enabled
+        }
+      }
+    }));
+  };
+
+  // Função para salvar métodos de pagamento
+  const handleSavePaymentOptions = async () => {
+    try {
+      // Verifica se o cartão está ativo e se tem pelo menos uma bandeira selecionada
+      if (paymentOptions.cartao.enabled) {
+        const hasSelectedBrand = Object.values(paymentOptions.cartao.brands).some(value => value);
+        if (!hasSelectedBrand) {
+          Alert.alert(
+            'Atenção',
+            'Você precisa selecionar pelo menos uma bandeira de cartão antes de salvar.',
+            [
+              {
+                text: 'OK',
+                onPress: () => {}
+              }
+            ]
+          );
+          return;
+        }
+      }
+
+      await establishmentSettingsService.savePaymentOptions(paymentOptions);
+      await onSettingsChange();
+      Alert.alert('Sucesso', 'Métodos de pagamento atualizados com sucesso!');
+      setCardFlagsModal(false);
+    } catch (error) {
+      console.error('Erro ao salvar métodos de pagamento:', error);
+      Alert.alert('Erro', 'Não foi possível salvar os métodos de pagamento. Tente novamente.');
+    }
+  };
+
+  // Função para formatar hora no formato HH:MM
+  const formatTimeInput = (input: string): string => {
+    let digits = input.replace(/\D/g, '');
+    if (digits.length > 4) digits = digits.slice(0, 4);
+    if (digits.length <= 2) return digits;
+    return digits.slice(0, 2) + ':' + digits.slice(2);
+  };
+
+  // Função para salvar horários de funcionamento
+  const handleSaveSchedule = async () => {
+    try {
+      await establishmentSettingsService.saveSchedule(schedule);
+      await onSettingsChange();
+      Alert.alert('Sucesso', 'Horários atualizados com sucesso!');
+      setScheduleModal(false);
+    } catch (error) {
+      console.error('Erro ao salvar horários:', error);
+      Alert.alert('Erro', 'Não foi possível salvar os horários. Tente novamente.');
+    }
+  };
+
+  // Função para atualizar horário de um dia específico
+  const handleScheduleChange = (
+    day: keyof Schedule,
+    field: 'isOpen' | 'openTime' | 'closeTime',
+    value: boolean | string
+  ) => {
+    setSchedule(prev => ({
       ...prev,
       [day]: {
         ...prev[day],
@@ -214,411 +253,263 @@ export function SettingsModals({
     }));
   };
 
-  // Efeito para carregar dados de configuração quando o componente montar
-  useEffect(() => {
-    initializeSettings();
-  }, []);
-
-  // Inicializar configurações
-  const initializeSettings = async () => {
-    try {
-      await establishmentSettingsService.initializeSettings();
-    } catch (error) {
-      console.error('Erro ao inicializar configurações:', error);
-    }
-  };
-
-  // Efeito para carregar dados quando os modais são abertos
-  useEffect(() => {
-    if (cardFlagsModal) {
-      loadCardFlags();
-    }
-  }, [cardFlagsModal]);
-
-  useEffect(() => {
-    if (deliveryTimeModal) {
-      loadDeliveryTime();
-    }
-  }, [deliveryTimeModal]);
-
-  useEffect(() => {
-    if (pickupModal) {
-      loadPickupSettings();
-    }
-  }, [pickupModal]);
-
-  useEffect(() => {
-    if (scheduleModal) {
-      loadSchedule();
-    }
-  }, [scheduleModal]);
-
-  // Funções para carregar dados
-  const loadCardFlags = async () => {
-    try {
-      setLoading(true);
-      const flags = await establishmentSettingsService.getCardFlags();
-      if (flags.length > 0) {
-        setCardFlags(flags);
-      }
-    } catch (error) {
-      console.error('Erro ao carregar bandeiras de cartão:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadDeliveryTime = async () => {
-    try {
-      setLoading(true);
-      const { minTime, maxTime } = await establishmentSettingsService.getDeliveryTime();
-      setMinDeliveryTime(minTime);
-      setMaxDeliveryTime(maxTime);
-    } catch (error) {
-      console.error('Erro ao carregar tempo de entrega:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadPickupSettings = async () => {
-    try {
-      setLoading(true);
-      const { enabled, estimatedTime } = await establishmentSettingsService.getPickupSettings();
-      setAllowPickup(enabled);
-      setPickupTime(estimatedTime);
-    } catch (error) {
-      console.error('Erro ao carregar configurações de retirada:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadSchedule = async () => {
-    try {
-      setLoading(true);
-      const schedule = await establishmentSettingsService.getSchedule();
-      setScheduleData(schedule);
-    } catch (error) {
-      console.error('Erro ao carregar horários de funcionamento:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const saveDeliveryTime = async () => {
-    try {
-      setLoading(true);
-      await establishmentSettingsService.saveDeliveryTime(minDeliveryTime, maxDeliveryTime);
-      Alert.alert('Sucesso', 'Tempo de entrega atualizado com sucesso!');
-      closeModal(setDeliveryTimeModal);
-    } catch (error) {
-      console.error('Erro ao salvar tempo de entrega:', error);
-      Alert.alert('Erro', 'Não foi possível salvar o tempo de entrega. Tente novamente.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const saveCardFlags = async () => {
-    try {
-      setLoading(true);
-      await establishmentSettingsService.saveCardFlags(cardFlags);
-      Alert.alert('Sucesso', 'Bandeiras de cartão atualizadas com sucesso!');
-      closeModal(setCardFlagsModal);
-    } catch (error) {
-      console.error('Erro ao salvar bandeiras de cartão:', error);
-      Alert.alert('Erro', 'Não foi possível salvar as bandeiras de cartão. Tente novamente.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const saveSchedule = async () => {
-    try {
-      setLoading(true);
-      await establishmentSettingsService.saveSchedule(scheduleData);
-      Alert.alert('Sucesso', 'Horários de funcionamento atualizados com sucesso!');
-      closeModal(setScheduleModal);
-    } catch (error) {
-      console.error('Erro ao salvar horários de funcionamento:', error);
-      Alert.alert('Erro', 'Não foi possível salvar os horários de funcionamento. Tente novamente.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const savePickupSettings = async () => {
-    try {
-      setLoading(true);
-      await establishmentSettingsService.savePickupSettings(allowPickup, pickupTime);
-      Alert.alert('Sucesso', 'Configurações de retirada atualizadas com sucesso!');
-      closeModal(setPickupModal);
-    } catch (error) {
-      console.error('Erro ao salvar configurações de retirada:', error);
-      Alert.alert('Erro', 'Não foi possível salvar as configurações de retirada. Tente novamente.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Função para renderizar a barra visual no topo do modal (estilo iOS)
-  const renderModalHandle = () => (
-    <View style={styles.modalHandleContainer}>
-      <View style={styles.modalHandle} />
-    </View>
-  );
-
-  // Modificar os botões de salvar para mostrar indicadores de carregamento
-  const renderSaveButton = (
-    onPress: () => void, 
-    text: string = 'Salvar',
-    isLoading: boolean = loading
-  ) => (
-    <TouchableOpacity
-      style={styles.saveButton}
-      onPress={onPress}
-      disabled={isLoading}
-    >
-      {isLoading ? (
-        <ActivityIndicator size="small" color="#FFF" />
-      ) : (
-        <Text style={styles.saveButtonText}>{text}</Text>
-      )}
-    </TouchableOpacity>
-  );
-
   return (
     <>
-      {/* Modal para Editar Tempo de Entrega */}
+      {/* Modal de Horários */}
       <Modal
+        visible={scheduleModal}
         animationType="slide"
-        transparent={true}
-        visible={deliveryTimeModal}
-        onRequestClose={() => setDeliveryTimeModal(false)}
-        statusBarTranslucent={true}
+        presentationStyle="fullScreen"
+        transparent={false}
+        onRequestClose={() => setScheduleModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.iOSStyleModal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Tempo de Entrega</Text>
-              <TouchableOpacity 
-                style={styles.closeButton}
-                onPress={() => setDeliveryTimeModal(false)}
-              >
-                <Ionicons name="close-circle" size={30} color={colors.orange} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView 
-              style={styles.modalContent}
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Tempo mínimo (minutos)</Text>
-                <TextInput
-                  style={styles.input}
-                  value={minDeliveryTime}
-                  onChangeText={setMinDeliveryTime}
-                  keyboardType="numeric"
-                  placeholder="Ex: 30"
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Tempo máximo (minutos)</Text>
-                <TextInput
-                  style={styles.input}
-                  value={maxDeliveryTime}
-                  onChangeText={setMaxDeliveryTime}
-                  keyboardType="numeric"
-                  placeholder="Ex: 45"
-                />
-              </View>
-
-              {renderSaveButton(saveDeliveryTime)}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Modal para Editar Bandeiras de Cartão */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={cardFlagsModal}
-        onRequestClose={() => setCardFlagsModal(false)}
-        statusBarTranslucent={true}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.iOSStyleModal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Bandeiras de Cartão</Text>
-              <TouchableOpacity 
-                style={styles.closeButton}
-                onPress={() => setCardFlagsModal(false)}
-              >
-                <Ionicons name="close-circle" size={30} color={colors.orange} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView 
-              style={styles.modalContent}
-              showsVerticalScrollIndicator={false}
-            >
-              {cardFlags.map((flag, index) => (
-                <View key={flag.name} style={styles.cardFlagItem}>
-                  <View style={styles.cardFlagHeader}>
-                    <Text style={styles.cardFlagName}>{flag.name}</Text>
-                    <Switch
-                      value={flag.enabled}
-                      onValueChange={() => toggleCardFlag(index)}
-                      trackColor={{ false: '#d1d1d1', true: colors.orange }}
-                      thumbColor={flag.enabled ? '#fff' : '#f4f3f4'}
-                    />
-                  </View>
-                  
-                  {flag.enabled && (
-                    <View style={styles.feeContainer}>
-                      <Text style={styles.feeLabel}>Taxa (%)</Text>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Horários de Funcionamento</Text>
+            <ScrollView style={styles.scrollView}>
+              {Object.entries(schedule).map(([day, value]) => (
+                <View key={day} style={styles.scheduleItem}>
+                  <Text style={styles.dayLabel}>{day.charAt(0).toUpperCase() + day.slice(1)}</Text>
+                  <Switch
+                    value={value.isOpen}
+                    onValueChange={(newValue) => handleScheduleChange(day as keyof Schedule, 'isOpen', newValue)}
+                  />
+                  {value.isOpen && (
+                    <View style={styles.timeContainer}>
                       <TextInput
-                        style={styles.feeInput}
-                        value={flag.fee}
-                        onChangeText={(value) => updateCardFlagFee(index, value)}
+                        style={styles.timeInput}
+                        value={value.openTime}
+                        onChangeText={(text) => handleScheduleChange(day as keyof Schedule, 'openTime', formatTimeInput(text))}
+                        placeholder="00:00"
                         keyboardType="numeric"
-                        placeholder="0.0"
+                        maxLength={5}
+                      />
+                      <Text style={styles.timeLabel}>até</Text>
+                      <TextInput
+                        style={styles.timeInput}
+                        value={value.closeTime}
+                        onChangeText={(text) => handleScheduleChange(day as keyof Schedule, 'closeTime', formatTimeInput(text))}
+                        placeholder="00:00"
+                        keyboardType="numeric"
+                        maxLength={5}
                       />
                     </View>
                   )}
                 </View>
               ))}
-
-              {renderSaveButton(saveCardFlags)}
             </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Modal para Editar Horários de Funcionamento */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={scheduleModal}
-        onRequestClose={() => setScheduleModal(false)}
-        statusBarTranslucent={true}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.iOSStyleModal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Horários de Funcionamento</Text>
-              <TouchableOpacity 
-                style={styles.closeButton}
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.button, styles.cancelButton]}
                 onPress={() => setScheduleModal(false)}
               >
-                <Ionicons name="close-circle" size={30} color={colors.orange} />
+                <Text style={styles.buttonText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, styles.saveButton]}
+                onPress={handleSaveSchedule}
+              >
+                <Text style={styles.buttonText}>Salvar</Text>
               </TouchableOpacity>
             </View>
-
-            <ScrollView 
-              style={styles.modalContent}
-              showsVerticalScrollIndicator={false}
-            >
-              {Object.entries(scheduleData).map(([day, data]) => (
-                <View key={day} style={styles.scheduleItem}>
-                  <View style={styles.scheduleHeader}>
-                    <Text style={styles.dayName}>
-                      {day.charAt(0).toUpperCase() + day.slice(1)}
-                    </Text>
-                    <Switch
-                      value={data.isOpen}
-                      onValueChange={() => toggleDaySchedule(day as keyof typeof scheduleData)}
-                      trackColor={{ false: '#d1d1d1', true: colors.orange }}
-                      thumbColor={data.isOpen ? '#fff' : '#f4f3f4'}
-                    />
-                  </View>
-                  
-                  {data.isOpen && (
-                    <View style={styles.timeContainer}>
-                      <View style={styles.timeInputGroup}>
-                        <Text style={styles.timeLabel}>Abre</Text>
-                        <TextInput
-                          style={styles.timeInput}
-                          value={data.openTime}
-                          onChangeText={(value) => updateDaySchedule(day as keyof typeof scheduleData, 'openTime', value)}
-                          placeholder="08:00"
-                        />
-                      </View>
-                      <View style={styles.timeInputGroup}>
-                        <Text style={styles.timeLabel}>Fecha</Text>
-                        <TextInput
-                          style={styles.timeInput}
-                          value={data.closeTime}
-                          onChangeText={(value) => updateDaySchedule(day as keyof typeof scheduleData, 'closeTime', value)}
-                          placeholder="18:00"
-                        />
-                      </View>
-                    </View>
-                  )}
-                </View>
-              ))}
-
-              {renderSaveButton(saveSchedule)}
-            </ScrollView>
           </View>
         </View>
       </Modal>
 
-      {/* Modal para Editar Configurações de Retirada */}
+      {/* Modal de Tempo de Entrega */}
       <Modal
+        visible={deliveryTimeModal}
         animationType="slide"
-        transparent={true}
-        visible={pickupModal}
-        onRequestClose={() => setPickupModal(false)}
-        statusBarTranslucent={true}
+        presentationStyle="fullScreen"
+        transparent={false}
+        onRequestClose={() => setDeliveryTimeModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.iOSStyleModal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Configurações de Retirada</Text>
-              <TouchableOpacity 
-                style={styles.closeButton}
-                onPress={() => setPickupModal(false)}
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Tempo de Entrega</Text>
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Tempo mínimo (minutos):</Text>
+              <TextInput
+                style={styles.input}
+                value={minDeliveryTime}
+                onChangeText={setMinDeliveryTime}
+                keyboardType="numeric"
+                placeholder="20"
+              />
+            </View>
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Tempo máximo (minutos):</Text>
+              <TextInput
+                style={styles.input}
+                value={maxDeliveryTime}
+                onChangeText={setMaxDeliveryTime}
+                keyboardType="numeric"
+                placeholder="45"
+              />
+            </View>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.button, styles.cancelButton]}
+                onPress={() => setDeliveryTimeModal(false)}
               >
-                <Ionicons name="close-circle" size={30} color={colors.orange} />
+                <Text style={styles.buttonText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, styles.saveButton]}
+                onPress={handleSaveDeliveryTime}
+              >
+                <Text style={styles.buttonText}>Salvar</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
 
-            <ScrollView 
-              style={styles.modalContent}
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={styles.pickupSettings}>
-                <View style={styles.pickupHeader}>
-                  <Text style={styles.pickupTitle}>Permitir retirada no local</Text>
-                  <Switch
-                    value={allowPickup}
-                    onValueChange={setAllowPickup}
-                    trackColor={{ false: '#d1d1d1', true: colors.orange }}
-                    thumbColor={allowPickup ? '#fff' : '#f4f3f4'}
-                  />
-                </View>
-                
-                {allowPickup && (
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.inputLabel}>Tempo para retirada (minutos)</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={pickupTime}
-                      onChangeText={setPickupTime}
-                      keyboardType="numeric"
-                      placeholder="Ex: 15"
-                    />
-                  </View>
-                )}
+      {/* Modal de Métodos de Pagamento */}
+      <Modal
+        visible={cardFlagsModal}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        transparent={false}
+        onRequestClose={() => setCardFlagsModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Métodos de Pagamento</Text>
+            <ScrollView style={styles.scrollView}>
+              {/* Dinheiro */}
+              <View style={styles.paymentMethodItem}>
+                <Text style={styles.methodLabel}>Dinheiro</Text>
+                <Switch
+                  value={paymentOptions.dinheiro.enabled}
+                  onValueChange={(enabled) => handlePaymentMethodChange('dinheiro', enabled)}
+                />
               </View>
 
-              {renderSaveButton(savePickupSettings)}
+              {/* PIX */}
+              <View style={styles.paymentMethodItem}>
+                <Text style={styles.methodLabel}>PIX</Text>
+                <Switch
+                  value={paymentOptions.pix.enabled}
+                  onValueChange={(enabled) => handlePaymentMethodChange('pix', enabled)}
+                />
+              </View>
+
+              {/* Cartão */}
+              <View style={styles.paymentMethodItem}>
+                <Text style={styles.methodLabel}>Cartão</Text>
+                <Switch
+                  value={paymentOptions.cartao.enabled}
+                  onValueChange={(enabled) => handlePaymentMethodChange('cartao', enabled)}
+                />
+              </View>
+
+              {/* Bandeiras de Cartão */}
+              {paymentOptions.cartao.enabled && (
+                <View style={styles.cardBrandsContainer}>
+                  <Text style={styles.subTitle}>Bandeiras aceitas:</Text>
+                  <View style={styles.cardBrandsList}>
+                    <View style={styles.cardBrandItem}>
+                      <Text style={styles.brandLabel}>Visa</Text>
+                      <Switch
+                        value={paymentOptions.cartao.brands.visa}
+                        onValueChange={(enabled) => handleCardBrandChange('visa', enabled)}
+                      />
+                    </View>
+                    <View style={styles.cardBrandItem}>
+                      <Text style={styles.brandLabel}>Mastercard</Text>
+                      <Switch
+                        value={paymentOptions.cartao.brands.mastercard}
+                        onValueChange={(enabled) => handleCardBrandChange('mastercard', enabled)}
+                      />
+                    </View>
+                    <View style={styles.cardBrandItem}>
+                      <Text style={styles.brandLabel}>Elo</Text>
+                      <Switch
+                        value={paymentOptions.cartao.brands.elo}
+                        onValueChange={(enabled) => handleCardBrandChange('elo', enabled)}
+                      />
+                    </View>
+                    <View style={styles.cardBrandItem}>
+                      <Text style={styles.brandLabel}>American Express</Text>
+                      <Switch
+                        value={paymentOptions.cartao.brands.amex}
+                        onValueChange={(enabled) => handleCardBrandChange('amex', enabled)}
+                      />
+                    </View>
+                    <View style={styles.cardBrandItem}>
+                      <Text style={styles.brandLabel}>Hipercard</Text>
+                      <Switch
+                        value={paymentOptions.cartao.brands.hipercard}
+                        onValueChange={(enabled) => handleCardBrandChange('hipercard', enabled)}
+                      />
+                    </View>
+                  </View>
+                </View>
+              )}
             </ScrollView>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.button, styles.cancelButton]}
+                onPress={() => setCardFlagsModal(false)}
+              >
+                <Text style={styles.buttonText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, styles.saveButton]}
+                onPress={handleSavePaymentOptions}
+              >
+                <Text style={styles.buttonText}>Salvar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de Retirada */}
+      <Modal
+        visible={pickupModal}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        transparent={false}
+        onRequestClose={() => setPickupModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Configurações de Retirada</Text>
+            <View style={styles.pickupContainer}>
+              <Text style={styles.label}>Permitir retirada:</Text>
+              <Switch
+                value={allowPickup}
+                onValueChange={setAllowPickup}
+              />
+            </View>
+            {allowPickup && (
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Tempo estimado (minutos):</Text>
+                <TextInput
+                  style={styles.input}
+                  value={pickupTime}
+                  onChangeText={setPickupTime}
+                  keyboardType="numeric"
+                  placeholder="15"
+                />
+              </View>
+            )}
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.button, styles.cancelButton]}
+                onPress={() => setPickupModal(false)}
+              >
+                <Text style={styles.buttonText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, styles.saveButton]}
+                onPress={handleSavePickupSettings}
+              >
+                <Text style={styles.buttonText}>Salvar</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -626,183 +517,130 @@ export function SettingsModals({
   );
 }
 
-const { height } = Dimensions.get('window');
-
 const styles = StyleSheet.create({
-  modalOverlay: {
+  modalContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-  },
-  iOSStyleModal: {
-    backgroundColor: '#fff',
-    width: '100%',
-    height: height * 0.85,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    overflow: 'hidden',
-    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
-  },
-  modalHandleContainer: {
-    width: '100%',
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  modalHandle: {
-    width: 40,
-    height: 5,
-    backgroundColor: '#ddd',
-    borderRadius: 3,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-  },
-  closeButton: {
-    padding: 5,
+    backgroundColor: '#FFF',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   modalContent: {
     flex: 1,
-    padding: 16,
+    backgroundColor: '#FFF',
+    padding: 20,
+    width: '100%',
   },
-  inputGroup: {
-    marginBottom: 16,
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    textAlign: 'center',
   },
-  inputLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
+  scrollView: {
+    maxHeight: '70%',
+  },
+  inputContainer: {
+    marginBottom: 15,
+  },
+  label: {
+    fontSize: 16,
+    marginBottom: 5,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#DDD',
     borderRadius: 8,
-    padding: 12,
+    padding: 10,
     fontSize: 16,
-    backgroundColor: '#fff',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+  },
+  button: {
+    flex: 1,
+    padding: 15,
+    borderRadius: 8,
+    marginHorizontal: 5,
+  },
+  cancelButton: {
+    backgroundColor: '#f44336',
   },
   saveButton: {
     backgroundColor: colors.orange,
-    borderRadius: 8,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 30,
   },
-  saveButtonText: {
-    color: 'white',
+  buttonText: {
+    color: '#FFF',
+    textAlign: 'center',
     fontSize: 16,
-    fontWeight: '600',
-  },
-  cardFlagsList: {
-    flex: 1,
-  },
-  cardFlagItem: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 15,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#eee',
-  },
-  cardFlagHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  cardFlagName: {
-    fontSize: 16,
-    color: '#333',
-    fontWeight: '500',
-  },
-  feeContainer: {
-    marginTop: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  feeLabel: {
-    fontSize: 14,
-    color: '#666',
-    width: 60,
-  },
-  feeInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 6,
-    padding: 8,
-    marginLeft: 8,
-    backgroundColor: '#fff',
-  },
-  scheduleList: {
-    flex: 1,
+    fontWeight: 'bold',
   },
   scheduleItem: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 15,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#eee',
+    marginBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
+    paddingBottom: 10,
   },
-  scheduleHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  dayName: {
+  dayLabel: {
     fontSize: 16,
-    color: '#333',
     fontWeight: '500',
+    marginBottom: 5,
   },
   timeContainer: {
-    marginTop: 12,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  timeInputGroup: {
-    flex: 1,
-    marginRight: 8,
-  },
-  timeLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
+    alignItems: 'center',
+    marginTop: 10,
   },
   timeInput: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 6,
-    padding: 10,
-    backgroundColor: '#fff',
-  },
-  pickupSettings: {
-    backgroundColor: '#fff',
+    borderColor: '#DDD',
     borderRadius: 8,
-    padding: 15,
-    borderWidth: 1,
-    borderColor: '#eee',
+    padding: 8,
+    width: 80,
+    textAlign: 'center',
   },
-  pickupHeader: {
+  timeLabel: {
+    marginHorizontal: 10,
+  },
+  paymentMethodItem: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    justifyContent: 'space-between',
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
   },
-  pickupTitle: {
+  methodLabel: {
     fontSize: 16,
-    color: '#333',
     fontWeight: '500',
+  },
+  cardBrandsContainer: {
+    marginTop: 15,
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#EEE',
+  },
+  subTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 10,
+  },
+  cardBrandsList: {
+    marginLeft: 15,
+  },
+  cardBrandItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+  },
+  brandLabel: {
+    fontSize: 14,
+  },
+  pickupContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
   },
 });

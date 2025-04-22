@@ -1,15 +1,21 @@
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
-import { getAnalytics, logEvent, isSupported } from 'firebase/analytics';
-import * as Crypto from 'expo-crypto';
+import { getAnalytics, logEvent, isSupported, Analytics } from 'firebase/analytics';
 import { Platform } from 'react-native';
 
 // Inicializar o analytics apenas se estiver em um ambiente compatível
-let analytics = null;
+let analytics: Analytics | null = null;
 try {
-  if (Platform.OS === 'web' && isSupported()) {
-    analytics = getAnalytics();
+  if (Platform.OS === 'web') {
+    // Verificando isSupported de forma adequada
+    isSupported().then(supported => {
+      if (supported) {
+        analytics = getAnalytics();
+      }
+    }).catch(() => {
+      console.log('Analytics não verificável neste ambiente');
+    });
   }
 } catch (error) {
   console.log('Analytics não suportado neste ambiente');
@@ -60,26 +66,21 @@ interface RegisterPartnerData {
   category: string;
   subcategory: string;
   cnpj_or_cpf: string;
+  
+  // Configurações
+  delivery: string;
+  pickup: string;
+  paymentOptions: string;
+  schedule: string;
 }
 
-const encryptDocument = async (document: string): Promise<string> => {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(document);
-  const hash = await Crypto.digestStringAsync(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    document
-  );
-  return hash;
-};
-
 const checkDocumentExists = async (document: string): Promise<boolean> => {
-  const encryptedDocument = await encryptDocument(document);
   const partnersRef = collection(db, 'partners');
   const q = query(
-    partnersRef, 
-    where('store.document', '==', encryptedDocument)
+    partnersRef,
+    where('store.document', '==', document)
   );
-  
+
   const querySnapshot = await getDocs(q);
   return !querySnapshot.empty;
 };
@@ -122,8 +123,8 @@ export const registerService = {
       const userId = userCredential.user.uid;
       console.log('Usuário criado com ID:', userId);
 
-      // Criptografar o documento antes de salvar
-      const encryptedDocument = await encryptDocument(data.cnpj_or_cpf);
+      // Documento armazenado sem criptografia
+      const documentValue = data.cnpj_or_cpf;
 
       // Preparar dados para o Firestore
       const partnerData = {
@@ -141,6 +142,12 @@ export const registerService = {
           state: data.state,
           stateName: data.stateName || '',
         },
+        settings: {
+          delivery: data.delivery ? JSON.parse(data.delivery) : null,
+          pickup: data.pickup ? JSON.parse(data.pickup) : null,
+          paymentOptions: data.paymentOptions ? JSON.parse(data.paymentOptions) : null,
+          schedule: data.schedule ? JSON.parse(data.schedule) : null,
+        },
         createdAt: new Date(),
         isActive: true,
         isOpen: false,
@@ -151,7 +158,7 @@ export const registerService = {
           name: data.storeName,
           category: data.category,
           subcategory: data.subcategory,
-          document: encryptedDocument,
+          document: documentValue,
           isPremium: false,
           premiumExpiresAt: null,
         },
@@ -197,6 +204,9 @@ export const registerService = {
       }
       if (error.code === 'auth/weak-password') {
         throw new Error('A senha deve ter pelo menos 6 caracteres');
+      }
+      if (error.code === 'auth/too-many-requests') {
+        throw new Error('Muitas tentativas de cadastro. Por favor, tente novamente mais tarde.');
       }
       
       if (error.message === 'Este CPF/CNPJ já está cadastrado no sistema') {

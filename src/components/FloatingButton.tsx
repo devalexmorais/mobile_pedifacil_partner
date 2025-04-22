@@ -27,18 +27,39 @@ export function FloatingButton() {
   const [deliveryTimeModal, setDeliveryTimeModal] = useState(false);
   const [cardFlagsModal, setCardFlagsModal] = useState(false);
   const [pickupModal, setPickupModal] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [settings, setSettings] = useState<any>(null);
   const animation = useRef(new Animated.Value(0)).current;
 
-  // Inicializar configurações quando o componente é montado
+  // Carregar configurações quando o componente é montado
   useEffect(() => {
-    initSettings();
+    loadSettings();
   }, []);
 
-  const initSettings = async () => {
+  const loadSettings = async () => {
     try {
+      setIsLoading(true);
       await establishmentSettingsService.initializeSettings();
+      
+      // Carregar todas as configurações
+      const [scheduleData, deliveryData, paymentOptionsData, pickupData] = await Promise.all([
+        establishmentSettingsService.getSchedule(),
+        establishmentSettingsService.getDeliveryTime(),
+        establishmentSettingsService.getPaymentOptions(),
+        establishmentSettingsService.getPickupSettings()
+      ]);
+
+      setSettings({
+        schedule: scheduleData,
+        delivery: deliveryData,
+        paymentOptions: paymentOptionsData,
+        pickup: pickupData
+      });
     } catch (error) {
-      console.error('Erro ao inicializar configurações:', error);
+      console.error('Erro ao carregar configurações:', error);
+      Alert.alert('Erro', 'Não foi possível carregar as configurações. Tente novamente.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -46,22 +67,46 @@ export function FloatingButton() {
     {
       icon: 'time',
       label: 'Horários',
-      onPress: () => setScheduleModal(true),
+      onPress: () => {
+        if (isLoading) {
+          Alert.alert('Aguarde', 'Carregando configurações...');
+          return;
+        }
+        setScheduleModal(true);
+      },
     },
     {
       icon: 'bicycle',
       label: 'Tempo de entrega',
-      onPress: () => setDeliveryTimeModal(true),
+      onPress: () => {
+        if (isLoading) {
+          Alert.alert('Aguarde', 'Carregando configurações...');
+          return;
+        }
+        setDeliveryTimeModal(true);
+      },
     },
     {
       icon: 'card',
-      label: 'Bandeiras de cartão',
-      onPress: () => setCardFlagsModal(true),
+      label: 'Métodos de pagamento',
+      onPress: () => {
+        if (isLoading) {
+          Alert.alert('Aguarde', 'Carregando configurações...');
+          return;
+        }
+        setCardFlagsModal(true);
+      },
     },
     {
       icon: 'bag-check',
       label: 'Retirada',
-      onPress: () => setPickupModal(true),
+      onPress: () => {
+        if (isLoading) {
+          Alert.alert('Aguarde', 'Carregando configurações...');
+          return;
+        }
+        setPickupModal(true);
+      },
     },
   ];
 
@@ -150,6 +195,8 @@ export function FloatingButton() {
         setDeliveryTimeModal={setDeliveryTimeModal}
         setCardFlagsModal={setCardFlagsModal}
         setPickupModal={setPickupModal}
+        settings={settings}
+        onSettingsChange={loadSettings}
       />
     </>
   );
@@ -163,9 +210,9 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     zIndex: 9999,
     elevation: 10,
-    width: 140, // Definindo largura explícita
-    height: 350, // Definindo altura explícita para acomodar todo o menu
-    pointerEvents: 'box-none', // Permite toques nos elementos abaixo quando não há conteúdo
+    width: 140,
+    height: 350,
+    pointerEvents: 'box-none',
   },
   fab: {
     backgroundColor: colors.orange,
@@ -180,9 +227,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4.65,
     zIndex: 10000,
-    position: 'absolute', // Posicionamento absoluto
-    bottom: 0, // No fundo do container
-    right: 0, // À direita do container
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
   },
   fabActive: {
     backgroundColor: '#f44336',
@@ -193,7 +240,7 @@ const styles = StyleSheet.create({
     right: 0,
     height: 320,
     width: 140,
-    zIndex: 9998, // Garantir que fique abaixo do botão
+    zIndex: 9998,
   },
   menuItem: {
     flexDirection: 'row',

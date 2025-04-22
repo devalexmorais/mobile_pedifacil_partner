@@ -34,6 +34,9 @@ interface AddressFormData {
   stateName: string;
 }
 
+// Função para capitalizar a primeira letra de cada palavra
+const capitalizeWords = (s: string): string => s.replace(/\b\w/g, c => c.toUpperCase());
+
 export default function RegisterAddress() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -190,7 +193,7 @@ export default function RegisterAddress() {
     console.log('Parâmetros que serão enviados:', paramsToSend);
 
     router.push({
-      pathname: '/public/register/documents',
+      pathname: '/public/register/settings',
       params: paramsToSend
     });
   };
@@ -305,9 +308,10 @@ export default function RegisterAddress() {
           <CustomInput
             label="Rua"
             value={formData.street}
-            onChangeText={(text) => updateFormData({ street: text })}
+            onChangeText={(text) => updateFormData({ street: capitalizeWords(text) })}
             error={!!errors.street}
             placeholder="Digite o nome da rua"
+            autoCapitalize="words"
           />
           {errors.street && <Text style={styles.errorText}>{errors.street}</Text>}
 
@@ -326,8 +330,9 @@ export default function RegisterAddress() {
           <CustomInput
             label="Complemento (opcional)"
             value={formData.complement || ''}
-            onChangeText={(text) => updateFormData({ complement: text })}
+            onChangeText={(text) => updateFormData({ complement: capitalizeWords(text) })}
             placeholder="Apartamento, bloco, etc"
+            autoCapitalize="words"
           />
         </View>
 

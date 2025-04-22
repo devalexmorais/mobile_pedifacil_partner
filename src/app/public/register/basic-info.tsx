@@ -39,6 +39,9 @@ const BasicInfoSchema = Yup.object().shape({
     .required('Confirmação de senha é obrigatória'),
 });
 
+// Função para capitalizar a primeira letra de cada palavra
+const capitalizeWords = (s: string): string => s.replace(/\b\w/g, c => c.toUpperCase());
+
 export default function RegisterBasicInfo() {
   const router = useRouter();
   const auth = getAuth();
@@ -206,8 +209,9 @@ export default function RegisterBasicInfo() {
                 <CustomInput
                   label="Nome completo"
                   value={values.name}
-                  onChangeText={handleChange('name')}
+                  onChangeText={(text) => handleChange('name')(capitalizeWords(text))}
                   onBlur={handleBlur('name')}
+                  autoCapitalize="words"
                   error={touched.name && !!errors.name}
                 />
                 {touched.name && errors.name && <Text style={styles.errorText}>{errors.name}</Text>}

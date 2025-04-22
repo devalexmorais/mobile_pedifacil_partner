@@ -1,130 +1,282 @@
-import { doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
+import { getAuth } from 'firebase/auth';
 
-// Tipos para as configurações
-export type CardFlag = {
-  name: string;
+export interface Schedule {
+  [key: string]: {
+    isOpen: boolean;
+    openTime: string;
+    closeTime: string;
+  };
+}
+
+interface PaymentMethod {
+  type: string;
   enabled: boolean;
-  fee: string;
-};
+}
 
-export type ScheduleDay = {
-  isOpen: boolean;
-  openTime: string;
-  closeTime: string;
-};
+interface CardBrands {
+  visa: boolean;
+  mastercard: boolean;
+  elo: boolean;
+  amex: boolean;
+  hipercard: boolean;
+}
 
-export type Schedule = {
-  segunda: ScheduleDay;
-  terca: ScheduleDay;
-  quarta: ScheduleDay;
-  quinta: ScheduleDay;
-  sexta: ScheduleDay;
-  sabado: ScheduleDay;
-  domingo: ScheduleDay;
-};
+interface PaymentOptions {
+  cartao: PaymentMethod & {
+    brands: CardBrands;
+  };
+  dinheiro: PaymentMethod;
+  pix: PaymentMethod;
+}
 
 export const establishmentSettingsService = {
-  // Salvar bandeiras de cartão aceitas pelo estabelecimento
-  async saveCardFlags(cardFlags: CardFlag[]) {
+  async initializeSettings() {
     try {
-      const user = auth.currentUser;
-      if (!user) throw new Error('Usuário não autenticado');
-
-      const partnerRef = doc(db, 'partners', user.uid);
-      await updateDoc(partnerRef, {
-        'settings.paymentOptions.cardFlags': cardFlags,
-        lastUpdated: new Date().toISOString()
-      });
-
-      console.log('Bandeiras de cartão atualizadas com sucesso');
-      return true;
-    } catch (error) {
-      console.error('Erro ao salvar bandeiras de cartão:', error);
-      throw error;
-    }
-  },
-
-  // Buscar bandeiras de cartão do estabelecimento
-  async getCardFlags(): Promise<CardFlag[]> {
-    try {
-      const user = auth.currentUser;
-      if (!user) throw new Error('Usuário não autenticado');
-
-      const partnerRef = doc(db, 'partners', user.uid);
-      const partnerDoc = await getDoc(partnerRef);
-
-      if (partnerDoc.exists()) {
-        const data = partnerDoc.data();
-        return data.settings?.paymentOptions?.cardFlags || [];
+      const currentUser = auth.currentUser || getAuth().currentUser;
+      
+      if (!currentUser) {
+        console.log('Nenhum usuário autenticado para inicializar configurações');
+        return;
       }
-
-      return [];
+      
+      const uid = currentUser.uid;
+      console.log('Inicializando configurações para o parceiro:', uid);
+      
+      const partnerRef = doc(db, 'partners', uid);
+      const partnerSnap = await getDoc(partnerRef);
+      
+      if (!partnerSnap.exists()) {
+        console.log('Parceiro não encontrado no Firestore');
+        return;
+      }
+      
+      const partnerData = partnerSnap.data();
+      
+      if (!partnerData.settings) {
+        console.log('Configurações não encontradas, utilizando padrões do registro');
+        
+        const defaultSettings = {
+          delivery: {
+            enabled: true,
+            maxTime: '45',
+            minTime: '20',
+            minimumOrderAmount: '20',
+          },
+          pickup: {
+            enabled: true,
+            estimatedTime: '15',
+          },
+          paymentOptions: {
+            dinheiro: { type: 'Dinheiro', enabled: true },
+            pix: { type: 'PIX', enabled: true },
+            cartao: { 
+              type: 'Cartão', 
+              enabled: true,
+              brands: {
+                visa: true,
+                mastercard: true,
+                elo: false,
+                amex: false,
+                hipercard: false,
+              }
+            },
+          },
+          schedule: {
+            domingo: { isOpen: false, openTime: '00:00', closeTime: '00:00' },
+            segunda: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
+            terca: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
+            quarta: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
+            quinta: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
+            sexta: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
+            sabado: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
+          }
+        };
+        
+        await setDoc(partnerRef, { settings: defaultSettings }, { merge: true });
+        console.log('Configurações padrão inicializadas com sucesso');
+        return defaultSettings;
+      }
+      
+      console.log('Configurações já existem para este parceiro');
+      return partnerData.settings;
     } catch (error) {
-      console.error('Erro ao buscar bandeiras de cartão:', error);
+      console.error('Erro ao inicializar configurações:', error);
       throw error;
     }
   },
 
-  // Salvar tempo de entrega
-  async saveDeliveryTime(minTime: string, maxTime: string) {
+  async getPickupSettings() {
     try {
-      const user = auth.currentUser;
-      if (!user) throw new Error('Usuário não autenticado');
-
-      const partnerRef = doc(db, 'partners', user.uid);
-      await updateDoc(partnerRef, {
-        'settings.delivery.minTime': minTime,
-        'settings.delivery.maxTime': maxTime,
-        lastUpdated: new Date().toISOString()
-      });
-
-      console.log('Tempo de entrega atualizado com sucesso');
-      return true;
-    } catch (error) {
-      console.error('Erro ao salvar tempo de entrega:', error);
-      throw error;
-    }
-  },
-
-  // Buscar tempo de entrega
-  async getDeliveryTime(): Promise<{minTime: string, maxTime: string}> {
-    try {
-      const user = auth.currentUser;
-      if (!user) throw new Error('Usuário não autenticado');
-
-      const partnerRef = doc(db, 'partners', user.uid);
-      const partnerDoc = await getDoc(partnerRef);
-
-      if (partnerDoc.exists()) {
-        const data = partnerDoc.data();
+      const currentUser = auth.currentUser || getAuth().currentUser;
+      
+      if (!currentUser) {
+        throw new Error('Usuário não autenticado');
+      }
+      
+      const uid = currentUser.uid;
+      const partnerRef = doc(db, 'partners', uid);
+      const partnerSnap = await getDoc(partnerRef);
+      
+      if (!partnerSnap.exists()) {
+        throw new Error('Parceiro não encontrado');
+      }
+      
+      const partnerData = partnerSnap.data();
+      
+      if (!partnerData.settings || !partnerData.settings.pickup) {
         return {
-          minTime: data.settings?.delivery?.minTime || '30',
-          maxTime: data.settings?.delivery?.maxTime || '45'
+          enabled: true,
+          estimatedTime: '15'
         };
       }
-
-      return { minTime: '30', maxTime: '45' };
+      
+      return partnerData.settings.pickup;
     } catch (error) {
-      console.error('Erro ao buscar tempo de entrega:', error);
+      console.error('Erro ao carregar configurações de retirada:', error);
       throw error;
     }
   },
 
-  // Salvar configurações de retirada
-  async savePickupSettings(allowPickup: boolean, pickupTime: string) {
+  async getDeliveryTime() {
     try {
-      const user = auth.currentUser;
-      if (!user) throw new Error('Usuário não autenticado');
+      const currentUser = auth.currentUser || getAuth().currentUser;
+      
+      if (!currentUser) {
+        throw new Error('Usuário não autenticado');
+      }
+      
+      const uid = currentUser.uid;
+      const partnerRef = doc(db, 'partners', uid);
+      const partnerSnap = await getDoc(partnerRef);
+      
+      if (!partnerSnap.exists()) {
+        throw new Error('Parceiro não encontrado');
+      }
+      
+      const partnerData = partnerSnap.data();
+      
+      if (!partnerData.settings || !partnerData.settings.delivery) {
+        return {
+          minTime: '20',
+          maxTime: '45',
+          minimumOrderAmount: '20'
+        };
+      }
+      
+      return {
+        minTime: partnerData.settings.delivery.minTime,
+        maxTime: partnerData.settings.delivery.maxTime,
+        minimumOrderAmount: partnerData.settings.delivery.minimumOrderAmount
+      };
+    } catch (error) {
+      console.error('Erro ao carregar configurações de tempo de entrega:', error);
+      throw error;
+    }
+  },
 
-      const partnerRef = doc(db, 'partners', user.uid);
-      await updateDoc(partnerRef, {
-        'settings.pickup.enabled': allowPickup,
-        'settings.pickup.estimatedTime': pickupTime,
-        lastUpdated: new Date().toISOString()
-      });
+  async getPaymentOptions() {
+    try {
+      const currentUser = auth.currentUser || getAuth().currentUser;
+      
+      if (!currentUser) {
+        throw new Error('Usuário não autenticado');
+      }
+      
+      const uid = currentUser.uid;
+      const partnerRef = doc(db, 'partners', uid);
+      const partnerSnap = await getDoc(partnerRef);
+      
+      if (!partnerSnap.exists()) {
+        throw new Error('Parceiro não encontrado');
+      }
+      
+      const partnerData = partnerSnap.data();
+      
+      if (!partnerData.settings || !partnerData.settings.paymentOptions) {
+        return {
+          dinheiro: { type: 'Dinheiro', enabled: true },
+          pix: { type: 'PIX', enabled: true },
+          cartao: { 
+            type: 'Cartão', 
+            enabled: true,
+            brands: {
+              visa: true,
+              mastercard: true,
+              elo: false,
+              amex: false,
+              hipercard: false,
+            }
+          },
+        };
+      }
+      
+      return partnerData.settings.paymentOptions;
+    } catch (error) {
+      console.error('Erro ao carregar configurações de pagamento:', error);
+      throw error;
+    }
+  },
 
-      console.log('Configurações de retirada atualizadas com sucesso');
+  async getSchedule() {
+    try {
+      const currentUser = auth.currentUser || getAuth().currentUser;
+      
+      if (!currentUser) {
+        throw new Error('Usuário não autenticado');
+      }
+      
+      const uid = currentUser.uid;
+      const partnerRef = doc(db, 'partners', uid);
+      const partnerSnap = await getDoc(partnerRef);
+      
+      if (!partnerSnap.exists()) {
+        throw new Error('Parceiro não encontrado');
+      }
+      
+      const partnerData = partnerSnap.data();
+      
+      if (!partnerData.settings || !partnerData.settings.schedule) {
+        return {
+          domingo: { isOpen: false, openTime: '00:00', closeTime: '00:00' },
+          segunda: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
+          terca: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
+          quarta: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
+          quinta: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
+          sexta: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
+          sabado: { isOpen: true, openTime: '08:00', closeTime: '18:00' }
+        };
+      }
+      
+      return partnerData.settings.schedule;
+    } catch (error) {
+      console.error('Erro ao carregar configurações de horário de funcionamento:', error);
+      throw error;
+    }
+  },
+
+  async savePickupSettings(allowPickup: boolean, estimatedTime: string): Promise<boolean> {
+    try {
+      const currentUser = auth.currentUser || getAuth().currentUser;
+      
+      if (!currentUser) {
+        throw new Error('Usuário não autenticado');
+      }
+      
+      const uid = currentUser.uid;
+      const partnerRef = doc(db, 'partners', uid);
+      
+      await setDoc(partnerRef, {
+        settings: {
+          pickup: {
+            enabled: allowPickup,
+            estimatedTime: estimatedTime
+          }
+        }
+      }, { merge: true });
+      
+      console.log('Configurações de retirada salvas com sucesso');
       return true;
     } catch (error) {
       console.error('Erro ao salvar configurações de retirada:', error);
@@ -132,135 +284,91 @@ export const establishmentSettingsService = {
     }
   },
 
-  // Buscar configurações de retirada
-  async getPickupSettings(): Promise<{enabled: boolean, estimatedTime: string}> {
+  async saveDeliveryTime(minTime: string, maxTime: string): Promise<boolean> {
     try {
-      const user = auth.currentUser;
-      if (!user) throw new Error('Usuário não autenticado');
-
-      const partnerRef = doc(db, 'partners', user.uid);
-      const partnerDoc = await getDoc(partnerRef);
-
-      if (partnerDoc.exists()) {
-        const data = partnerDoc.data();
-        return {
-          enabled: data.settings?.pickup?.enabled ?? true,
-          estimatedTime: data.settings?.pickup?.estimatedTime || '15'
-        };
+      const currentUser = auth.currentUser || getAuth().currentUser;
+      
+      if (!currentUser) {
+        throw new Error('Usuário não autenticado');
       }
-
-      return { enabled: true, estimatedTime: '15' };
-    } catch (error) {
-      console.error('Erro ao buscar configurações de retirada:', error);
-      throw error;
-    }
-  },
-
-  // Salvar horários de funcionamento
-  async saveSchedule(schedule: Schedule) {
-    try {
-      const user = auth.currentUser;
-      if (!user) throw new Error('Usuário não autenticado');
-
-      const partnerRef = doc(db, 'partners', user.uid);
-      await updateDoc(partnerRef, {
-        'settings.schedule': schedule,
-        lastUpdated: new Date().toISOString()
-      });
-
-      console.log('Horários de funcionamento atualizados com sucesso');
+      
+      const uid = currentUser.uid;
+      const partnerRef = doc(db, 'partners', uid);
+      
+      let minimumOrderAmount = '20';
+      try {
+        const settings = await this.getDeliveryTime();
+        minimumOrderAmount = settings.minimumOrderAmount || '20';
+      } catch (e) {
+        console.log('Erro ao obter valor mínimo atual, usando padrão:', e);
+      }
+      
+      await setDoc(partnerRef, {
+        settings: {
+          delivery: {
+            minTime,
+            maxTime,
+            minimumOrderAmount,
+            enabled: true
+          }
+        }
+      }, { merge: true });
+      
+      console.log('Configurações de tempo de entrega salvas com sucesso');
       return true;
     } catch (error) {
-      console.error('Erro ao salvar horários de funcionamento:', error);
+      console.error('Erro ao salvar configurações de tempo de entrega:', error);
       throw error;
     }
   },
 
-  // Buscar horários de funcionamento
-  async getSchedule(): Promise<Schedule> {
+  async savePaymentOptions(paymentOptions: PaymentOptions): Promise<boolean> {
     try {
-      const user = auth.currentUser;
-      if (!user) throw new Error('Usuário não autenticado');
-
-      const partnerRef = doc(db, 'partners', user.uid);
-      const partnerDoc = await getDoc(partnerRef);
-
-      const defaultSchedule: Schedule = {
-        segunda: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
-        terca: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
-        quarta: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
-        quinta: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
-        sexta: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
-        sabado: { isOpen: true, openTime: '08:00', closeTime: '12:00' },
-        domingo: { isOpen: false, openTime: '00:00', closeTime: '00:00' }
-      };
-
-      if (partnerDoc.exists()) {
-        const data = partnerDoc.data();
-        return data.settings?.schedule || defaultSchedule;
+      const currentUser = auth.currentUser || getAuth().currentUser;
+      
+      if (!currentUser) {
+        throw new Error('Usuário não autenticado');
       }
-
-      return defaultSchedule;
-    } catch (error) {
-      console.error('Erro ao buscar horários de funcionamento:', error);
-      throw error;
-    }
-  },
-
-  // Inicializar as configurações do estabelecimento se necessário
-  async initializeSettings() {
-    try {
-      const user = auth.currentUser;
-      if (!user) throw new Error('Usuário não autenticado');
-
-      const partnerRef = doc(db, 'partners', user.uid);
-      const partnerDoc = await getDoc(partnerRef);
-
-      if (partnerDoc.exists()) {
-        const data = partnerDoc.data();
-        
-        // Se não existir o objeto de configurações, cria ele com valores padrão
-        if (!data.settings) {
-          const defaultSettings = {
-            paymentOptions: {
-              cardFlags: [
-                { name: 'Visa', enabled: true, fee: '2.5' },
-                { name: 'Mastercard', enabled: true, fee: '2.8' },
-                { name: 'Elo', enabled: true, fee: '3.0' },
-                { name: 'American Express', enabled: false, fee: '3.5' },
-                { name: 'Hipercard', enabled: false, fee: '3.2' }
-              ]
-            },
-            delivery: {
-              minTime: '30',
-              maxTime: '45'
-            },
-            pickup: {
-              enabled: true,
-              estimatedTime: '15'
-            },
-            schedule: {
-              segunda: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
-              terca: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
-              quarta: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
-              quinta: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
-              sexta: { isOpen: true, openTime: '08:00', closeTime: '18:00' },
-              sabado: { isOpen: true, openTime: '08:00', closeTime: '12:00' },
-              domingo: { isOpen: false, openTime: '00:00', closeTime: '00:00' }
-            }
-          };
-
-          await updateDoc(partnerRef, {
-            settings: defaultSettings,
-            lastUpdated: new Date().toISOString()
-          });
-
-          console.log('Configurações do estabelecimento inicializadas com sucesso');
+      
+      const uid = currentUser.uid;
+      const partnerRef = doc(db, 'partners', uid);
+      
+      await setDoc(partnerRef, {
+        settings: {
+          paymentOptions
         }
-      }
+      }, { merge: true });
+      
+      console.log('Configurações de pagamento salvas com sucesso');
+      return true;
     } catch (error) {
-      console.error('Erro ao inicializar configurações do estabelecimento:', error);
+      console.error('Erro ao salvar configurações de pagamento:', error);
+      throw error;
+    }
+  },
+
+  async saveSchedule(schedule: Schedule): Promise<boolean> {
+    try {
+      const currentUser = auth.currentUser || getAuth().currentUser;
+      
+      if (!currentUser) {
+        throw new Error('Usuário não autenticado');
+      }
+      
+      const uid = currentUser.uid;
+      const partnerRef = doc(db, 'partners', uid);
+      
+      await setDoc(partnerRef, {
+        settings: {
+          schedule
+        }
+      }, { merge: true });
+      
+      console.log('Configurações de horário de funcionamento salvas com sucesso');
+      return true;
+    } catch (error) {
+      console.error('Erro ao salvar configurações de horário de funcionamento:', error);
       throw error;
     }
   }
-}; 
+};
