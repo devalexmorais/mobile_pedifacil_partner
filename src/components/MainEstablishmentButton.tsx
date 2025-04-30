@@ -1,24 +1,35 @@
 import React, { useState, useEffect } from 'react';
-import { View, TouchableOpacity, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, TouchableOpacity, Text, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { establishmentService } from '../services/establishmentService';
 
 export function MainEstablishmentButton() {
-  const [isOpen, setIsOpen] = useState(false);
+  const [status, setStatus] = useState<{
+    isOpen: boolean;
+    operationMode: string;
+    lastStatusChange: string;
+    statusChangeReason: string;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    initializeAndLoadStatus();
+    loadStatus();
+    // Inicia a verificação automática
+    establishmentService.startAutoStatusCheck();
+    
+    // Limpa o intervalo quando o componente é desmontado
+    return () => {
+      establishmentService.stopAutoStatusCheck();
+    };
   }, []);
 
-  const initializeAndLoadStatus = async () => {
+  const loadStatus = async () => {
     try {
-      // Inicializa o status se necessário
-      await establishmentService.initializeEstablishmentStatus();
-      // Carrega o status atual
-      const status = await establishmentService.getEstablishmentStatus();
-      setIsOpen(status);
+      setLoading(true);
+      const currentStatus = await establishmentService.getEstablishmentStatus();
+      setStatus(currentStatus);
     } catch (error) {
       console.error('Erro ao carregar status:', error);
+      Alert.alert('Erro', 'Não foi possível carregar o status do estabelecimento');
     } finally {
       setLoading(false);
     }
@@ -27,20 +38,25 @@ export function MainEstablishmentButton() {
   const handleToggleStatus = async () => {
     try {
       setLoading(true);
-      const newStatus = !isOpen;
+      const newStatus = !status?.isOpen;
       await establishmentService.toggleEstablishmentStatus(newStatus);
-      setIsOpen(newStatus);
+      await loadStatus(); // Recarrega o status após a mudança
     } catch (error) {
       console.error('Erro ao alterar status:', error);
+      Alert.alert(
+        'Não é possível fechar a loja',
+        error instanceof Error ? error.message : 'Existem pedidos pendentes que precisam ser processados antes de fechar a loja.',
+        [{ text: 'OK' }]
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) {
+  if (loading || !status) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator size="small" color="#FFA500" />
+        <ActivityIndicator size="large" color="#0000ff" />
       </View>
     );
   }
@@ -48,43 +64,61 @@ export function MainEstablishmentButton() {
   return (
     <View style={styles.container}>
       <TouchableOpacity
-        style={[
-          styles.button,
-          { backgroundColor: isOpen ? '#4CAF50' : '#FF3B30' }
-        ]}
+        style={[styles.button, { backgroundColor: status.isOpen ? '#4CAF50' : '#FF3B30' }]}
         onPress={handleToggleStatus}
+        disabled={loading}
       >
         <Text style={styles.buttonText}>
-          {isOpen ? 'Estabelecimento Aberto' : 'Estabelecimento Fechado'}
+          {status.isOpen ? 'Estabelecimento Aberto' : 'Estabelecimento Fechado'}
         </Text>
-        <Text style={styles.subtitleText}>
-          {isOpen ? 'Toque para fechar' : 'Toque para abrir'}
+        <Text style={styles.subText}>
+          {status.isOpen ? 'Toque para fechar' : 'Toque para abrir'}
+        </Text>
+        <Text style={styles.modeText}>
+          Modo: {status.operationMode === establishmentService.OPERATION_MODE.MANUAL ? 'Manual' : 'Automático'}
         </Text>
       </TouchableOpacity>
+      
+      {status.statusChangeReason && (
+        <Text style={styles.reasonText}>
+          Última alteração: {status.statusChangeReason}
+        </Text>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    padding: 16,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    alignItems: 'center',
+    marginVertical: 20,
   },
   button: {
-    padding: 16,
-    borderRadius: 8,
+    padding: 15,
+    borderRadius: 10,
+    width: '90%',
     alignItems: 'center',
   },
   buttonText: {
-    color: '#fff',
-    fontSize: 16,
+    color: 'white',
+    fontSize: 18,
     fontWeight: 'bold',
   },
-  subtitleText: {
-    color: '#fff',
+  subText: {
+    color: 'white',
+    fontSize: 14,
+    marginTop: 5,
+  },
+  modeText: {
+    color: 'white',
     fontSize: 12,
-    marginTop: 4,
+    marginTop: 5,
+    opacity: 0.8,
+  },
+  reasonText: {
+    marginTop: 10,
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
   },
 }); 

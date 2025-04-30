@@ -289,7 +289,7 @@ export default function ProductCatalog() {
       let result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: "images",
         allowsEditing: true,
-        aspect: [4, 3],
+        aspect: [1, 1],
         quality: 0.5,
       });
 
@@ -702,9 +702,11 @@ export default function ProductCatalog() {
         return '';
       }
 
+      const trimmedName = categoryName.trim();
+      const formattedName = trimmedName.charAt(0).toUpperCase() + trimmedName.slice(1);
       // Verifica se a categoria já existe
       const existingCategory = availableCategories.find(
-        cat => cat.name.toLowerCase() === categoryName.toLowerCase()
+        cat => cat.name.toLowerCase() === formattedName.toLowerCase()
       );
       
       if (existingCategory) {
@@ -712,7 +714,7 @@ export default function ProductCatalog() {
       }
 
       // Usa o serviço de categorias para criar uma categoria personalizada
-      const newCategory = await categoryService.createPartnerCategory(categoryName);
+      const newCategory = await categoryService.createPartnerCategory(formattedName);
       
       // Atualiza a lista de categorias
       setAvailableCategories([...availableCategories, newCategory]);

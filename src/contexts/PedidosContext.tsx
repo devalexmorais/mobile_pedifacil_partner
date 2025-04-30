@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { db } from '../config/firebase';
 import { collection, query, where, doc, updateDoc, onSnapshot, orderBy, getDoc, getDocs, DocumentData, addDoc } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
+import { establishmentService } from '../services/establishmentService';
 
 type Address = {
   city: string;
@@ -81,7 +82,7 @@ export type Pedido = {
   userId: string;
   userName?: string;
   customerPhone?: string;
-  status?: 'pending' | 'preparing' | 'ready' | 'out_for_delivery' | 'delivered' | 'cancelled';
+  status?: 'pending' | 'preparing' | 'ready' | 'out_for_delivery' | 'delivered' | 'cancelled' | 'inactivity';
   observations?: string;
   coupon?: string;
   hasCoupon: boolean;
@@ -91,6 +92,7 @@ export type Pedido = {
     validUntilTime: string;
     value: number;
   };
+  inactivityMessage?: string;
 };
 
 type PedidosContextData = {
@@ -405,6 +407,9 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         status: 'preparing',
         updatedAt: new Date().toISOString()
       });
+      
+      // Registra atividade para evitar fechamento por inatividade
+      establishmentService.registerOrderActivity();
     } catch (error) {
       console.error('Erro ao aceitar pedido:', error);
     }
@@ -419,6 +424,9 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         status: 'cancelled',
         updatedAt: new Date().toISOString()
       });
+      
+      // Registra atividade para evitar fechamento por inatividade
+      establishmentService.registerOrderActivity();
     } catch (error) {
       console.error('Erro ao recusar pedido:', error);
     }
@@ -433,6 +441,9 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         status: 'cancelled',
         updatedAt: new Date().toISOString()
       });
+      
+      // Registra atividade para evitar fechamento por inatividade
+      establishmentService.registerOrderActivity();
     } catch (error) {
       console.error('Erro ao cancelar pedido:', error);
     }
@@ -447,6 +458,9 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         status: 'ready',
         updatedAt: new Date().toISOString()
       });
+      
+      // Registra atividade para evitar fechamento por inatividade
+      establishmentService.registerOrderActivity();
     } catch (error) {
       console.error('Erro ao marcar pedido como pronto:', error);
     }
@@ -461,6 +475,9 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         status: 'out_for_delivery',
         updatedAt: new Date().toISOString()
       });
+      
+      // Registra atividade para evitar fechamento por inatividade
+      establishmentService.registerOrderActivity();
     } catch (error) {
       console.error('Erro ao marcar pedido como em entrega:', error);
     }
@@ -520,6 +537,9 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         status: 'delivered',
         updatedAt: new Date().toISOString()
       });
+      
+      // Registra atividade para evitar fechamento por inatividade
+      establishmentService.registerOrderActivity();
       
       // Se o pedido tiver um cupom, adicionar à lista de cupons usados pelo usuário
       if (pedidoData.hasCoupon && pedidoData.couponCode && pedidoData.userId) {

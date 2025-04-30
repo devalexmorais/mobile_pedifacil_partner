@@ -9,6 +9,7 @@ import { signOut, getAuth } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useState, useRef } from 'react';
 import { notificationService } from '../../services/notificationService';
+import { establishmentService } from '../../services/establishmentService';
 
 <StatusBar
   barStyle="light-content" // Define o estilo do texto (claro ou escuro)
@@ -22,6 +23,9 @@ function CustomDrawerContent(props: any) {
   const handleLogout = async () => {
     try {
       console.log('Iniciando processo de logout...');
+      
+      // Para a verificação automática do status do estabelecimento
+      establishmentService.stopAutoStatusCheck();
       
       const auth = getAuth();
       await signOut(auth);
@@ -108,6 +112,7 @@ export default function AuthLayout() {
   // Buscar contagem de notificações não lidas
   useEffect(() => {
     let interval: NodeJS.Timeout;
+    let unsubscribe: () => void;
 
     const fetchUnreadCount = async () => {
       try {
@@ -125,17 +130,29 @@ export default function AuthLayout() {
       }
     };
 
-    // Adiar a primeira busca
+    // Configurar listener em tempo real para notificações
+    const setupListener = async () => {
+      if (notificationService.isAuthenticated()) {
+        unsubscribe = notificationService.setupNotificationsListener((notifications) => {
+          const unreadCount = notifications.filter(n => !n.read).length;
+          setUnreadCount(unreadCount);
+        });
+      }
+    };
+
+    // Adiar a primeira busca e configuração do listener
     const timer = setTimeout(() => {
       fetchUnreadCount();
+      setupListener();
       
-      // Atualizar a cada 1 minuto
+      // Atualizar a cada 1 minuto como backup
       interval = setInterval(fetchUnreadCount, 60000);
     }, 1000);
     
     return () => {
       clearTimeout(timer);
       if (interval) clearInterval(interval);
+      if (unsubscribe) unsubscribe();
     };
   }, []);
 

@@ -80,7 +80,9 @@ export function CategorySelectionModal({
       }
       
       // Cria a nova categoria
-      const newCategory = await categoryService.createPartnerCategory(newCategoryName);
+      const trimmedName = newCategoryName.trim();
+      const formattedName = trimmedName.charAt(0).toUpperCase() + trimmedName.slice(1);
+      const newCategory = await categoryService.createPartnerCategory(formattedName);
       console.log('Nova categoria criada:', newCategory);
       
       // Adiciona à lista de categorias personalizadas
@@ -98,6 +100,26 @@ export function CategorySelectionModal({
     } finally {
       setCreatingCategory(false);
     }
+  };
+
+  // Função para excluir categoria personalizada
+  const handleDeleteCategory = (category: Category) => {
+    Alert.alert(
+      'Excluir categoria',
+      `Tem certeza que deseja excluir a categoria "${category.name}"?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Excluir', style: 'destructive', onPress: async () => {
+            try {
+              await categoryService.deletePartnerCategory(category.id);
+              setCustomCategories(prev => prev.filter(c => c.id !== category.id));
+            } catch (error) {
+              console.error('Erro ao excluir categoria:', error);
+              Alert.alert('Erro', 'Não foi possível excluir a categoria');
+            }
+        }}
+      ]
+    );
   };
 
   const filteredCustomCategories = customCategories.filter(category => 
@@ -136,7 +158,10 @@ export function CategorySelectionModal({
               style={styles.createInput}
               placeholder="Criar nova categoria..."
               value={newCategoryName}
-              onChangeText={setNewCategoryName}
+              onChangeText={(text) => {
+                const formattedText = text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
+                setNewCategoryName(formattedText);
+              }}
             />
             <TouchableOpacity
               style={[styles.createButton, !newCategoryName.trim() && styles.createButtonDisabled]}
@@ -157,30 +182,37 @@ export function CategorySelectionModal({
             <ScrollView style={styles.list}>
               {filteredCustomCategories.length > 0 ? (
                 filteredCustomCategories.map((category) => (
-                  <TouchableOpacity
+                  <View
                     key={category.id}
                     style={[
                       styles.categoryItem,
                       selectedCategoryId === category.id && styles.selectedCategory,
                     ]}
-                    onPress={() => {
-                      onSelectCategory(category);
-                      onClose();
-                    }}
                   >
-                    <View style={styles.categoryNameContainer}>
-                      <Ionicons 
-                        name="folder" 
-                        size={22} 
-                        color={selectedCategoryId === category.id ? "#FFA500" : "#666"} 
+                    <TouchableOpacity
+                      style={styles.categoryNameContainer}
+                      onPress={() => {
+                        onSelectCategory(category);
+                        onClose();
+                      }}
+                    >
+                      <Ionicons
+                        name="folder"
+                        size={22}
+                        color={selectedCategoryId === category.id ? "#FFA500" : "#666"}
                         style={styles.categoryIcon}
                       />
                       <Text style={styles.categoryName}>{category.name}</Text>
-                    </View>
-                    {selectedCategoryId === category.id && (
-                      <Ionicons name="checkmark-circle" size={22} color="#FFA500" />
-                    )}
-                  </TouchableOpacity>
+                      {selectedCategoryId === category.id && (
+                        <Ionicons name="checkmark-circle" size={22} color="#FFA500" />
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleDeleteCategory(category)}
+                    >
+                      <Ionicons name="trash" size={22} color="#E53935" />
+                    </TouchableOpacity>
+                  </View>
                 ))
               ) : (
                 <Text style={styles.noResults}>

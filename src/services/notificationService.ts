@@ -1,4 +1,4 @@
-import { collection, query, orderBy, getDocs, doc, updateDoc, where, getDoc, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, getDocs, doc, updateDoc, where, getDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
@@ -8,12 +8,13 @@ import { addDoc, serverTimestamp } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 
 export interface NotificationData {
+  id: string;
   body: string;
   createdAt: any; // timestamp
   data: {
-    orderId: string;
-    status: string;
-    userId: string;
+    orderId?: string;
+    status?: string;
+    userId?: string;
   };
   read: boolean;
   title: string;
@@ -353,6 +354,7 @@ export const notificationService = {
     };
 
     return {
+      id: orderId,
       title: getTitle(status),
       body: getBody(status),
       createdAt: serverTimestamp(),
@@ -393,6 +395,28 @@ export const notificationService = {
       console.log('Notificação de teste enviada:', result.data);
     } catch (error) {
       console.error('Erro ao enviar notificação de teste:', error);
+    }
+  },
+
+  // Excluir todas as notificações
+  async deleteAllNotifications(): Promise<void> {
+    try {
+      const user = auth.currentUser;
+      if (!user) throw new Error('Usuário não autenticado');
+
+      const notificationsRef = collection(db, 'partners', user.uid, 'notifications');
+      const q = query(notificationsRef);
+      const querySnapshot = await getDocs(q);
+
+      // Usar Promise.all para excluir todas em paralelo
+      const promises = querySnapshot.docs.map(doc => 
+        deleteDoc(doc.ref)
+      );
+
+      await Promise.all(promises);
+    } catch (error) {
+      console.error('Erro ao excluir todas as notificações:', error);
+      throw error;
     }
   }
 }; 

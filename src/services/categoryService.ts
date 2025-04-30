@@ -9,7 +9,8 @@ import {
   addDoc,
   doc,
   setDoc,
-  serverTimestamp
+  serverTimestamp,
+  deleteDoc
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { getAuth } from 'firebase/auth';
@@ -160,6 +161,22 @@ export const categoryService = {
     } catch (error: any) {
       console.error('Erro ao buscar categorias personalizadas:', error);
       throw new Error('Não foi possível carregar suas categorias: ' + error.message);
+    }
+  },
+
+  // Novo método para remover categoria personalizada do parceiro
+  async deletePartnerCategory(categoryId: string): Promise<void> {
+    try {
+      const auth = getAuth();
+      const userId = auth.currentUser?.uid;
+      if (!userId) {
+        throw new Error('Usuário não autenticado');
+      }
+      const categoryRef = doc(db, 'partners', userId, 'categories', categoryId);
+      await deleteDoc(categoryRef);
+    } catch (error: any) {
+      console.error('Erro ao excluir categoria personalizada:', error);
+      throw new Error('Não foi possível excluir a categoria: ' + error.message);
     }
   }
 };

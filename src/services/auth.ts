@@ -9,6 +9,7 @@ import {
   PhoneAuthProvider,
   User as FirebaseUser
 } from 'firebase/auth';
+import { establishmentService } from './establishmentService';
 
 export type User = {
   id: string;
@@ -92,6 +93,9 @@ export const authService = {
 
   async logout(): Promise<void> {
     try {
+      // Para a verificação automática do status do estabelecimento
+      establishmentService.stopAutoStatusCheck();
+      
       await signOut(auth);
       await AsyncStorage.removeItem('@auth_token');
       await AsyncStorage.removeItem('@user_data');

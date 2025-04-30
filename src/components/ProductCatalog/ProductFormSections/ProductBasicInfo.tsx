@@ -31,6 +31,11 @@ export function ProductBasicInfo({
   onPickImage,
   formatPrice
 }: ProductBasicInfoProps) {
+  const [nameInput, setNameInput] = useState(product.name);
+  React.useEffect(() => {
+    setNameInput(product.name);
+  }, [product.name]);
+
   const [modalVisible, setModalVisible] = useState(false);
 
   const handleCategorySelect = (category: CategoryOption) => {
@@ -56,15 +61,35 @@ export function ProductBasicInfo({
 
       <TextInput
         style={styles.input}
-        value={product.name}
-        onChangeText={(text) => onUpdate({ name: text })}
+        value={nameInput}
+        onChangeText={(text) => {
+          const smallWords = ['de', 'do', 'da', 'dos', 'das', 'e'];
+          let wordIndex = 0;
+          const formatted = text
+            .split(/(\s+)/)
+            .map(part => {
+              if (/\s+/.test(part)) return part;
+              const lower = part.toLowerCase();
+              const idx = wordIndex++;
+              if (idx > 0 && smallWords.includes(lower)) {
+                return lower;
+              }
+              return lower.charAt(0).toUpperCase() + lower.slice(1);
+            })
+            .join('');
+          setNameInput(formatted);
+          onUpdate({ name: formatted });
+        }}
         placeholder="Nome do produto *"
       />
 
       <TextInput
         style={[styles.input, styles.textArea]}
         value={product.description}
-        onChangeText={(text) => onUpdate({ description: text })}
+        onChangeText={(text) => {
+          const formattedText = text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
+          onUpdate({ description: formattedText });
+        }}
         placeholder="Descrição"
         multiline
         numberOfLines={4}
