@@ -108,6 +108,7 @@ function CustomDrawerContent(props: any) {
 
 export default function AuthLayout() {
   const [unreadCount, setUnreadCount] = useState(0);
+  const router = useRouter();
 
   // Buscar contagem de notificações não lidas
   useEffect(() => {
@@ -156,6 +157,30 @@ export default function AuthLayout() {
     };
   }, []);
 
+  // Função para navegar para tela de notificações
+  const navigateToNotifications = () => {
+    router.push('/(auth)/drawer/notifications');
+  };
+
+  // Componente de botão de notificações para o header
+  const NotificationButton = () => (
+    <TouchableOpacity 
+      style={styles.headerButton} 
+      onPress={navigateToNotifications}
+    >
+      <View>
+        <Ionicons name="notifications-outline" size={24} color="#fff" />
+        {unreadCount > 0 && (
+          <View style={styles.notificationBadge}>
+            <Text style={styles.notificationBadgeText}>
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </Text>
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+
   return (
     <Drawer
       screenOptions={{
@@ -176,6 +201,7 @@ export default function AuthLayout() {
         options={{
           title: 'Pedidos',
           headerShown: true,
+          headerRight: () => <NotificationButton />,
           drawerIcon: ({ color, size }) => (
             <Ionicons name="receipt-outline" size={size} color={color} />
           ),
@@ -262,22 +288,22 @@ export default function AuthLayout() {
         }}
       />
       <Drawer.Screen
-        name="drawer/checkout"
-        options={{
-          title: 'Checkout',
-          headerShown: true,
-          drawerIcon: ({ color, size }) => (
-            <Ionicons name="cart-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Drawer.Screen
         name="drawer/taxas"
         options={{
           title: 'taxas',
           headerShown: true,
           drawerIcon: ({ color, size }) => (
             <FontAwesome6 name="percentage" size={size} color={color} />
+          ),
+        }}
+      />
+      <Drawer.Screen
+        name="drawer/coupons"
+        options={{
+          title: 'Cupons',
+          headerShown: true,
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="pricetag-outline" size={size} color={color} />
           ),
         }}
       />
@@ -333,5 +359,9 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 10,
     fontWeight: 'bold',
+  },
+  headerButton: {
+    marginRight: 16,
+    padding: 6,
   },
 });

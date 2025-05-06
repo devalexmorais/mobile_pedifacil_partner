@@ -5,7 +5,6 @@ export interface DeliveryFee {
   id: string;
   neighborhood: string;
   fee: number;
-  isActive: boolean;
   storeId: string;
   createdAt: string;
   updatedAt: string;
@@ -16,8 +15,7 @@ export const deliveryFeeService = {
     try {
       const q = query(
         collection(db, 'partners', storeId, 'delivery_fees'),
-        where('neighborhood', '==', neighborhood),
-        where('isActive', '==', true)
+        where('neighborhood', '==', neighborhood)
       );
 
       const snapshot = await getDocs(q);
