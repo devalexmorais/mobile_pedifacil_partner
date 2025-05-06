@@ -56,7 +56,8 @@ export default function Profile() {
   const [partnerData, setPartnerData] = useState<PartnerData | null>(null);
   const [locationData, setLocationData] = useState<LocationData | null>(null);
   const [categoryData, setCategoryData] = useState<CategoryData | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const [uploadingProfile, setUploadingProfile] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
 
   const loadLocationData = async (address: any) => {
     try {
@@ -208,7 +209,7 @@ export default function Profile() {
 
   const handleImageUpload = async () => {
     try {
-      setUploading(true);
+      setUploadingProfile(true);
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: "images",
         allowsEditing: true,
@@ -241,13 +242,13 @@ export default function Profile() {
       console.error('Erro ao selecionar imagem:', error);
       Alert.alert('Erro', 'Não foi possível fazer upload da imagem');
     } finally {
-      setUploading(false);
+      setUploadingProfile(false);
     }
   };
 
   const handleCoverImageUpload = async () => {
     try {
-      setUploading(true);
+      setUploadingCover(true);
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: "images",
         allowsEditing: true,
@@ -277,7 +278,7 @@ export default function Profile() {
       console.error('Erro ao selecionar imagem de capa:', error);
       Alert.alert('Erro', 'Não foi possível fazer upload da imagem de capa');
     } finally {
-      setUploading(false);
+      setUploadingCover(false);
     }
   };
 
@@ -307,12 +308,12 @@ export default function Profile() {
           <TouchableOpacity 
             style={styles.editCoverButton}
             onPress={handleCoverImageUpload}
-            disabled={uploading}
+            disabled={uploadingCover}
           >
-            {uploading ? (
+            {uploadingCover ? (
               <ActivityIndicator size="small" color="#FFF" />
             ) : (
-              <Ionicons name="image" size={20} color="#FFF" />
+              <Ionicons name="image" size={20} color="#777777" />
             )}
           </TouchableOpacity>
 
@@ -327,12 +328,12 @@ export default function Profile() {
             <TouchableOpacity 
               style={styles.editImageButton}
               onPress={handleImageUpload}
-              disabled={uploading}
+              disabled={uploadingProfile}
             >
-              {uploading ? (
+              {uploadingProfile ? (
                 <ActivityIndicator size="small" color="#FFF" />
               ) : (
-                <Ionicons name="camera" size={20} color="#FFF" />
+                <Ionicons name="camera" size={20} color="#777777" />
               )}
             </TouchableOpacity>
           </View>

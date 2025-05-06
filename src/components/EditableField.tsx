@@ -58,7 +58,7 @@ export function EditableField({
         <View style={styles.valueContainer}>
           <Text style={styles.infoValue}>{value}</Text>
           <TouchableOpacity onPress={() => setIsEditing(true)} style={styles.iconButton}>
-            <Ionicons name="pencil" size={18} color="#FFA500" />
+            <Ionicons name="ellipsis-vertical" size={18} color="#777777" />
           </TouchableOpacity>
         </View>
       )}
