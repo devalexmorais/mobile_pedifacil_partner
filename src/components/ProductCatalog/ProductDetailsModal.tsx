@@ -86,7 +86,7 @@ export function ProductDetailsModal({
           <ScrollView style={styles.scrollContent}>
             {/* Imagem do Produto */}
             <Image 
-              source={{ uri: product.image || defaultImage }} 
+              source={product.image ? { uri: product.image } : require('@/assets/product-placeholder.png')} 
               style={styles.productImage} 
               resizeMode="cover"
             />

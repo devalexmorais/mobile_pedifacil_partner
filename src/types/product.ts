@@ -45,6 +45,7 @@ export interface Promotion {
   startDate: string;
   endDate: string;
   isActive: boolean;
+  finalPrice: number;
 }
 
 export interface ProductWithPromotion extends Product {

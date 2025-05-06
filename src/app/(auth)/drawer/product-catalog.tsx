@@ -16,9 +16,6 @@ import { db, auth } from '../../../config/firebase';
 import * as ImagePicker from 'expo-image-picker';
 import { usePlan } from '@/contexts/PlanContext';
 import { useRouter } from 'expo-router';
-import { SearchHeader } from '@/components/ProductCatalog/SearchHeader';
-import { CategoryList } from '@/components/ProductCatalog/CategoryList';
-import { ProductCard } from '@/components/ProductCatalog/ProductCard';
 import { ProductFormModal } from '@/components/ProductCatalog/ProductFormModal';
 import { ProductDetailsModal } from '@/components/ProductCatalog/ProductDetailsModal';
 import { PromotionModal } from '@/components/ProductCatalog/PromotionModal';
@@ -27,6 +24,8 @@ import { storage } from '../../../config/firebase';
 import { categoryService } from '@/services/categoryService';
 import { Product, Promotion } from '@/types/product';
 import { ProductCatalogSkeleton } from '@/components/skeleton';
+import { CategoryTabView } from '@/components/ProductCatalog/CategoryTabView';
+import { CategoryProductsView } from '@/components/ProductCatalog/CategoryProductsView';
 
 interface ProductOption {
   name: string;
@@ -744,6 +743,36 @@ export default function ProductCatalog() {
     }
   };
 
+  const getFilteredProducts = (categoryId: string | null) => {
+    let filtered = [];
+    
+    // Se for a categoria de promoções, filtra apenas produtos em promoção
+    if (categoryId === 'promotions') {
+      filtered = categories
+        .flatMap(category => category.products)
+        .filter(product => product.isPromotion === true);
+    } 
+    // Senão, filtra pela categoria selecionada
+    else if (categoryId) {
+      const category = categories.find(cat => cat.id === categoryId);
+      filtered = category ? [...category.products] : [];
+    } 
+    // Se não tiver categoria selecionada, mostra todos
+    else {
+      filtered = categories.flatMap(category => [...category.products]);
+    }
+    
+    // Aplica o filtro de pesquisa de texto se houver
+    if (searchText.trim()) {
+      filtered = filtered.filter(product => 
+        safeStringCompare(product.name, searchText) || 
+        safeStringCompare(product.description, searchText)
+      );
+    }
+    
+    return filtered;
+  };
+
   const filteredCategories = categories.map(category => ({
     ...category,
     products: category.products.filter(product => 
@@ -1062,16 +1091,37 @@ export default function ProductCatalog() {
             style: 'destructive',
             onPress: async () => {
               try {
+                setLoading(true);
                 const productRef = doc(db, 'partners', user.uid, 'products', product.id);
+                
+                // Atualiza o produto no banco de dados
                 await updateDoc(productRef, {
                   isPromotion: false,
                   promotion: null,
                   updatedAt: new Date()
                 });
 
-                loadProducts(); // Recarrega a lista de produtos
+                // Atualiza localmente para feedback imediato
+                const updatedProduct = {
+                  ...product,
+                  isPromotion: false,
+                  promotion: undefined
+                };
+                
+                const updatedCategories = categories.map(category => ({
+                  ...category,
+                  products: category.products.map(p => 
+                    p.id === product.id ? updatedProduct : p
+                  )
+                }));
+                
+                // Atualiza o estado das categorias para forçar a re-renderização
+                setCategories(updatedCategories);
+                
+                setLoading(false);
                 Alert.alert('Sucesso', 'Promoção removida com sucesso!');
               } catch (error) {
+                setLoading(false);
                 console.error('Erro ao remover promoção:', error);
                 Alert.alert('Erro', 'Não foi possível remover a promoção');
               }
@@ -1085,59 +1135,75 @@ export default function ProductCatalog() {
     }
   };
 
+  // Prepara as categorias para o TabView, incluindo a categoria de promoções
+  const allCategories = [
+    { id: 'all', name: 'Todos' },
+    { id: 'promotions', name: 'Promoção' },
+    ...categories
+  ];
+
+  // Renderiza o conteúdo de cada aba
+  const renderTabContent = (categoryId: string) => {
+    // Força a atualização dos produtos filtrados a cada renderização
+    const filteredProducts = getFilteredProducts(categoryId === 'all' ? null : categoryId);
+    
+    return (
+      <CategoryProductsView
+        products={filteredProducts}
+        onProductPress={handleProductPress}
+        onEditProduct={handleEditProduct}
+        onToggleAvailability={toggleProductAvailability}
+        onDeleteProduct={handleDeleteProduct}
+        onTogglePromotion={categoryId === 'promotions' 
+          ? handleRemovePromotion
+          : handleTogglePromotion}
+        isPremium={isPremium}
+        defaultImage={defaultProductImage}
+      />
+    );
+  };
+
+  // Manipula a mudança de categoria
+  const handleCategoryChange = (index: number) => {
+    // A lógica adicional pode ser adicionada aqui, se necessário
+  };
+
   if (loading) {
     return <ProductCatalogSkeleton />;
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      <SearchHeader 
-        searchText={searchText}
-        onSearchChange={setSearchText}
-        onAddProduct={handleAddProduct}
-        onManageProducts={handleManageActiveProducts}
-        showManageButton={!isPremium && hasExceededLimit()}
-        isAddButtonDisabled={!isPremium && currentProductCount >= limits.maxProducts}
-      />
+      {categories.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyStateText}>
+            Nenhum produto cadastrado
+          </Text>
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={handleAddProduct}
+          >
+            <Text style={styles.addButtonText}>Adicionar Produto</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.tabContainer}>
+          <CategoryTabView 
+            categories={allCategories}
+            renderScene={renderTabContent}
+            onIndexChange={handleCategoryChange}
+          />
+          
+          <TouchableOpacity 
+            style={styles.floatingAddButton}
+            onPress={handleAddProduct}
+          >
+            <Ionicons name="add" size={24} color="#FFF" />
+          </TouchableOpacity>
+        </View>
+      )}
 
-      <CategoryList 
-        categories={availableCategories}
-        selectedCategory={selectedCategory}
-        onSelectCategory={setSelectedCategory}
-      />
-
-      <ScrollView 
-        style={styles.productsList}
-        contentContainerStyle={styles.productsListContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {displayCategories.map(category => (
-          <View key={category.id} style={styles.categorySection}>
-            {selectedCategory !== 'promotions' && (
-              <Text style={styles.categoryTitle}>{category.name}</Text>
-            )}
-            {category.products
-              .filter(product => selectedCategory === 'promotions' ? product.isPromotion : !product.isPromotion)
-              .map(product => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  isExceedingLimit={isProductExceedingLimit(product)}
-                  isPremium={isPremium}
-                  onToggleAvailability={() => toggleProductAvailability(product)}
-                  onEdit={() => handleEditProduct(product)}
-                  onDelete={() => handleDeleteProduct(product)}
-                  onTogglePromotion={selectedCategory === 'promotions' 
-                    ? () => handleRemovePromotion(product)
-                    : () => handleTogglePromotion(product)}
-                  onPress={() => handleProductPress(product)}
-                  defaultImage={defaultProductImage}
-                />
-              ))}
-          </View>
-        ))}
-      </ScrollView>
-
+      {/* Modais */}
       <ProductFormModal 
         visible={isModalVisible}
         isEditing={isEditing}
@@ -1154,6 +1220,13 @@ export default function ProductCatalog() {
         product={selectedProduct}
         onClose={() => setIsDetailsModalVisible(false)}
         defaultImage={defaultProductImage}
+      />
+
+      <PromotionModal
+        visible={isPromotionModalVisible}
+        onClose={() => setIsPromotionModalVisible(false)}
+        onSave={handleSavePromotion}
+        product={selectedProductForPromotion}
       />
 
       {/* Modal de aviso de limite */}
@@ -1192,19 +1265,19 @@ export default function ProductCatalog() {
         </View>
       </Modal>
 
-      {/* Modal de Downgrade */}
+      {/* Modal para gerenciar produtos ativos (downgrade) */}
       <Modal
         visible={showDowngradeModal}
         transparent={true}
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setShowDowngradeModal(false)}
       >
         <View style={styles.downgradeModalContainer}>
           <View style={styles.downgradeModalContent}>
             <Text style={styles.downgradeTitle}>Selecione os produtos ativos</Text>
             <Text style={styles.downgradeDescription}>
-              Seu plano atual permite apenas {limits.maxProducts} produtos ativos.
-              Selecione quais produtos você deseja manter ativos:
+              Seu plano permite até {limits.maxProducts} produtos ativos.
+              Selecione quais produtos deseja manter ativos:
             </Text>
             
             <Text style={styles.selectionCounter}>
@@ -1271,23 +1344,58 @@ export default function ProductCatalog() {
           </View>
         </View>
       </Modal>
-
-      <PromotionModal
-        visible={isPromotionModalVisible}
-        onClose={() => {
-          setIsPromotionModalVisible(false);
-          setSelectedProductForPromotion(null);
-        }}
-        onSave={handleSavePromotion}
-        product={selectedProductForPromotion}
-      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#f5f5f5',
+    flex: 1,
+    backgroundColor: '#f9f9f9',
+  },
+  tabContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    color: '#666',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  addButton: {
+    backgroundColor: '#FFA500',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+    elevation: 2,
+  },
+  addButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  floatingAddButton: {
+    position: 'absolute',
+    right: 16,
+    bottom: 16,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#FFA500',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
   },
   loadingContainer: {
     flex: 1,
@@ -1887,8 +1995,8 @@ const styles = StyleSheet.create({
   selectionCounter: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#FFA500',
-    marginBottom: 10,
+    color: '#333',
+    marginBottom: 20,
   },
   productSelectionList: {
     maxHeight: '60%',
@@ -1920,52 +2028,29 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
   },
+  productStatusLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333',
+  },
   downgradeModalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginTop: 20,
-    gap: 10,
   },
   confirmSelectionButton: {
     padding: 12,
     borderRadius: 8,
-    backgroundColor: '#ccc',
+    backgroundColor: '#FFA500',
     alignItems: 'center',
   },
   confirmSelectionButtonEnabled: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#FFA500',
   },
   confirmSelectionButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
-  },
-  productCardExceeding: {
-    backgroundColor: '#FFE0E0',
-    borderColor: '#FFA07A',
-    borderWidth: 1,
-  },
-  productCardInactive: {
-    opacity: 0.7,
-    backgroundColor: '#f5f5f5',
-  },
-  exceedingLabel: {
-    color: '#FF6B6B',
-    fontSize: 12,
-    fontWeight: '500',
-    marginBottom: 4,
-  },
-  productStatusLabel: {
-    fontSize: 12,
-    marginTop: 4,
-  },
-  promotionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  promotionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FFA500',
   },
 });
