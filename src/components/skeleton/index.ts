@@ -1,4 +1,9 @@
 export { SkeletonItem } from './SkeletonItem';
 export { ProfileSkeleton } from './ProfileSkeleton';
 export { AvaliacaoSkeleton } from './AvaliacaoSkeleton';
-export { ProductCatalogSkeleton } from './ProductCatalogSkeleton'; 
+export { ProductCatalogSkeleton } from './ProductCatalogSkeleton';
+export { FinanceiroSkeleton } from './FinanceiroSkeleton';
+export { FaturasSkeleton } from './FaturasSkeleton';
+export { TaxasSkeleton } from './TaxasSkeleton';
+export { CouponsSkeleton } from './CouponsSkeleton';
+export { SignatureSkeleton } from './SignatureSkeleton'; 

@@ -56,7 +56,6 @@ export function ProductFormModal({
       
       const formVariations: FormVariation[] = (editingProduct.variations || []).map(variation => ({
         name: variation.name,
-        description: variation.options?.[0]?.name || '',
         price: formatPrice(((variation.options?.[0]?.price ?? 0) * 100).toString()),
         isAvailable: true
       }));
@@ -116,6 +115,8 @@ export function ProductFormModal({
             <ProductVariations 
               variations={newProduct.variations}
               onUpdate={(variations) => onUpdateProduct({ variations })}
+              formatPrice={formatPrice}
+              basePrice={newProduct.price}
               {...props}
             />
 

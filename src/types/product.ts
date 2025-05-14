@@ -14,6 +14,7 @@ export interface Product {
   sellerId: string;
   variations: {
     name: string;
+    minRequired?: number;
     options: {
       name: string;
       price?: number;

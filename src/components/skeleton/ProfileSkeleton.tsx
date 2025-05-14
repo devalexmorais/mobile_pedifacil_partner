@@ -1,80 +1,59 @@
-import React from 'react';
-import { View, ScrollView, StyleSheet } from 'react-native';
+import React, { memo } from 'react';
+import { View, StyleSheet, ScrollView, SafeAreaView } from 'react-native';
 import { SkeletonItem } from './SkeletonItem';
 
+// Componente reutilizável para cada seção do perfil
+const ProfileSection = memo(({ index }: { index: number }) => (
+  <View style={styles.section}>
+    <View style={styles.sectionHeader}>
+      <SkeletonItem width={24} height={24} style={{ borderRadius: 12 }} shimmerEnabled={index === 0} />
+      <SkeletonItem 
+        width={120 + (index * 20)} 
+        height={18} 
+        style={{ marginLeft: 10 }} 
+        shimmerEnabled={index === 0}
+      />
+    </View>
+    <View style={styles.sectionContent}>
+      <SkeletonItem width={80} height={14} shimmerEnabled={false} />
+      <SkeletonItem 
+        width="70%" 
+        height={16} 
+        style={{ marginTop: 6 }} 
+        shimmerEnabled={false}
+      />
+    </View>
+  </View>
+));
+
 /**
- * Componente de skeleton para a tela de perfil
+ * Componente de skeleton otimizado para a tela de perfil
  */
 export const ProfileSkeleton = () => {
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <View style={[styles.coverImage, styles.skeletonBackground]}>
-          <SkeletonItem 
-            width={100} 
-            height={100} 
-            style={{ 
-              borderRadius: 50, 
-              borderWidth: 3, 
-              borderColor: '#FFF', 
-              marginBottom: 10 
-            }} 
+    <SafeAreaView style={styles.container}>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <SkeletonItem
+            width={100}
+            height={100}
+            style={{
+              borderRadius: 50,
+              marginBottom: 15,
+            }}
           />
           <SkeletonItem width={180} height={24} style={{ marginBottom: 5 }} />
-          <SkeletonItem width={150} height={16} />
-        </View>
-      </View>
-
-      <View style={styles.cardsContainer}>
-        {/* Skeleton: Informações Pessoais */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <SkeletonItem width={24} height={24} style={{ borderRadius: 12 }} />
-            <SkeletonItem width={150} height={18} style={{ marginLeft: 10 }} />
-          </View>
-          <View style={styles.cardContent}>
-            {[1, 2, 3, 4].map((item) => (
-              <View key={`personal-${item}`} style={styles.skeletonFieldContainer}>
-                <SkeletonItem width={80} height={14} />
-                <SkeletonItem width="70%" height={16} style={{ marginTop: 6 }} />
-              </View>
-            ))}
-          </View>
+          <SkeletonItem width={150} height={16} shimmerEnabled={false} />
         </View>
 
-        {/* Skeleton: Endereço */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <SkeletonItem width={24} height={24} style={{ borderRadius: 12 }} />
-            <SkeletonItem width={120} height={18} style={{ marginLeft: 10 }} />
-          </View>
-          <View style={styles.cardContent}>
-            {[1, 2, 3, 4, 5].map((item) => (
-              <View key={`address-${item}`} style={styles.skeletonFieldContainer}>
-                <SkeletonItem width={80} height={14} />
-                <SkeletonItem width="70%" height={16} style={{ marginTop: 6 }} />
-              </View>
-            ))}
-          </View>
+        <View style={styles.content}>
+          {/* Componentes de seção memoizados */}
+          <ProfileSection index={0} />
+          <ProfileSection index={1} />
+          <ProfileSection index={2} />
         </View>
-
-        {/* Skeleton: Estabelecimento */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <SkeletonItem width={24} height={24} style={{ borderRadius: 12 }} />
-            <SkeletonItem width={140} height={18} style={{ marginLeft: 10 }} />
-          </View>
-          <View style={styles.cardContent}>
-            {[1, 2, 3].map((item) => (
-              <View key={`store-${item}`} style={styles.skeletonFieldContainer}>
-                <SkeletonItem width={80} height={14} />
-                <SkeletonItem width="70%" height={16} style={{ marginTop: 6 }} />
-              </View>
-            ))}
-          </View>
-        </View>
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
@@ -84,42 +63,34 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
   },
   header: {
-    height: 250,
-  },
-  coverImage: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFA500',
+    padding: 20,
+    backgroundColor: '#fff',
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#e0e0e0',
   },
-  skeletonBackground: {
-    backgroundColor: '#E0E0E0',
-  },
-  cardsContainer: {
+  content: {
     padding: 16,
   },
-  card: {
-    backgroundColor: '#FFF',
-    borderRadius: 10,
+  section: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
     marginBottom: 16,
+    padding: 16,
+    elevation: 2,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
   },
-  cardHeader: {
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    paddingBottom: 12,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#e0e0e0',
   },
-  cardContent: {
-    padding: 16,
-  },
-  skeletonFieldContainer: {
-    marginBottom: 16,
+  sectionContent: {
+    marginTop: 16,
   },
 }); 

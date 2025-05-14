@@ -1,11 +1,55 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { View, StyleSheet, ScrollView, SafeAreaView } from 'react-native';
 import { SkeletonItem } from './SkeletonItem';
 
+// Memoizamos componentes que podem ser reutilizados
+const CategorySkeleton = memo(({ index }: { index: number }) => (
+  <View style={styles.categorySection}>
+    <SkeletonItem 
+      width={100 + (index % 3) * 20} 
+      height={18} 
+      style={{ marginBottom: 12, marginLeft: 4 }} 
+      shimmerEnabled={index < 2} // Só habilitamos shimmer nas primeiras categorias
+    />
+  </View>
+));
+
+const ProductCardSkeleton = memo(({ index }: { index: number }) => (
+  <View style={styles.productCard}>
+    <SkeletonItem width={65} height={65} style={{ borderRadius: 8 }} shimmerEnabled={index < 4} />
+    
+    <View style={styles.productInfo}>
+      <SkeletonItem 
+        width={`${Math.floor(70 + (index % 3) * 10)}%`} 
+        height={14} 
+        style={{ marginBottom: 8 }} 
+        shimmerEnabled={index < 4}
+      />
+      <SkeletonItem 
+        width={`${Math.floor(50 + (index % 3) * 10)}%`} 
+        height={12} 
+        style={{ marginBottom: 8 }} 
+        shimmerEnabled={false}
+      />
+      <SkeletonItem width={80} height={14} shimmerEnabled={false} />
+    </View>
+    
+    <View style={styles.productActions}>
+      <SkeletonItem width={28} height={28} style={{ borderRadius: 14, marginBottom: 8 }} shimmerEnabled={false} />
+      <SkeletonItem width={28} height={28} style={{ borderRadius: 14, marginBottom: 8 }} shimmerEnabled={false} />
+      <SkeletonItem width={28} height={28} style={{ borderRadius: 14 }} shimmerEnabled={false} />
+    </View>
+  </View>
+));
+
 /**
- * Componente de skeleton para a tela de catálogo de produtos
+ * Componente de skeleton otimizado para a tela de catálogo de produtos
  */
 export const ProductCatalogSkeleton = () => {
+  // Limitar o número de items renderizados para melhor performance
+  const maxVisibleCategories = 3;
+  const maxProductsPerCategory = [3, 2, 2]; // Número de produtos por categoria
+  
   return (
     <SafeAreaView style={styles.container}>
       {/* Header com barra de pesquisa e botão de adicionar */}
@@ -24,97 +68,39 @@ export const ProductCatalogSkeleton = () => {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.categoriesContent}
         >
-          {[1, 2, 3, 4, 5, 6].map((item) => (
+          {Array.from({ length: 6 }).map((_, index) => (
             <SkeletonItem 
-              key={`category-${item}`} 
+              key={`category-${index}`} 
               width={80} 
               height={26} 
               style={{ 
                 borderRadius: 16, 
                 marginHorizontal: 4,
               }}
+              shimmerEnabled={index < 3} // Apenas as primeiras têm shimmer
             />
           ))}
         </ScrollView>
       </View>
 
-      {/* Lista de produtos */}
+      {/* Lista de produtos - usando window com limitação de renderização */}
       <ScrollView 
         style={styles.productsList}
         contentContainerStyle={styles.productsListContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Primeira categoria */}
-        <View style={styles.categorySection}>
-          <SkeletonItem width={120} height={18} style={{ marginBottom: 12, marginLeft: 4 }} />
-          
-          {/* Produtos da categoria */}
-          {[1, 2, 3].map((product) => (
-            <View key={`product-1-${product}`} style={styles.productCard}>
-              <SkeletonItem width={65} height={65} style={{ borderRadius: 8 }} />
-              
-              <View style={styles.productInfo}>
-                <SkeletonItem width="80%" height={14} style={{ marginBottom: 8 }} />
-                <SkeletonItem width="60%" height={12} style={{ marginBottom: 8 }} />
-                <SkeletonItem width={80} height={14} />
-              </View>
-              
-              <View style={styles.productActions}>
-                <SkeletonItem width={28} height={28} style={{ borderRadius: 14, marginBottom: 8 }} />
-                <SkeletonItem width={28} height={28} style={{ borderRadius: 14, marginBottom: 8 }} />
-                <SkeletonItem width={28} height={28} style={{ borderRadius: 14 }} />
-              </View>
-            </View>
-          ))}
-        </View>
-
-        {/* Segunda categoria */}
-        <View style={styles.categorySection}>
-          <SkeletonItem width={150} height={18} style={{ marginBottom: 12, marginLeft: 4 }} />
-          
-          {/* Produtos da categoria */}
-          {[1, 2].map((product) => (
-            <View key={`product-2-${product}`} style={styles.productCard}>
-              <SkeletonItem width={65} height={65} style={{ borderRadius: 8 }} />
-              
-              <View style={styles.productInfo}>
-                <SkeletonItem width="70%" height={14} style={{ marginBottom: 8 }} />
-                <SkeletonItem width="50%" height={12} style={{ marginBottom: 8 }} />
-                <SkeletonItem width={80} height={14} />
-              </View>
-              
-              <View style={styles.productActions}>
-                <SkeletonItem width={28} height={28} style={{ borderRadius: 14, marginBottom: 8 }} />
-                <SkeletonItem width={28} height={28} style={{ borderRadius: 14, marginBottom: 8 }} />
-                <SkeletonItem width={28} height={28} style={{ borderRadius: 14 }} />
-              </View>
-            </View>
-          ))}
-        </View>
-
-        {/* Terceira categoria */}
-        <View style={styles.categorySection}>
-          <SkeletonItem width={100} height={18} style={{ marginBottom: 12, marginLeft: 4 }} />
-          
-          {/* Produtos da categoria */}
-          {[1, 2, 3, 4].map((product) => (
-            <View key={`product-3-${product}`} style={styles.productCard}>
-              <SkeletonItem width={65} height={65} style={{ borderRadius: 8 }} />
-              
-              <View style={styles.productInfo}>
-                <SkeletonItem width={`${Math.floor(60 + Math.random() * 30)}%`} height={14} style={{ marginBottom: 8 }} />
-                <SkeletonItem width={`${Math.floor(40 + Math.random() * 30)}%`} height={12} style={{ marginBottom: 8 }} />
-                <SkeletonItem width={80} height={14} />
-              </View>
-              
-              <View style={styles.productActions}>
-                <SkeletonItem width={28} height={28} style={{ borderRadius: 14, marginBottom: 8 }} />
-                <SkeletonItem width={28} height={28} style={{ borderRadius: 14, marginBottom: 8 }} />
-                <SkeletonItem width={28} height={28} style={{ borderRadius: 14 }} />
-              </View>
-            </View>
-          ))}
-        </View>
+        {Array.from({ length: maxVisibleCategories }).map((_, categoryIndex) => (
+          <View key={`category-section-${categoryIndex}`} style={styles.categorySection}>
+            <CategorySkeleton index={categoryIndex} />
+            
+            {Array.from({ length: maxProductsPerCategory[categoryIndex] || 0 }).map((_, productIndex) => (
+              <ProductCardSkeleton 
+                key={`product-${categoryIndex}-${productIndex}`} 
+                index={categoryIndex * 4 + productIndex} 
+              />
+            ))}
+          </View>
+        ))}
       </ScrollView>
     </SafeAreaView>
   );

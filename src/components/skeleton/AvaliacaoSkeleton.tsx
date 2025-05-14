@@ -1,135 +1,161 @@
-import React from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import React, { memo } from 'react';
+import { View, StyleSheet, ScrollView, SafeAreaView } from 'react-native';
 import { SkeletonItem } from './SkeletonItem';
 import { colors } from '@/styles/theme/colors';
 
+// Componente memoizado para um item de avaliação
+const AvaliacaoItem = memo(({ index }: { index: number }) => (
+  <View style={styles.reviewCard}>
+    <View style={styles.reviewHeader}>
+      <SkeletonItem width={40} height={40} style={{ borderRadius: 20 }} shimmerEnabled={index === 0} />
+      <View style={styles.reviewUser}>
+        <SkeletonItem 
+          width={120} 
+          height={18} 
+          style={{ marginBottom: 4 }} 
+          shimmerEnabled={index === 0}
+        />
+        <View style={styles.reviewRating}>
+          {[1, 2, 3, 4, 5].map((star) => (
+            <SkeletonItem 
+              key={`star-${star}`} 
+              width={16} 
+              height={14} 
+              shimmerEnabled={false}
+            />
+          ))}
+          <SkeletonItem 
+            width={80} 
+            height={12} 
+            style={{ marginLeft: 8 }} 
+            shimmerEnabled={false}
+          />
+        </View>
+      </View>
+    </View>
+    <SkeletonItem 
+      width="100%" 
+      height={60} 
+      style={{ marginTop: 12 }} 
+      shimmerEnabled={false}
+    />
+  </View>
+));
+
 /**
- * Componente skeleton para a tela de avaliações
+ * Componente de skeleton otimizado para a tela de avaliações
  */
 export const AvaliacaoSkeleton = () => {
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Resumo das avaliações */}
-        <View style={styles.summary}>
-          <View style={styles.averageContainer}>
+        {/* Header com estatísticas */}
+        <View style={styles.stats}>
+          {/* Score médio */}
+          <View style={styles.scoreCard}>
             <SkeletonItem width={80} height={50} style={{ marginBottom: 8 }} />
-            
-            <View style={styles.starsContainer}>
-              {[1, 2, 3, 4, 5].map((item) => (
-                <SkeletonItem 
-                  key={`star-${item}`} 
-                  width={20} 
-                  height={20} 
-                  style={{ marginHorizontal: 2, borderRadius: 10 }} 
-                />
-              ))}
-            </View>
-            
-            <SkeletonItem width={120} height={16} style={{ marginTop: 8 }} />
+            <SkeletonItem
+              width={100}
+              height={12}
+              style={{
+                borderRadius: 6,
+              }}
+              shimmerEnabled={false}
+            />
           </View>
-
-          <View style={styles.ratingBars}>
-            {[1, 2, 3, 4, 5].map((item) => (
-              <View key={`rating-bar-${item}`} style={styles.ratingBar}>
-                <SkeletonItem width={16} height={14} />
-                <View style={styles.barContainer}>
-                  <SkeletonItem 
-                    width={`${Math.random() * 100}%`} 
-                    height={8} 
-                    style={{ borderRadius: 4 }} 
-                  />
-                </View>
-                <SkeletonItem width={32} height={14} />
+          
+          {/* Distribuição das avaliações */}
+          <View style={styles.distributionCard}>
+            <SkeletonItem width={120} height={16} style={{ marginTop: 8 }} />
+            
+            {[5, 4, 3, 2, 1].map((rating) => (
+              <View key={`rating-${rating}`} style={styles.ratingRow}>
+                <SkeletonItem width={16} height={14} shimmerEnabled={false} />
+                <SkeletonItem
+                  width={`${(6 - rating) * 20}%`}
+                  height={8}
+                  style={{
+                    marginHorizontal: 8,
+                    borderRadius: 4,
+                  }}
+                  shimmerEnabled={false}
+                />
+                <SkeletonItem width={32} height={14} shimmerEnabled={false} />
               </View>
             ))}
           </View>
         </View>
-
-        {/* Título da seção */}
-        <View style={styles.reviewsContainer}>
+        
+        {/* Título da seção de avaliações */}
+        <View style={styles.reviewsHeader}>
           <SkeletonItem width={180} height={24} style={{ marginBottom: 16 }} />
-
-          {/* Reviews */}
-          {[1, 2, 3].map((item) => (
-            <View key={`review-${item}`} style={styles.reviewCard}>
-              <View style={styles.reviewHeader}>
-                <View>
-                  <SkeletonItem width={120} height={18} style={{ marginBottom: 4 }} />
-                  <View style={styles.ratingContainer}>
-                    <View style={{ flexDirection: 'row' }}>
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <SkeletonItem 
-                          key={`review-star-${item}-${star}`} 
-                          width={16} 
-                          height={16} 
-                          style={{ marginRight: 4, borderRadius: 8 }} 
-                        />
-                      ))}
-                    </View>
-                    <SkeletonItem width={80} height={12} style={{ marginLeft: 8 }} />
-                  </View>
-                </View>
-              </View>
-              
-              <SkeletonItem width="100%" height={60} style={{ marginTop: 12 }} />
-            </View>
+        </View>
+        
+        {/* Lista de avaliações */}
+        <View style={styles.reviewsList}>
+          {[0, 1, 2, 3].map((index) => (
+            <AvaliacaoItem key={`review-${index}`} index={index} />
           ))}
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.gray[100],
+    backgroundColor: '#f5f5f5',
   },
-  summary: {
-    backgroundColor: colors.white,
-    padding: 24,
-    marginBottom: 12,
-  },
-  averageContainer: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  starsContainer: {
+  stats: {
     flexDirection: 'row',
-    marginBottom: 8,
+    padding: 16,
+    backgroundColor: '#fff',
   },
-  ratingBars: {
-    gap: 8,
-  },
-  ratingBar: {
-    flexDirection: 'row',
+  scoreCard: {
+    width: '30%',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
+    justifyContent: 'center',
+    paddingRight: 16,
+    borderRightWidth: 1,
+    borderRightColor: '#eee',
   },
-  barContainer: {
+  distributionCard: {
     flex: 1,
-    height: 8,
-    backgroundColor: colors.gray[200],
-    borderRadius: 4,
-    overflow: 'hidden',
+    paddingLeft: 16,
   },
-  reviewsContainer: {
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 4,
+  },
+  reviewsHeader: {
+    padding: 16,
+    paddingBottom: 0,
+  },
+  reviewsList: {
     padding: 16,
   },
   reviewCard: {
-    backgroundColor: colors.white,
-    borderRadius: 12,
+    backgroundColor: '#fff',
+    borderRadius: 8,
     padding: 16,
     marginBottom: 12,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 1,
   },
   reviewHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
-  ratingContainer: {
+  reviewUser: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  reviewRating: {
     flexDirection: 'row',
     alignItems: 'center',
   },

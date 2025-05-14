@@ -4,7 +4,6 @@ import { Ionicons } from '@expo/vector-icons';
 
 interface FormVariation {
   name: string;
-  description: string;
   price: string;
   isAvailable: boolean;
 }
@@ -12,14 +11,21 @@ interface FormVariation {
 interface ProductVariationsProps {
   variations: FormVariation[];
   onUpdate: (variations: FormVariation[]) => void;
+  formatPrice: (value: string) => string;
+  basePrice: string;
 }
 
-export function ProductVariations({ variations, onUpdate }: ProductVariationsProps) {
+export function ProductVariations({ 
+  variations, 
+  onUpdate, 
+  formatPrice, 
+  basePrice 
+}: ProductVariationsProps) {
   const addVariation = () => {
+    // Adiciona uma nova variação simples
     onUpdate([...variations, {
       name: '',
-      description: '',
-      price: '',
+      price: '0,00',
       isAvailable: true
     }]);
   };
@@ -31,10 +37,12 @@ export function ProductVariations({ variations, onUpdate }: ProductVariationsPro
   return (
     <View>
       <Text style={styles.sectionTitle}>Variações</Text>
+      
+      {/* Lista todas as variações */}
       {variations.map((variation, index) => (
         <View key={index} style={styles.variationContainer}>
           <View style={styles.itemHeader}>
-            <Text style={styles.itemTitle}>Variação {index + 1}</Text>
+            <Text style={styles.itemTitle}>Variação</Text>
             <TouchableOpacity 
               style={styles.removeButton}
               onPress={() => removeVariation(index)}
@@ -54,20 +62,10 @@ export function ProductVariations({ variations, onUpdate }: ProductVariationsPro
           />
           <TextInput
             style={styles.input}
-            value={variation.description}
-            onChangeText={(text) => {
-              const newVariations = [...variations];
-              newVariations[index].description = text;
-              onUpdate(newVariations);
-            }}
-            placeholder="Descrição"
-          />
-          <TextInput
-            style={styles.input}
             value={variation.price}
             onChangeText={(text) => {
               const newVariations = [...variations];
-              newVariations[index].price = text;
+              newVariations[index].price = formatPrice(text);
               onUpdate(newVariations);
             }}
             placeholder="Preço"
@@ -75,6 +73,8 @@ export function ProductVariations({ variations, onUpdate }: ProductVariationsPro
           />
         </View>
       ))}
+      
+      {/* Botão para adicionar nova variação */}
       <TouchableOpacity style={styles.addButton} onPress={addVariation}>
         <Text style={styles.addButtonText}>+ Adicionar Variação</Text>
       </TouchableOpacity>
@@ -130,5 +130,5 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 14,
     fontWeight: '500',
-  },
+  }
 }); 

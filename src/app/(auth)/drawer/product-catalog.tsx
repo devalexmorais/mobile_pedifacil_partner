@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import { doc, collection, getDocs, addDoc, updateDoc, deleteDoc, setDoc, writeBa
 import { db, auth } from '../../../config/firebase';
 import * as ImagePicker from 'expo-image-picker';
 import { usePlan } from '@/contexts/PlanContext';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { ProductFormModal } from '@/components/ProductCatalog/ProductFormModal';
 import { ProductDetailsModal } from '@/components/ProductCatalog/ProductDetailsModal';
 import { PromotionModal } from '@/components/ProductCatalog/PromotionModal';
@@ -36,6 +36,7 @@ interface ProductOption {
 interface ProductVariation {
   name: string;
   options: ProductOption[];
+  minRequired?: number;
 }
 
 interface RequiredSelection {
@@ -63,9 +64,9 @@ interface Category {
 
 interface FormVariation {
   name: string;
-  description: string;
   price: string;
   isAvailable: boolean;
+  minRequired?: number;
 }
 
 interface NewProduct {
@@ -136,6 +137,16 @@ export default function ProductCatalog() {
     loadProducts();
     loadCategories();
   }, []);
+
+  // Recarrega produtos quando a tela receber foco
+  useFocusEffect(
+    useCallback(() => {
+      loadProducts();
+      return () => {
+        // Limpeza se necessário
+      };
+    }, [])
+  );
 
   useEffect(() => {
     if (categories.length > 0) {
@@ -346,7 +357,7 @@ export default function ProductCatalog() {
       });
 
       // Recarrega a lista após a atualização
-      loadProducts();
+      await loadProducts();
     } catch (error) {
       console.error('Erro ao atualizar disponibilidade:', error);
       Alert.alert('Erro', 'Não foi possível atualizar a disponibilidade do produto');
@@ -386,7 +397,8 @@ export default function ProductCatalog() {
                 const productRef = doc(db, 'partners', user.uid, 'products', product.id);
                 await deleteDoc(productRef);
                 
-                loadProducts(); // Recarrega a lista
+                // Recarrega a lista de produtos
+                await loadProducts();
                 Alert.alert('Sucesso', 'Produto excluído com sucesso!');
               } catch (error) {
                 console.error('Erro ao excluir produto:', error);
@@ -421,12 +433,13 @@ export default function ProductCatalog() {
         isActive: product.isActive,
         isPromotion: product.isPromotion || false,
         promotionalPrice: null,
-        variations: product.variations.map(variation => ({
-          name: variation.name,
-          description: variation.options?.[0]?.name || '',
-          price: formatPrice(((variation.options?.[0]?.price ?? 0) * 100).toString()),
-          isAvailable: true
-        })),
+        variations: product.variations.flatMap(variation => 
+          variation.options.map(option => ({
+            name: option.name,
+            price: formatPrice(((option.price ?? 0) * 100).toString()),
+            isAvailable: true
+          }))
+        ),
         requiredSelections: product.requiredSelections.map(selection => ({
           name: selection.name,
           minRequired: selection.minRequired,
@@ -531,18 +544,32 @@ export default function ProductCatalog() {
       }
 
       // Converter preço para número (de centavos para reais)
-      const price = parseFloat(unformatPrice(newProduct.price)) / 100;
+      let price = parseFloat(unformatPrice(newProduct.price)) / 100;
 
-      // Processar variações
-      const variations = newProduct.variations.map(variation => {
-        return {
-          name: variation.name,
-          options: [{
-            name: variation.description,
-            price: parseFloat(unformatPrice(variation.price)) / 100,
-          }],
-        };
-      });
+      // Processar variações - apenas se o usuário adicionar explicitamente
+      let variations: ProductVariation[] = [];
+      
+      // Só criar a estrutura de variações se houver variações reais (não invisíveis)
+      // Filtra para remover qualquer variação com nome "Padrão" (caso exista)
+      const userVariations = newProduct.variations.filter(v => v.name !== "Padrão");
+      
+      if (userVariations.length > 0) {
+        variations = [
+          {
+            name: "Tamanho", // Nome da variação (grupo)
+            minRequired: 1,
+            options: userVariations.map(variation => ({
+              name: variation.name,
+              price: parseFloat(unformatPrice(variation.price || '0')) / 100,
+            }))
+          }
+        ];
+        
+        // Usa o preço da primeira variação real como preço base
+        if (variations[0].options.length > 0) {
+          price = variations[0].options[0].price || price;
+        }
+      }
 
       // Processar seleções obrigatórias
       const requiredSelections = newProduct.requiredSelections.map(selection => ({
@@ -593,25 +620,12 @@ export default function ProductCatalog() {
           updatedAt: new Date()
         });
 
-        // Atualiza o estado local sem recarregar
-        const updatedProduct: Product = {
-          ...productData,
-          id: productId,
-          image: imageUrl || editingProduct.image
-        };
-
-        // Atualiza o produto na lista de categorias sem recarregar
-        setCategories(prevCategories => 
-          prevCategories.map(category => ({
-            ...category,
-            products: category.products.map(p => 
-              p.id === productId ? updatedProduct : p
-            )
-          }))
-        );
-
         // Fecha o modal e mostra mensagem de sucesso
         handleCloseModal();
+        
+        // Recarrega os produtos para garantir que tudo esteja atualizado
+        await loadProducts();
+        
         Alert.alert('Sucesso', 'Produto atualizado com sucesso!');
         
       } else {
@@ -633,20 +647,12 @@ export default function ProductCatalog() {
         // Salva o novo produto no Firestore
         await setDoc(productRef, newProductData);
 
-        // Atualiza o estado local sem recarregar
-        setCategories(prevCategories => 
-          prevCategories.map(category => 
-            category.id === newProduct.categoryId
-              ? {
-                  ...category,
-                  products: [...category.products, newProductData]
-                }
-              : category
-          )
-        );
-
         // Fecha o modal e mostra mensagem de sucesso
         handleCloseModal();
+        
+        // Recarrega os produtos para garantir que tudo esteja atualizado
+        await loadProducts();
+        
         Alert.alert('Sucesso', 'Produto criado com sucesso!');
       }
     } catch (error) {
@@ -662,8 +668,7 @@ export default function ProductCatalog() {
       ...prev,
       variations: [...prev.variations, {
         name: '',
-        description: '',
-        price: '',
+        price: '0,00',
         isAvailable: true
       }]
     }));
@@ -1065,7 +1070,10 @@ export default function ProductCatalog() {
 
       setIsPromotionModalVisible(false);
       setSelectedProductForPromotion(null);
-      loadProducts(); // Recarrega a lista de produtos
+      
+      // Recarrega a lista de produtos
+      await loadProducts();
+      
       Alert.alert('Sucesso', 'Promoção adicionada com sucesso!');
     } catch (error) {
       console.error('Erro ao salvar promoção:', error);
@@ -1100,23 +1108,9 @@ export default function ProductCatalog() {
                   promotion: null,
                   updatedAt: new Date()
                 });
-
-                // Atualiza localmente para feedback imediato
-                const updatedProduct = {
-                  ...product,
-                  isPromotion: false,
-                  promotion: undefined
-                };
                 
-                const updatedCategories = categories.map(category => ({
-                  ...category,
-                  products: category.products.map(p => 
-                    p.id === product.id ? updatedProduct : p
-                  )
-                }));
-                
-                // Atualiza o estado das categorias para forçar a re-renderização
-                setCategories(updatedCategories);
+                // Recarrega a lista de produtos
+                await loadProducts();
                 
                 setLoading(false);
                 Alert.alert('Sucesso', 'Promoção removida com sucesso!');

@@ -129,11 +129,114 @@ export default function Documents() {
     return numbers.substring(0, isCPF ? 11 : 14);
   };
 
+  const validateCPF = (cpf: string) => {
+    // Passo 1: Remover caracteres não numéricos
+    cpf = cpf.replace(/\D/g, '');
+    
+    // Verifica se tem 11 dígitos
+    if (cpf.length !== 11) return false;
+    
+    // Passo 2: Verificar se todos os dígitos são iguais (inválido)
+    if (/^(\d)\1+$/.test(cpf)) return false;
+    
+    // Passo 3: Calcular o primeiro dígito verificador
+    // Multiplica os 9 primeiros dígitos pelos pesos de 10 a 2
+    let soma = 0;
+    for (let i = 0; i < 9; i++) {
+      soma += parseInt(cpf.charAt(i)) * (10 - i);
+    }
+    // Calcula o resto da divisão por 11
+    let resto = soma % 11;
+    // Se o resto for menor que 2, o dígito é 0; senão, subtrai-se de 11
+    let dv1 = resto < 2 ? 0 : 11 - resto;
+    
+    // Verifica se o primeiro dígito verificador calculado é igual ao do CPF
+    if (parseInt(cpf.charAt(9)) !== dv1) return false;
+    
+    // Passo 4: Calcular o segundo dígito verificador
+    // Multiplica os 10 primeiros dígitos (9 iniciais + primeiro verificador) pelos pesos de 11 a 2
+    soma = 0;
+    for (let i = 0; i < 10; i++) {
+      soma += parseInt(cpf.charAt(i)) * (11 - i);
+    }
+    // Calcula o resto da divisão por 11
+    resto = soma % 11;
+    // Se o resto for menor que 2, o dígito é 0; senão, subtrai-se de 11
+    let dv2 = resto < 2 ? 0 : 11 - resto;
+    
+    // Verifica se o segundo dígito verificador calculado é igual ao do CPF
+    if (parseInt(cpf.charAt(10)) !== dv2) return false;
+    
+    // CPF válido
+    return true;
+  };
+  
+  const validateCNPJ = (cnpj: string) => {
+    // Passo 1: Remover caracteres não numéricos
+    cnpj = cnpj.replace(/\D/g, '');
+    
+    // Verifica se tem 14 dígitos
+    if (cnpj.length !== 14) return false;
+    
+    // Passo 2: Verificar se todos os dígitos são iguais (inválido)
+    if (/^(\d)\1+$/.test(cnpj)) return false;
+    
+    // Passo 3: Calcular o primeiro dígito verificador
+    // Aplica a sequência de pesos aos 12 primeiros dígitos
+    let soma = 0;
+    let peso = 2;
+    
+    // Iteração de trás para frente
+    for (let i = 11; i >= 0; i--) {
+      soma += parseInt(cnpj.charAt(i)) * peso;
+      peso = peso === 9 ? 2 : peso + 1;
+    }
+    
+    // Cálculo do dígito: se resto da divisão por 11 for 0 ou 1, o dígito é 0; senão, é 11 - resto
+    let resto = soma % 11;
+    let dv1 = resto < 2 ? 0 : 11 - resto;
+    
+    // Verifica se o primeiro dígito verificador calculado é igual ao do CNPJ
+    if (parseInt(cnpj.charAt(12)) !== dv1) return false;
+    
+    // Passo 4: Calcular o segundo dígito verificador
+    // Aplica a sequência de pesos aos 13 primeiros dígitos (12 iniciais + primeiro verificador)
+    soma = 0;
+    peso = 2;
+    
+    // Iteração de trás para frente
+    for (let i = 12; i >= 0; i--) {
+      soma += parseInt(cnpj.charAt(i)) * peso;
+      peso = peso === 9 ? 2 : peso + 1;
+    }
+    
+    // Cálculo do dígito: se resto da divisão por 11 for 0 ou 1, o dígito é 0; senão, é 11 - resto
+    resto = soma % 11;
+    let dv2 = resto < 2 ? 0 : 11 - resto;
+    
+    // Verifica se o segundo dígito verificador calculado é igual ao do CNPJ
+    if (parseInt(cnpj.charAt(13)) !== dv2) return false;
+    
+    // CNPJ válido
+    return true;
+  };
+
   const validateDocument = (document: string) => {
     const numbers = document.replace(/\D/g, '');
-    if (numbers.length !== 11 && numbers.length !== 14) {
+    
+    // Verifica se é CPF ou CNPJ pelo tamanho
+    if (numbers.length === 11) {
+      if (!validateCPF(numbers)) {
+        return 'CPF inválido. Verifique os números digitados.';
+      }
+    } else if (numbers.length === 14) {
+      if (!validateCNPJ(numbers)) {
+        return 'CNPJ inválido. Verifique os números digitados.';
+      }
+    } else {
       return 'Digite um CPF ou CNPJ válido';
     }
+    
     return '';
   };
 

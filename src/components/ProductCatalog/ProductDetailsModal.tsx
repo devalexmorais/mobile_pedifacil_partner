@@ -10,6 +10,7 @@ interface ProductOption {
 interface ProductVariation {
   name: string;
   options: ProductOption[];
+  minRequired?: number;
 }
 
 interface RequiredSelection {
@@ -125,7 +126,14 @@ export function ProductDetailsModal({
                 <Text style={styles.sectionTitle}>Variações</Text>
                 {product.variations.map((variation, index) => (
                   <View key={index} style={styles.variationItem}>
-                    <Text style={styles.variationName}>{variation.name}</Text>
+                    <View style={styles.selectionHeader}>
+                      <Text style={styles.variationName}>{variation.name}</Text>
+                      {variation.minRequired && (
+                        <Text style={styles.selectionRequirement}>
+                          Seleção obrigatória
+                        </Text>
+                      )}
+                    </View>
                     {variation.options.map((option, optIndex) => (
                       <View key={optIndex} style={styles.optionItem}>
                         <Text style={styles.optionName}>{option.name}</Text>
