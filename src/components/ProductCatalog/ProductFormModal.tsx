@@ -123,6 +123,7 @@ export function ProductFormModal({
             <ProductRequiredSelections 
               selections={newProduct.requiredSelections}
               onUpdate={(requiredSelections) => onUpdateProduct({ requiredSelections })}
+              formatPrice={formatPrice}
               {...props}
             />
 

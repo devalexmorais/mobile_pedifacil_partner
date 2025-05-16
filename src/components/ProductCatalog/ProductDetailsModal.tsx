@@ -164,6 +164,9 @@ export function ProductDetailsModal({
                     {selection.options.map((option, optIndex) => (
                       <View key={optIndex} style={styles.optionItem}>
                         <Text style={styles.optionName}>{option.name}</Text>
+                        {option.price !== undefined && option.price > 0 && (
+                          <Text style={styles.optionPrice}>+{formatPrice(option.price)}</Text>
+                        )}
                       </View>
                     ))}
                   </View>

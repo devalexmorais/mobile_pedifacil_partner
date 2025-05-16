@@ -45,6 +45,7 @@ interface RequiredSelection {
   maxRequired: number;
   options: {
     name: string;
+    price?: string;
     isActive?: boolean;
   }[];
 }
@@ -578,7 +579,8 @@ export default function ProductCatalog() {
         maxRequired: selection.maxRequired,
         options: selection.options.map(option => ({
           name: option.name,
-          isActive: option.isActive !== false
+          isActive: option.isActive !== false,
+          price: option.price ? parseFloat(unformatPrice(option.price)) / 100 : 0
         }))
       }));
 

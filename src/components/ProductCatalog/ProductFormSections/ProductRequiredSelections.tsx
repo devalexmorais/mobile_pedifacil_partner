@@ -8,6 +8,7 @@ interface RequiredSelection {
   maxRequired: number;
   options: {
     name: string;
+    price?: string;
     isActive?: boolean;
   }[];
 }
@@ -15,9 +16,14 @@ interface RequiredSelection {
 interface ProductRequiredSelectionsProps {
   selections: RequiredSelection[];
   onUpdate: (selections: RequiredSelection[]) => void;
+  formatPrice?: (value: string) => string;
 }
 
-export function ProductRequiredSelections({ selections, onUpdate }: ProductRequiredSelectionsProps) {
+export function ProductRequiredSelections({ 
+  selections, 
+  onUpdate,
+  formatPrice = (value) => value
+}: ProductRequiredSelectionsProps) {
   return (
     <View>
       <Text style={styles.sectionTitle}>Seleções Obrigatórias</Text>
@@ -140,6 +146,7 @@ export function ProductRequiredSelections({ selections, onUpdate }: ProductRequi
                   </TouchableOpacity>
                 </View>
               </View>
+              
               <TextInput
                 style={[styles.input, !option.isActive && styles.inputInactive]}
                 value={option.name}
@@ -151,6 +158,25 @@ export function ProductRequiredSelections({ selections, onUpdate }: ProductRequi
                 placeholder="Nome da opção"
                 editable={option.isActive !== false}
               />
+              
+              <View style={styles.priceInputContainer}>
+                <Text style={styles.priceLabel}>Preço adicional:</Text>
+                <View style={styles.priceInputWrapper}>
+                  <Text style={styles.currencySymbol}>R$</Text>
+                  <TextInput
+                    style={[styles.priceInput, !option.isActive && styles.inputInactive]}
+                    value={option.price || '0,00'}
+                    onChangeText={(text) => {
+                      const newSelections = [...selections];
+                      newSelections[selectionIndex].options[optionIndex].price = formatPrice(text);
+                      onUpdate(newSelections);
+                    }}
+                    placeholder="0,00"
+                    keyboardType="numeric"
+                    editable={option.isActive !== false}
+                  />
+                </View>
+              </View>
             </View>
           ))}
 
@@ -158,7 +184,11 @@ export function ProductRequiredSelections({ selections, onUpdate }: ProductRequi
             style={styles.addButton}
             onPress={() => {
               const newSelections = [...selections];
-              newSelections[selectionIndex].options.push({ name: '' });
+              newSelections[selectionIndex].options.push({ 
+                name: '',
+                price: '0,00',
+                isActive: true 
+              });
               onUpdate(newSelections);
             }}
           >
@@ -306,5 +336,33 @@ const styles = StyleSheet.create({
   inputInactive: {
     backgroundColor: '#f5f5f5',
     color: '#999',
+  },
+  priceInputContainer: {
+    marginBottom: 16,
+  },
+  priceLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 8,
+  },
+  priceInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+  },
+  currencySymbol: {
+    fontSize: 16,
+    color: '#666',
+    marginRight: 8,
+  },
+  priceInput: {
+    flex: 1,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: '#fff',
   },
 }); 
