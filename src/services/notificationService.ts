@@ -20,6 +20,15 @@ export interface NotificationData {
   title: string;
 }
 
+interface RawNotification {
+  id: string;
+  title: string;
+  body: string;
+  read: boolean;
+  data?: any;
+  createdAt: any;
+}
+
 // Configuração global do manipulador de notificações
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -163,14 +172,14 @@ export const notificationService = {
   },
 
   // Configurar notificações push
-  async setupPushNotifications(): Promise<void> {
+  async setupPushNotifications(): Promise<(() => void) | undefined> {
     try {
       // Registrar para token de notificação push
       const token = await this.registerForPushNotificationsAsync();
       
       if (!token) {
         console.log('Não foi possível obter token de notificação');
-        return;
+        return undefined;
       }
       
       // Salvar token no perfil do usuário se autenticado
@@ -256,7 +265,7 @@ export const notificationService = {
         // Verificar se há novas notificações não lidas para enviar push
         const newNotifications = snapshot.docChanges()
           .filter(change => change.type === 'added')
-          .map(change => ({ id: change.doc.id, ...change.doc.data() }));
+          .map(change => ({ id: change.doc.id, ...change.doc.data() } as RawNotification));
         
         // Enviar notificação push para cada nova notificação
         newNotifications.forEach(notification => {

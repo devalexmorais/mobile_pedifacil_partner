@@ -16,9 +16,30 @@ import { colors } from '../../../styles/theme/colors';
 import { establishmentSettingsService } from '../../../services/establishmentSettingsService';
 import { notificationService } from '../../../services/notificationService';
 
+// Adicionando interface para o tipo do cupom
+interface CouponApplied {
+  code: string;
+  createdAt: any;
+  discountPercentage: number;
+  discountType: 'percentage' | 'fixed';
+  discountValue: number;
+  originalValue: number;
+  usedAt: any;
+  usedBy: string[];
+  validUntil: string;
+  validUntilTime: string;
+  value: number;
+}
+
+// Atualizando a interface Pedido para incluir o tipo correto do cupom
+interface PedidoExtended extends Pedido {
+  couponApplied?: CouponApplied;
+}
+
 export default function Pedidos() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { pedidosPendentes, aceitarPedido, recusarPedido } = usePedidos();
+  const pedidosPendentesExtended = pedidosPendentes as PedidoExtended[];
 
   useEffect(() => {
     initializeSettings();
@@ -48,8 +69,50 @@ export default function Pedidos() {
     );
   }
 
+  // Função auxiliar para marcar notificação como lida
+  const markNotificationAsRead = async (pedidoId: string) => {
+    try {
+      const notifications = await notificationService.getNotifications();
+      const pedidoNotification = notifications.find(
+        notification => 
+          notification.data?.orderId === pedidoId && 
+          !notification.read
+      );
+
+      if (pedidoNotification) {
+        await notificationService.markAsRead(pedidoNotification.id);
+      }
+    } catch (error) {
+      console.error('Erro ao marcar notificação como lida:', error);
+    }
+  };
+
+  const handleExpandPedido = async (pedidoId: string) => {
+    try {
+      // Se está fechando o pedido, não precisa fazer nada
+      if (expandedId === pedidoId) {
+        setExpandedId(null);
+        return;
+      }
+
+      // Marca o pedido como expandido
+      setExpandedId(pedidoId);
+
+      // Marca a notificação como lida
+      await markNotificationAsRead(pedidoId);
+    } catch (error) {
+      console.error('Erro ao expandir pedido:', error);
+      // Continua expandindo o pedido mesmo se houver erro
+      setExpandedId(pedidoId);
+    }
+  };
+
   const handleAceitarPedido = async (pedido: Pedido) => {
     try {
+      // Marca a notificação como lida
+      await markNotificationAsRead(pedido.id);
+      
+      // Aceita o pedido
       await aceitarPedido(pedido);
       
       // Enviar notificação de pedido aceito
@@ -68,6 +131,10 @@ export default function Pedidos() {
 
   const handleRecusarPedido = async (pedidoId: string, userId: string) => {
     try {
+      // Marca a notificação como lida
+      await markNotificationAsRead(pedidoId);
+      
+      // Recusa o pedido
       await recusarPedido(pedidoId);
       
       // Enviar notificação de pedido recusado
@@ -84,7 +151,7 @@ export default function Pedidos() {
     }
   };
 
-  const renderPedido = ({ item }: { item: Pedido }) => {
+  const renderPedido = ({ item }: { item: PedidoExtended }) => {
     console.log('Renderizando pedido:', item);
     const isExpanded = expandedId === item.id;
     
@@ -100,7 +167,7 @@ export default function Pedidos() {
         {/* Cabeçalho com ID do Pedido */}
         <View style={styles.orderIdHeader}>
           <Text style={styles.orderId}>Pedido #{item.id.slice(-4)}</Text>
-          <TouchableOpacity onPress={() => setExpandedId(isExpanded ? null : item.id)}>
+          <TouchableOpacity onPress={() => handleExpandPedido(item.id)}>
             <Ionicons 
               name={isExpanded ? "chevron-up" : "chevron-down"} 
               size={24} 
@@ -251,6 +318,14 @@ export default function Pedidos() {
                   <Text style={styles.valueLabel}>Taxa de Entrega:</Text>
                   <Text style={styles.valueText}>R$ {item.deliveryFee.toFixed(2)}</Text>
                 </View>
+                {item.hasCoupon && item.couponApplied && (
+                  <View style={styles.valueRow}>
+                    <Text style={[styles.valueLabel, { color: '#28a745' }]}>Desconto do Cupom ({item.couponApplied.discountPercentage}%):</Text>
+                    <Text style={[styles.valueText, { color: '#28a745' }]}>
+                      - R$ {((item.totalPrice * item.couponApplied.discountPercentage) / 100).toFixed(2)}
+                    </Text>
+                  </View>
+                )}
                 <View style={[styles.valueRow, styles.totalRow]}>
                   <Text style={styles.totalLabel}>Total:</Text>
                   <Text style={styles.totalValue}>R$ {item.finalPrice.toFixed(2)}</Text>
@@ -287,7 +362,7 @@ export default function Pedidos() {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         <FlatList
-          data={pedidosPendentes}
+          data={pedidosPendentesExtended}
           renderItem={renderPedido}
           keyExtractor={item => item.id}
           contentContainerStyle={styles.list}

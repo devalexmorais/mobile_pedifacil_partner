@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { db } from '../config/firebase';
-import { collection, query, where, doc, updateDoc, onSnapshot, orderBy, getDoc, getDocs, DocumentData, addDoc } from 'firebase/firestore';
+import { collection, query, where, doc, updateDoc, onSnapshot, orderBy, getDoc, getDocs, DocumentData, addDoc, Timestamp } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { establishmentService } from '../services/establishmentService';
 
@@ -524,18 +524,54 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         : 0;
       
       // Calcular o valor base para a taxa (excluindo taxas de entrega e cartão)
-      const baseValue = totalPrice - deliveryFee - cardFeeValue;
+      const baseValue = Number((totalPrice - deliveryFee - cardFeeValue).toFixed(2));
       
-      // Aplicar a porcentagem da taxa sobre o valor base
-      const appFeeValue = baseValue * appFeePercentage;
+      // Aplicar a porcentagem da taxa sobre o valor base e arredondar para 2 casas decimais
+      const appFeeValue = Number((baseValue * appFeePercentage).toFixed(2));
       
-      console.log(`Cálculo da taxa: ${baseValue} * ${appFeePercentage} = ${appFeeValue.toFixed(2)}`);
+      console.log(`Cálculo da taxa: ${baseValue} * ${appFeePercentage} = ${appFeeValue}`);
       console.log(`Total: ${totalPrice}, Entrega: ${deliveryFee}, Taxa Cartão: ${cardFeeValue}`);
+      
+      // Preparar os dados de taxas
+      const now = Timestamp.now();
+
+      // Converter createdAt do pedido para Timestamp
+      let orderDate = now;
+      if (pedidoData.createdAt) {
+        if (pedidoData.createdAt instanceof Timestamp) {
+          orderDate = pedidoData.createdAt;
+        } else if (typeof pedidoData.createdAt === 'object' && 'seconds' in pedidoData.createdAt) {
+          orderDate = new Timestamp(
+            pedidoData.createdAt.seconds,
+            pedidoData.createdAt.nanoseconds || 0
+          );
+        }
+      }
+
+      const appFeeData = {
+        orderId: pedidoId,
+        orderDate: orderDate,
+        completedAt: now,
+        storeId: pedidoData.storeId || user.uid,
+        customerId: pedidoData.userId,
+        paymentMethod: pedidoData.payment?.method || 'unknown',
+        orderBaseValue: baseValue,
+        orderTotalPrice: Number(totalPrice.toFixed(2)),
+        orderDeliveryFee: Number(deliveryFee.toFixed(2)),
+        orderCardFee: Number(cardFeeValue.toFixed(2)),
+        appFee: {
+          percentage: appFeePercentage,
+          value: appFeeValue,
+          isPremiumRate: isPremium
+        },
+        settled: false,
+        invoiceId: null
+      };
       
       // Atualizar o pedido original para marcar como entregue
       await updateDoc(pedidoRef, {
         status: 'delivered',
-        updatedAt: new Date().toISOString()
+        updatedAt: now
       });
       
       // Registra atividade para evitar fechamento por inatividade
@@ -599,34 +635,13 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         });
       }
       
-      // Preparar os dados de taxas
-      const appFeeData = {
-        orderId: pedidoId,
-        orderDate: pedidoData.createdAt,
-        completedAt: new Date().toISOString(),
-        storeId: pedidoData.storeId || user.uid,
-        customerId: pedidoData.userId,
-        paymentMethod: pedidoData.payment?.method || 'unknown',
-        orderBaseValue: baseValue,
-        orderTotalPrice: totalPrice,
-        orderDeliveryFee: deliveryFee,
-        orderCardFee: cardFeeValue,
-        appFee: {
-          percentage: appFeePercentage,
-          value: appFeeValue,
-          isPremiumRate: isPremium
-        },
-        settled: false,
-        invoiceId: null
-      };
-      
-      // Salvar apenas na coleção app_fees
+      // Salvar na coleção app_fees
       const appFeesRef = collection(db, 'partners', user.uid, 'app_fees');
       const appFeeDoc = await addDoc(appFeesRef, appFeeData);
       console.log(`Taxa registrada com ID: ${appFeeDoc.id}`);
       
       console.log(`Pedido ${pedidoId} marcado como entregue com sucesso`);
-      console.log(`Taxa aplicada: ${(appFeePercentage * 100)}% (${isPremium ? 'Premium' : 'Normal'}) - Valor: ${appFeeValue.toFixed(2)}`);
+      console.log(`Taxa aplicada: ${(appFeePercentage * 100)}% (${isPremium ? 'Premium' : 'Normal'}) - Valor: ${appFeeValue}`);
     } catch (error) {
       console.error('Erro ao marcar pedido como entregue:', error);
     }
