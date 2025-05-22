@@ -1,0 +1,18 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "app_fees",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "settled",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "orderDate",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ]
+} 

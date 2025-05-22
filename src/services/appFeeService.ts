@@ -1,5 +1,7 @@
 import { db, auth } from '../config/firebase';
-import { collection, query, where, doc, getDocs, getDoc, Timestamp, DocumentData, orderBy, limit, updateDoc, writeBatch, setDoc } from 'firebase/firestore';
+import { collection, query, where, doc, getDocs, getDoc, Timestamp, DocumentData, orderBy, limit, updateDoc, writeBatch, setDoc, serverTimestamp } from 'firebase/firestore';
+import { format } from 'date-fns';
+import { mercadoPagoService } from '../services/mercadoPagoService';
 
 export interface AppFee {
   id: string;
@@ -25,13 +27,22 @@ export interface AppFee {
 export interface Invoice {
   id: string;
   partnerId: string;
-  startDate: Timestamp;
   endDate: Timestamp;
   createdAt: Timestamp;
   totalAmount: number;
-  totalOrders: number;
-  status: 'pending' | 'paid' | 'cancelled';
+  status: 'pending' | 'paid' | 'overdue';
+  paymentId?: string;
+  paymentMethod?: 'pix' | 'boleto';
+  paymentData?: {
+    qr_code?: string;
+    qr_code_base64?: string;
+    ticket_url?: string;
+  };
   paidAt?: Timestamp;
+  details: Array<{
+    id: string;
+    value: number;
+  }>;
 }
 
 export interface FeeSummary {
@@ -358,12 +369,11 @@ export const appFeeService = {
       const invoice: Invoice = {
         id: invoiceRef.id,
         partnerId,
-        startDate: Timestamp.fromDate(startDate),
         endDate: Timestamp.fromDate(endDate),
         createdAt: Timestamp.now(),
         totalAmount,
-        totalOrders: fees.length,
-        status: 'pending'
+        status: 'pending',
+        details: []
       };
       
       batch.set(invoiceRef, invoice);
@@ -441,6 +451,108 @@ export const appFeeService = {
     } catch (error) {
       console.error('Erro ao gerar próxima fatura:', error);
       throw new Error('Não foi possível gerar a próxima fatura');
+    }
+  },
+
+  /**
+   * Gera um pagamento para a fatura via Mercado Pago
+   */
+  async generatePayment(invoice: Invoice, method: 'pix' | 'boleto', payerData?: {
+    email: string;
+    first_name: string;
+    last_name: string;
+    identification: {
+      type: string;
+      number: string;
+    };
+  }): Promise<void> {
+    try {
+      const description = `Fatura PediFácil - ${format(invoice.endDate.toDate(), 'MM/yyyy')}`;
+      
+      let paymentResponse;
+      if (method === 'pix') {
+        paymentResponse = await mercadoPagoService.createPixPayment(
+          invoice.totalAmount,
+          description,
+          payerData?.email || ''
+        );
+      } else {
+        if (!payerData) {
+          throw new Error('Dados do pagador são obrigatórios para boleto');
+        }
+        paymentResponse = await mercadoPagoService.createBoletoPayment(
+          invoice.totalAmount,
+          description,
+          payerData
+        );
+      }
+
+      const invoiceRef = doc(db, 'partners', invoice.partnerId, 'invoices', invoice.id);
+      await updateDoc(invoiceRef, {
+        paymentId: paymentResponse.id,
+        paymentMethod: method,
+        paymentData: {
+          qr_code: paymentResponse.point_of_interaction.transaction_data.qr_code,
+          qr_code_base64: paymentResponse.point_of_interaction.transaction_data.qr_code_base64,
+          ticket_url: paymentResponse.point_of_interaction.transaction_data.ticket_url,
+        },
+        status: 'pending',
+        updatedAt: serverTimestamp(),
+      });
+
+    } catch (error) {
+      console.error('Erro ao gerar pagamento:', error);
+      throw new Error('Não foi possível gerar o pagamento');
+    }
+  },
+
+  /**
+   * Verifica o status do pagamento da fatura
+   */
+  async checkPaymentStatus(invoice: Invoice): Promise<void> {
+    try {
+      if (!invoice.paymentId) {
+        throw new Error('Fatura sem ID de pagamento');
+      }
+
+      const status = await mercadoPagoService.getPaymentStatus(invoice.paymentId);
+      
+      if (status === 'approved') {
+        const invoiceRef = doc(db, 'partners', invoice.partnerId, 'invoices', invoice.id);
+        await updateDoc(invoiceRef, {
+          status: 'paid',
+          paidAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+
+    } catch (error) {
+      console.error('Erro ao verificar status do pagamento:', error);
+      throw new Error('Não foi possível verificar o status do pagamento');
+    }
+  },
+
+  /**
+   * Obtém uma fatura específica pelo ID
+   */
+  async getInvoiceById(invoiceId: string): Promise<Invoice> {
+    try {
+      const partnerId = await this.getCurrentPartnerId();
+      const invoiceRef = doc(db, 'partners', partnerId, 'invoices', invoiceId);
+      const invoiceDoc = await getDoc(invoiceRef);
+      
+      if (!invoiceDoc.exists()) {
+        throw new Error('Fatura não encontrada');
+      }
+      
+      return {
+        id: invoiceDoc.id,
+        ...invoiceDoc.data()
+      } as Invoice;
+      
+    } catch (error) {
+      console.error('Erro ao buscar fatura:', error);
+      throw new Error('Não foi possível buscar a fatura');
     }
   }
 }; 

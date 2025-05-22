@@ -183,19 +183,36 @@ exports.setUserRole = functions.https.onCall((data, context) => {
 });
 
 // Trigger quando um novo usuário é criado
-exports.onUserCreated = functions.auth.user().onCreate((user) => {
-  // Define a role padrão como 'partner' para novos usuários
-  const defaultClaims = { role: 'partner' };
-  
-  return admin.auth().setCustomUserClaims(user.uid, defaultClaims)
-    .then(() => {
-      console.log(`Role padrão definida para o usuário ${user.uid}`);
-      return null;
-    })
-    .catch((error) => {
-      console.error('Erro ao definir role padrão:', error);
-      return null;
+exports.onUserCreated = functions.auth.user().onCreate(async (userRecord) => {
+  try {
+    // Define a role padrão como 'partner' para novos usuários
+    const defaultClaims = { role: 'partner' };
+    
+    await admin.auth().setCustomUserClaims(userRecord.uid, defaultClaims);
+    
+    // Cria o documento do usuário na coleção partners
+    await admin.firestore().collection('partners').doc(userRecord.uid).set({
+      email: userRecord.email,
+      role: 'partner',
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      store: {
+        isPremium: false,
+        premiumExpiresAt: null,
+        premiumFeatures: {
+          analytics: false,
+          advancedReports: false,
+          prioritySupport: false,
+        }
+      }
     });
+
+    console.log(`Usuário ${userRecord.uid} criado com sucesso com role padrão`);
+    return null;
+  } catch (error) {
+    console.error('Erro ao criar usuário:', error);
+    return null;
+  }
 });
 
 // Opcional: Função para verificar a role atual do usuário
@@ -300,51 +317,207 @@ exports.sendNotificationOnCreate = functions.firestore
     }
   });
 
-// Função HTTP para enviar uma notificação de teste
-exports.createTestNotification = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError(
-      'unauthenticated',
-      'Você precisa estar autenticado para realizar esta ação'
-    );
-  }
+// Função agendada para gerar faturas automaticamente (executa todo dia à meia-noite)
+exports.generateInvoicesScheduled = functions.pubsub.schedule('0 0 * * *')
+  .timeZone('America/Sao_Paulo')
+  .onRun(async (context) => {
+    try {
+      console.log('Iniciando verificação de faturas mensais...');
+      const today = admin.firestore.Timestamp.now();
+      console.log('Data atual:', today.toDate());
+      
+      const partnersRef = admin.firestore().collection('partners');
+      const partnersSnapshot = await partnersRef.get();
+      
+      console.log(`Encontrados ${partnersSnapshot.size} parceiros`);
+      
+      const batch = admin.firestore().batch();
+      const processedPartners = [];
 
-  try {
-    const { partnerId, title, body, type, screen } = data;
-    
-    // Validar parâmetros
-    if (!partnerId) {
-      throw new functions.https.HttpsError(
-        'invalid-argument',
-        'ID do parceiro é obrigatório'
-      );
+      for (const partnerDoc of partnersSnapshot.docs) {
+        console.log(`Processando parceiro: ${partnerDoc.id}`);
+        
+        // Busca a última fatura do parceiro
+        const lastInvoiceQuery = await partnersRef
+          .doc(partnerDoc.id)
+          .collection('invoices')
+          .orderBy('createdAt', 'desc')
+          .limit(1)
+          .get();
+
+        let shouldCreateInvoice = false;
+        let lastInvoiceDate = null;
+
+        if (!lastInvoiceQuery.empty) {
+          const lastInvoice = lastInvoiceQuery.docs[0].data();
+          lastInvoiceDate = lastInvoice.createdAt;
+          
+          // Verifica se já se passaram 30 dias desde a última fatura
+          const daysSinceLastInvoice = (today.toMillis() - lastInvoiceDate.toMillis()) / (1000 * 60 * 60 * 24);
+          console.log(`Dias desde a última fatura: ${daysSinceLastInvoice}`);
+          
+          if (daysSinceLastInvoice >= 30) {
+            shouldCreateInvoice = true;
+          }
+        } else {
+          // Se não tem fatura anterior, verifica se o parceiro tem mais de 30 dias
+          const partnerData = partnerDoc.data();
+          if (partnerData.createdAt) {
+            const daysSinceCreation = (today.toMillis() - partnerData.createdAt.toMillis()) / (1000 * 60 * 60 * 24);
+            console.log(`Dias desde a criação do parceiro: ${daysSinceCreation}`);
+            
+            if (daysSinceCreation >= 30) {
+              shouldCreateInvoice = true;
+            }
+          }
+        }
+
+        if (!shouldCreateInvoice) {
+          console.log(`Ainda não é hora de gerar fatura para o parceiro ${partnerDoc.id}`);
+          continue;
+        }
+
+        // Busca taxas não liquidadas e sem fatura
+        const nonSettledFeesQuery = await partnersRef
+          .doc(partnerDoc.id)
+          .collection('app_fees')
+          .where('settled', '==', false)
+          .where('invoiceId', '==', null)
+          .get();
+
+        console.log(`Total de taxas não liquidadas sem fatura para ${partnerDoc.id}: ${nonSettledFeesQuery.size}`);
+
+        if (nonSettledFeesQuery.empty) {
+          console.log(`Nenhuma taxa não liquidada sem fatura encontrada para o parceiro ${partnerDoc.id}`);
+          continue;
+        }
+
+        // Se encontrou taxas não liquidadas, vamos processá-las
+        let totalFeeAmount = 0;
+        const simplifiedDetails = [];
+
+        nonSettledFeesQuery.forEach(feeDoc => {
+          const fee = feeDoc.data();
+          console.log(`Processando taxa não liquidada ${feeDoc.id}:`, fee);
+          
+          if (fee.appFee && typeof fee.appFee.value === 'number') {
+            totalFeeAmount += fee.appFee.value;
+            
+            simplifiedDetails.push({
+              id: fee.orderId,
+              value: fee.appFee.value
+            });
+          }
+        });
+
+        console.log(`Valor total das taxas não liquidadas: ${totalFeeAmount}`);
+
+        if (totalFeeAmount > 0) {
+          // Cria a nova fatura na subcoleção correta
+          const invoiceRef = partnersRef
+            .doc(partnerDoc.id)
+            .collection('invoices')
+            .doc();
+
+          // Define a data de vencimento como 7 dias a partir de hoje
+          const endDate = admin.firestore.Timestamp.fromDate(
+            new Date(today.toDate().setDate(today.toDate().getDate() + 7))
+          );
+
+          const newInvoice = {
+            id: invoiceRef.id,
+            partnerId: partnerDoc.id,
+            status: 'pending',
+            endDate: endDate,
+            createdAt: today,
+            totalAmount: totalFeeAmount,
+            details: simplifiedDetails
+          };
+
+          console.log('Criando nova fatura:', newInvoice);
+
+          // Atualiza as taxas como liquidadas
+          const updatePromises = nonSettledFeesQuery.docs.map(feeDoc => {
+            console.log(`Marcando taxa ${feeDoc.id} como liquidada`);
+            return partnersRef
+              .doc(partnerDoc.id)
+              .collection('app_fees')
+              .doc(feeDoc.id)
+              .update({
+                settled: true,
+                invoiceId: invoiceRef.id,
+                updatedAt: today
+              });
+          });
+
+          await Promise.all(updatePromises);
+          
+          // Adiciona a fatura ao batch
+          batch.set(invoiceRef, newInvoice);
+          processedPartners.push(partnerDoc.id);
+          
+          console.log(`Fatura ${invoiceRef.id} criada para o parceiro ${partnerDoc.id}`);
+        } else {
+          console.log(`Nenhuma taxa com valor válido encontrada para o parceiro ${partnerDoc.id}`);
+        }
+      }
+
+      if (processedPartners.length > 0) {
+        await batch.commit();
+        console.log(`Faturas geradas para ${processedPartners.length} parceiros`);
+      } else {
+        console.log('Nenhuma fatura foi gerada neste ciclo');
+      }
+
+      return { success: true, processedPartners };
+    } catch (error) {
+      console.error('Erro ao gerar faturas:', error);
+      return { success: false, error: error.message };
     }
+});
+
+// Função para corrigir taxas com invoiceId mas não liquidadas
+exports.fixInconsistentFees = functions.https.onRequest(async (req, res) => {
+  try {
+    console.log('Iniciando correção de taxas inconsistentes...');
     
-    // Criar nova notificação
-    const notificationRef = admin.firestore()
-      .collection('partners')
-      .doc(partnerId)
-      .collection('notifications')
-      .doc();
+    const partnersRef = admin.firestore().collection('partners');
+    const partnersSnapshot = await partnersRef.get();
     
-    const notificationData = {
-      title: title || 'Notificação de teste',
-      body: body || 'Esta é uma notificação de teste',
-      type: type || 'test',
-      screen: screen || 'notifications',
-      read: false,
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
-    };
-    
-    await notificationRef.set(notificationData);
-    
-    return {
-      success: true,
-      message: 'Notificação de teste criada com sucesso',
-      notificationId: notificationRef.id
-    };
+    const batch = admin.firestore().batch();
+    let fixedFeesCount = 0;
+
+    for (const partnerDoc of partnersSnapshot.docs) {
+      // Busca taxas não liquidadas mas com invoiceId
+      const inconsistentFeesQuery = await partnersRef
+        .doc(partnerDoc.id)
+        .collection('app_fees')
+        .where('settled', '==', false)
+        .where('invoiceId', '!=', null)
+        .get();
+
+      console.log(`Encontradas ${inconsistentFeesQuery.size} taxas inconsistentes para ${partnerDoc.id}`);
+
+      inconsistentFeesQuery.forEach(feeDoc => {
+        console.log(`Corrigindo taxa ${feeDoc.id}`);
+        batch.update(feeDoc.ref, { 
+          settled: true,
+          updatedAt: admin.firestore.Timestamp.now()
+        });
+        fixedFeesCount++;
+      });
+    }
+
+    if (fixedFeesCount > 0) {
+      await batch.commit();
+      console.log(`${fixedFeesCount} taxas corrigidas com sucesso`);
+      res.status(200).json({ success: true, fixedFeesCount });
+    } else {
+      console.log('Nenhuma taxa inconsistente encontrada');
+      res.status(200).json({ success: true, fixedFeesCount: 0 });
+    }
   } catch (error) {
-    console.error('Erro ao criar notificação de teste:', error);
-    throw new functions.https.HttpsError('internal', 'Erro ao criar notificação de teste');
+    console.error('Erro ao corrigir taxas:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 }); 
