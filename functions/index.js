@@ -337,6 +337,23 @@ exports.generateInvoicesScheduled = functions.pubsub.schedule('0 0 * * *')
       for (const partnerDoc of partnersSnapshot.docs) {
         console.log(`Processando parceiro: ${partnerDoc.id}`);
         
+        // Busca a primeira compra do parceiro (primeira taxa não liquidada)
+        const firstFeeQuery = await partnersRef
+          .doc(partnerDoc.id)
+          .collection('app_fees')
+          .orderBy('createdAt', 'asc')
+          .limit(1)
+          .get();
+
+        // Se não houver compras, pula este parceiro
+        if (firstFeeQuery.empty) {
+          console.log(`Nenhuma compra encontrada para o parceiro ${partnerDoc.id}`);
+          continue;
+        }
+
+        const firstFee = firstFeeQuery.docs[0].data();
+        const firstFeeDate = firstFee.createdAt;
+
         // Busca a última fatura do parceiro
         const lastInvoiceQuery = await partnersRef
           .doc(partnerDoc.id)
@@ -346,29 +363,26 @@ exports.generateInvoicesScheduled = functions.pubsub.schedule('0 0 * * *')
           .get();
 
         let shouldCreateInvoice = false;
-        let lastInvoiceDate = null;
+        let referenceDate = firstFeeDate; // Data de referência começa com a primeira compra
 
         if (!lastInvoiceQuery.empty) {
           const lastInvoice = lastInvoiceQuery.docs[0].data();
-          lastInvoiceDate = lastInvoice.createdAt;
+          referenceDate = lastInvoice.createdAt; // Usa a data da última fatura como referência
           
-          // Verifica se já se passaram 30 dias desde a última fatura
-          const daysSinceLastInvoice = (today.toMillis() - lastInvoiceDate.toMillis()) / (1000 * 60 * 60 * 24);
-          console.log(`Dias desde a última fatura: ${daysSinceLastInvoice}`);
+          // Verifica se já se passou 1 mês desde a última fatura
+          const monthsSinceLastInvoice = (today.toMillis() - referenceDate.toMillis()) / (1000 * 60 * 60 * 24 * 30);
+          console.log(`Meses desde a última fatura: ${monthsSinceLastInvoice}`);
           
-          if (daysSinceLastInvoice >= 30) {
+          if (monthsSinceLastInvoice >= 1) {
             shouldCreateInvoice = true;
           }
         } else {
-          // Se não tem fatura anterior, verifica se o parceiro tem mais de 30 dias
-          const partnerData = partnerDoc.data();
-          if (partnerData.createdAt) {
-            const daysSinceCreation = (today.toMillis() - partnerData.createdAt.toMillis()) / (1000 * 60 * 60 * 24);
-            console.log(`Dias desde a criação do parceiro: ${daysSinceCreation}`);
-            
-            if (daysSinceCreation >= 30) {
-              shouldCreateInvoice = true;
-            }
+          // Se não tem fatura anterior, verifica se já se passou 1 mês desde a primeira compra
+          const monthsSinceFirstFee = (today.toMillis() - firstFeeDate.toMillis()) / (1000 * 60 * 60 * 24 * 30);
+          console.log(`Meses desde a primeira compra: ${monthsSinceFirstFee}`);
+          
+          if (monthsSinceFirstFee >= 1) {
+            shouldCreateInvoice = true;
           }
         }
 
@@ -377,12 +391,13 @@ exports.generateInvoicesScheduled = functions.pubsub.schedule('0 0 * * *')
           continue;
         }
 
-        // Busca taxas não liquidadas e sem fatura
+        // Busca taxas não liquidadas e sem fatura desde a data de referência
         const nonSettledFeesQuery = await partnersRef
           .doc(partnerDoc.id)
           .collection('app_fees')
           .where('settled', '==', false)
           .where('invoiceId', '==', null)
+          .where('createdAt', '>=', referenceDate)
           .get();
 
         console.log(`Total de taxas não liquidadas sem fatura para ${partnerDoc.id}: ${nonSettledFeesQuery.size}`);
@@ -413,6 +428,15 @@ exports.generateInvoicesScheduled = functions.pubsub.schedule('0 0 * * *')
         console.log(`Valor total das taxas não liquidadas: ${totalFeeAmount}`);
 
         if (totalFeeAmount > 0) {
+          // Busca informações do parceiro
+          const partnerData = partnerDoc.data();
+          
+          // Verifica se os dados necessários existem
+          if (!partnerData) {
+            console.log(`Dados do parceiro ${partnerDoc.id} não encontrados`);
+            continue;
+          }
+
           // Cria a nova fatura na subcoleção correta
           const invoiceRef = partnersRef
             .doc(partnerDoc.id)
@@ -431,7 +455,19 @@ exports.generateInvoicesScheduled = functions.pubsub.schedule('0 0 * * *')
             endDate: endDate,
             createdAt: today,
             totalAmount: totalFeeAmount,
-            details: simplifiedDetails
+            details: simplifiedDetails,
+            partnerInfo: {
+              name: partnerData.name || '',
+              email: partnerData.email || '',
+              cpf: partnerData.store?.document || ''  // Usando o documento da store que pode ser CPF ou CNPJ
+            },
+            paymentInfo: {
+              paymentId: null,
+              paymentMethod: null,
+              paymentUrl: null,
+              qrCode: null,
+              qrCodeBase64: null
+            }
           };
 
           console.log('Criando nova fatura:', newInvoice);
@@ -457,8 +493,6 @@ exports.generateInvoicesScheduled = functions.pubsub.schedule('0 0 * * *')
           processedPartners.push(partnerDoc.id);
           
           console.log(`Fatura ${invoiceRef.id} criada para o parceiro ${partnerDoc.id}`);
-        } else {
-          console.log(`Nenhuma taxa com valor válido encontrada para o parceiro ${partnerDoc.id}`);
         }
       }
 
