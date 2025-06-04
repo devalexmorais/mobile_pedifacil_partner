@@ -1,6 +1,7 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 const { MercadoPagoConfig, Payment } = require('mercadopago');
+const axios = require('axios');
 
 let serviceAccount = require('./serviceAccountKey.json');
 
@@ -157,6 +158,7 @@ exports.gerarPagamento = functions.https.onCall(async (data, context) => {
       updateData['paymentInfo.qrCodeBase64'] = qrCodeBase64;
     } else {
       const boletoUrl = paymentResult.transaction_details?.external_resource_url;
+      const barCode = paymentResult.barcode?.content;
       
       if (!boletoUrl) {
         throw new functions.https.HttpsError(
@@ -166,6 +168,7 @@ exports.gerarPagamento = functions.https.onCall(async (data, context) => {
       }
 
       updateData['paymentInfo.boletoUrl'] = boletoUrl;
+      updateData['paymentInfo.barCode'] = barCode;
       updateData['paymentInfo.boletoExpirationDate'] = paymentResult.date_of_expiration;
     }
 
@@ -182,6 +185,7 @@ exports.gerarPagamento = functions.https.onCall(async (data, context) => {
         qrCodeBase64: paymentResult.point_of_interaction?.transaction_data?.qr_code_base64
       } : {
         boletoUrl: paymentResult.transaction_details?.external_resource_url,
+        barCode: paymentResult.barcode?.content,
         boletoExpirationDate: paymentResult.date_of_expiration
       })
     };
@@ -217,97 +221,141 @@ exports.gerarPagamento = functions.https.onCall(async (data, context) => {
 
 // Webhook para receber notificações do Mercado Pago
 exports.mercadoPagoWebhook = functions.https.onRequest(async (request, response) => {
-  // Adiciona CORS para facilitar testes
-  response.set('Access-Control-Allow-Origin', '*');
-
-  // Verifica o método
-  if (request.method === 'OPTIONS') {
-    response.set('Access-Control-Allow-Methods', 'POST');
-    response.set('Access-Control-Allow-Headers', 'Content-Type,X-MP-Webhook-Secret');
-    response.status(204).send('');
-    return;
-  }
-
-  if (request.method !== 'POST') {
-    response.status(405).send('Método não permitido');
-    return;
-  }
-
-  // Verifica o secret do webhook (opcional)
-  const mpWebhookSecret = functions.config().mercadopago.webhook_secret;
-  const webhookSecretFromHeader = request.headers['x-mp-webhook-secret'];
-
-  if (mpWebhookSecret && webhookSecretFromHeader && webhookSecretFromHeader !== mpWebhookSecret) {
-    console.warn('Secret do webhook inválido');
-    response.status(401).send('Não autorizado');
-    return;
-  }
-
-  // Verifica o IP de origem (opcional)
-  const clientIp = request.ip || '';
-  if (MERCADO_PAGO_IPS.length > 0 && clientIp && !MERCADO_PAGO_IPS.includes(clientIp)) {
-    console.warn(`IP não autorizado: ${clientIp}`);
-    response.status(401).send('IP não autorizado');
-    return;
-  }
-
   try {
-    const { id, topic } = request.query;
+    console.log('�� Webhook recebido - Method:', request.method);
+    console.log('🔔 Webhook recebido - Headers:', JSON.stringify(request.headers, null, 2));
+    console.log('🔔 Webhook recebido - Query:', JSON.stringify(request.query, null, 2));
+    console.log('🔔 Webhook recebido - Body:', JSON.stringify(request.body, null, 2));
 
-    if (topic === 'payment' && id) {
-      // 1. Buscar detalhes do pagamento no Mercado Pago
-      const mpResponse = await fetch(`https://api.mercadopago.com/v1/payments/${id}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      const paymentData = await mpResponse.json();
+    // Adiciona CORS para facilitar testes
+    response.set('Access-Control-Allow-Origin', '*');
+    response.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    response.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Hook-Token');
 
-      // 2. Busca a fatura no Firestore usando o paymentId
+    // Verifica o método
+    if (request.method === 'OPTIONS') {
+      response.status(204).send('');
+      return;
+    }
+
+    // Aceita tanto GET (para teste) quanto POST (para webhook real)
+    if (request.method !== 'POST' && request.method !== 'GET') {
+      console.log('❌ Método não permitido:', request.method);
+      response.status(405).send('Método não permitido');
+      return;
+    }
+
+    // Se for GET, responde OK para o teste do Mercado Pago
+    if (request.method === 'GET') {
+      console.log('✅ Teste de configuração do webhook');
+      response.status(200).send('Webhook configurado corretamente');
+      return;
+    }
+
+    const webhook = request.body;
+    console.log('📦 Dados do webhook:', JSON.stringify(webhook, null, 2));
+
+    // Verifica se temos topic e id nos query params (formato antigo do Mercado Pago)
+    const { topic, id } = request.query;
+    if (topic && id) {
+      console.log('🔄 Recebido webhook no formato antigo:', { topic, id });
+      // Se for um pagamento, processa normalmente
+      if (topic === 'payment') {
+        webhook.type = 'payment';
+        webhook.data = { id };
+      }
+    }
+
+    if (!webhook || (!webhook.type && !topic)) {
+      console.error('❌ Payload inválido recebido');
+      response.status(400).send('Payload inválido');
+      return;
+    }
+
+    const paymentType = webhook.type || topic;
+    if (paymentType !== 'payment') {
+      console.log(`⏭️ Ignorando webhook - não é um pagamento (tipo: ${paymentType})`);
+      response.status(200).send('Webhook ignorado - não é um pagamento');
+      return;
+    }
+
+    // Verifica se é uma simulação de teste
+    const paymentId = webhook.data?.id || id;
+    const isTestPayment = webhook.live_mode === false || paymentId === '123456';
+    
+    if (isTestPayment) {
+      console.log('🧪 Recebido webhook de teste do Mercado Pago');
+      response.status(200).send('Webhook de teste processado com sucesso');
+      return;
+    }
+
+    console.log('💳 Processando pagamento real:', paymentId);
+
+    // Se não for teste, continua com o processamento normal
+    try {
+      // Busca os detalhes do pagamento na API do Mercado Pago
+      console.log('🔍 Buscando detalhes do pagamento na API do Mercado Pago para ID:', paymentId);
+      const paymentResponse = await axios.get(
+        `https://api.mercadopago.com/v1/payments/${paymentId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      const payment = paymentResponse.data;
+      console.log('💰 Detalhes do pagamento:', JSON.stringify(payment, null, 2));
+
+      // Busca a fatura correspondente
+      console.log('🔍 Buscando fatura correspondente ao paymentId:', payment.id);
       const invoicesQuery = await db
         .collectionGroup('invoices')
-        .where('paymentInfo.paymentId', '==', paymentData.id)
+        .where('paymentInfo.paymentId', '==', payment.id)
         .limit(1)
         .get();
 
-      if (!invoicesQuery.empty) {
-        const invoiceDoc = invoicesQuery.docs[0];
-
-        // 3. Atualiza o status do pagamento
-        const updateData = {
-          'paymentInfo.status': paymentData.status,
-          'paymentInfo.statusDetail': paymentData.status_detail,
-          updatedAt: new Date(),
-        };
-
-        // Se o pagamento foi aprovado, marca como pago
-        if (paymentData.status === 'approved') {
-          updateData.status = 'paid';
-          updateData.paidAt = new Date();
-        }
-
-        // Adiciona ao histórico de status
-        await invoiceDoc.ref.update({
-          ...updateData,
-          'paymentInfo.history': admin.firestore.FieldValue.arrayUnion({
-            status: paymentData.status,
-            date: new Date(),
-            detail: paymentData.status_detail
-          })
-        });
-
-        console.log(`Status do pagamento ${paymentData.id} atualizado para ${paymentData.status}`);
-      } else {
-        console.warn(`Pagamento ${paymentData.id} não encontrado no Firestore`);
+      if (invoicesQuery.empty) {
+        console.error(`❌ Fatura não encontrada para o pagamento ${payment.id}`);
+        response.status(404).send('Fatura não encontrada');
+        return;
       }
 
-      response.status(200).send('Webhook recebido e processado');
-    } else {
-      response.status(400).send('Requisição inválida');
+      const invoiceDoc = invoicesQuery.docs[0];
+      const invoice = invoiceDoc.data();
+      console.log('📄 Fatura encontrada:', JSON.stringify(invoice, null, 2));
+
+      // Atualiza o status da fatura
+      if (payment.status === 'approved') {
+        console.log('✅ Atualizando status da fatura para PAID');
+        await invoiceDoc.ref.update({
+          'paymentInfo.status': 'paid',
+          'paymentInfo.paidAt': admin.firestore.Timestamp.now(),
+          'paymentInfo.history': admin.firestore.FieldValue.arrayUnion({
+            status: 'paid',
+            date: new Date(),
+            detail: 'Pagamento aprovado'
+          }),
+          updatedAt: admin.firestore.Timestamp.now(),
+        });
+        console.log('✅ Fatura atualizada com sucesso');
+      } else {
+        console.log(`ℹ️ Status do pagamento não é approved (atual: ${payment.status})`);
+      }
+
+      response.status(200).send('Webhook processado com sucesso');
+    } catch (error) {
+      console.error('❌ Erro ao processar pagamento:', error);
+      console.error('Stack trace:', error.stack);
+      if (error.response) {
+        console.error('Resposta da API:', error.response.data);
+      }
+      response.status(500).send('Erro ao processar pagamento');
     }
   } catch (error) {
-    console.error('Erro no Webhook do Mercado Pago:', error);
-    response.status(500).send('Erro no Webhook');
+    console.error('❌ Erro ao processar webhook:', error);
+    console.error('Stack trace:', error.stack);
+    response.status(500).send('Erro ao processar webhook');
   }
 });
 

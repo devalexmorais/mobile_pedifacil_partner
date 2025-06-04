@@ -27,6 +27,7 @@ import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { mercadoPagoService } from '@/services/mercadoPagoService';
 
 interface InvoiceDetail {
   id: string;
@@ -41,12 +42,22 @@ interface PaymentData {
   qr_code?: string;
   qr_code_base64?: string;
   ticket_url?: string;
+  barCode?: string;
 }
 
 interface PaymentInfo {
   paymentUrl?: string;
   qrCodeBase64?: string;
   boletoUrl?: string;
+  paymentId?: number;
+  paymentMethod?: 'pix' | 'boleto';
+  status?: string;
+  partnerId?: string;
+  history?: Array<{
+    status: string;
+    date: any;
+    detail: string;
+  }>;
 }
 
 interface Invoice {
@@ -233,6 +244,70 @@ export default function Faturas() {
     return () => unsubscribe();
   }, [user]);
 
+  useEffect(() => {
+    if (currentInvoice?.status === 'pending' && currentInvoice?.paymentInfo?.paymentId) {
+      const checkStatus = async () => {
+        try {
+          const paymentId = currentInvoice.paymentInfo?.paymentId;
+          if (!paymentId) return;
+
+          console.log('Verificando status do pagamento:', paymentId);
+          const status = await mercadoPagoService.getPaymentStatus(paymentId.toString());
+          console.log('Status atual:', status);
+
+          if (status === 'approved') {
+            console.log('Pagamento aprovado! Recarregando faturas...');
+            await loadInvoices();
+            Alert.alert('Pagamento Confirmado', 'Seu pagamento foi processado com sucesso!');
+          }
+        } catch (error) {
+          console.error('Erro ao verificar status:', error);
+        }
+      };
+
+      // Verifica a cada 5 segundos para atualizações mais rápidas
+      const interval = setInterval(checkStatus, 5000);
+      checkStatus(); // Verifica imediatamente
+
+      return () => clearInterval(interval);
+    }
+  }, [currentInvoice?.paymentInfo?.paymentId, currentInvoice?.status]);
+
+  // Adiciona listener para atualizações em tempo real do Firestore
+  useEffect(() => {
+    if (!user?.uid || !currentInvoice?.id) return;
+
+    console.log('Configurando listener em tempo real para a fatura:', currentInvoice.id);
+    
+    const invoiceRef = doc(db, 'partners', user.uid, 'invoices', currentInvoice.id);
+    const unsubscribe = onSnapshot(invoiceRef, (snapshot) => {
+      if (!snapshot.exists()) return;
+
+      const data = snapshot.data();
+      console.log('Atualização em tempo real recebida:', data);
+
+      // Atualiza a fatura atual com os novos dados
+      setCurrentInvoice(prev => ({
+        ...prev!,
+        ...data,
+        id: snapshot.id,
+        status: data.status || 'pending',
+        paymentInfo: data.paymentInfo,
+        paymentData: data.paymentData || {},
+        paidAt: data.paidAt
+      }));
+
+      // Se o pagamento foi confirmado, mostra mensagem
+      if (data.status === 'paid') {
+        Alert.alert('Pagamento Confirmado', 'Seu pagamento foi processado com sucesso!');
+      }
+    }, (error) => {
+      console.error('Erro no listener em tempo real:', error);
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid, currentInvoice?.id]);
+
   const loadInvoices = async () => {
     if (!user?.uid) return;
     
@@ -316,9 +391,30 @@ export default function Faturas() {
       const partnerSnap = await getDoc(partnerRef);
       const partnerData = partnerSnap.data();
 
-      // Só valida endereço se for boleto
-      if (paymentMethod === 'boleto' && !partnerData?.address) {
-        throw new Error('Endereço não encontrado. Por favor, atualize seu cadastro.');
+      // Validação mais detalhada do endereço para boleto
+      if (paymentMethod === 'boleto') {
+        if (!partnerData?.address) {
+          throw new Error('Endereço não encontrado. Por favor, atualize seu cadastro.');
+        }
+
+        const requiredFields = {
+          zip_code: 'CEP',
+          street: 'Rua',
+          number: 'Número',
+          neighborhood: 'Bairro',
+          city: 'Cidade',
+          state: 'Estado'
+        };
+
+        const missingFields = Object.entries(requiredFields)
+          .filter(([key]) => !partnerData.address[key])
+          .map(([_, label]) => label);
+
+        if (missingFields.length > 0) {
+          throw new Error(
+            `Para gerar um boleto, os seguintes campos de endereço são obrigatórios: ${missingFields.join(', ')}. Por favor, atualize seu cadastro.`
+          );
+        }
       }
 
       const paymentData = {
@@ -327,7 +423,7 @@ export default function Faturas() {
         tipoPagamento: paymentMethod,
         ...(paymentMethod === 'boleto' && partnerData?.address ? {
           address: {
-            zip_code: partnerData.address.cep.replace(/\D/g, ''),
+            zip_code: partnerData.address.zip_code?.replace(/\D/g, ''),
             street_name: partnerData.address.street,
             street_number: partnerData.address.number,
             neighborhood: partnerData.address.neighborhood,
@@ -343,6 +439,14 @@ export default function Faturas() {
       const gerarPagamento = httpsCallable(functions, 'gerarPagamento');
       const result = await gerarPagamento(paymentData);
 
+      console.log('Resposta detalhada do servidor:', {
+        data: result.data,
+        paymentMethod,
+        boletoUrl: (result.data as any)?.boletoUrl,
+        paymentInfo: (result.data as any)?.paymentInfo,
+        paymentData: (result.data as any)?.paymentData
+      });
+
       if (!result.data) {
         throw new Error('Não foi possível gerar o pagamento. Tente novamente.');
       }
@@ -357,29 +461,55 @@ export default function Faturas() {
         const data = updatedInvoiceSnap.data();
         console.log('Dados atualizados da fatura:', data);
         
-        if (!data.paymentInfo?.paymentUrl && !data.paymentData?.qr_code) {
-          console.error('QR Code não encontrado nos dados da fatura');
-          throw new Error('QR Code não gerado. Por favor, tente novamente.');
+        let boletoUrl = null;
+        let boletoBarCode = null;
+        if (paymentMethod === 'boleto') {
+          if (!result.data) {
+            console.error('Dados do pagamento não retornados:', result);
+            throw new Error('Dados do pagamento não retornados pelo servidor. Tente novamente.');
+          }
+
+          boletoUrl = data?.paymentInfo?.boletoUrl || 
+                     data?.paymentData?.ticket_url || 
+                     (result.data as any)?.boletoUrl;
+          
+          boletoBarCode = data?.paymentInfo?.barCode || 
+                         data?.paymentData?.barCode || 
+                         (result.data as any)?.barCode;
+          
+          if (!boletoUrl) {
+            console.error('URL do boleto não encontrado nos dados:', { data, result });
+            throw new Error('URL do boleto não gerado. Por favor, tente novamente.');
+          }
+          
+          console.log('URL do boleto encontrado:', boletoUrl);
+          console.log('Código de barras do boleto:', boletoBarCode);
         }
         
         const updatedInvoice = {
           ...data,
           id: updatedInvoiceSnap.id,
+          partnerId: user.uid,
           startDate: data?.startDate || data?.createdAt,
           endDate: data?.endDate || data?.createdAt,
           createdAt: data?.createdAt,
+          totalAmount: data?.totalAmount || 0,
+          status: data?.status || 'pending',
+          details: data?.details || [],
           paymentData: {
             qr_code: data?.paymentInfo?.paymentUrl || data?.paymentData?.qr_code,
             qr_code_base64: data?.paymentInfo?.qrCodeBase64 || data?.paymentData?.qr_code_base64,
-            ticket_url: data?.paymentInfo && 'boletoUrl' in data.paymentInfo ? data.paymentInfo.boletoUrl : data?.paymentData?.ticket_url || result.data?.boletoUrl
+            ticket_url: boletoUrl,
+            barCode: boletoBarCode
           }
         } as Invoice;
         
         console.log('Fatura atualizada:', updatedInvoice);
         setCurrentInvoice(updatedInvoice);
 
-        if (paymentMethod === 'boleto' && updatedInvoice.paymentData?.ticket_url) {
-          Linking.openURL(updatedInvoice.paymentData.ticket_url);
+        if (paymentMethod === 'boleto' && boletoUrl) {
+          console.log('Abrindo URL do boleto:', boletoUrl);
+          Linking.openURL(boletoUrl);
         }
       }
 
@@ -446,91 +576,125 @@ export default function Faturas() {
                   {paymentMethod === 'pix' ? 'Gerando QR Code PIX...' : 'Gerando Boleto...'}
                 </Text>
               </View>
-            ) : currentInvoice.paymentData?.qr_code || currentInvoice.paymentData?.qr_code_base64 ? (
+            ) : currentInvoice.paymentData?.qr_code || currentInvoice.paymentData?.qr_code_base64 || currentInvoice.paymentData?.ticket_url ? (
               <View style={styles.qrCodeContainer}>
-                <Text style={styles.qrCodeTitle}>Pague sua fatura usando PIX</Text>
-                <View style={styles.qrCodeWrapper}>
-                  {currentInvoice.paymentData?.qr_code_base64 ? (
-                    <>
-                      <Image
-                        source={{ uri: `data:image/png;base64,${currentInvoice.paymentData.qr_code_base64}` }}
-                        style={styles.qrCodeImage}
-                        resizeMode="contain"
-                      />
-                      <Text style={styles.qrCodeStatus}>QR Code carregado com sucesso</Text>
-                      <TouchableOpacity
-                        style={styles.reloadButton}
-                        onPress={() => handleGeneratePayment()}
-                      >
-                        <MaterialCommunityIcons name="reload" size={20} color={colors.orange} />
-                        <Text style={styles.reloadButtonText}>Recarregar QR Code</Text>
-                      </TouchableOpacity>
-                    </>
-                  ) : currentInvoice.paymentData?.qr_code ? (
-                    <>
-                      <QRCode
-                        value={currentInvoice.paymentData.qr_code}
-                        size={200}
-                        backgroundColor="white"
-                        color={colors.gray[800]}
-                      />
-                      <Text style={styles.qrCodeStatus}>QR Code gerado com sucesso</Text>
-                      <TouchableOpacity
-                        style={styles.reloadButton}
-                        onPress={() => handleGeneratePayment()}
-                      >
-                        <MaterialCommunityIcons name="reload" size={20} color={colors.orange} />
-                        <Text style={styles.reloadButtonText}>Recarregar QR Code</Text>
-                      </TouchableOpacity>
-                    </>
-                  ) : (
-                    <View style={styles.qrCodeError}>
-                      <MaterialCommunityIcons name="barcode-off" size={48} color={colors.gray[400]} />
-                      <Text style={styles.qrCodeErrorText}>QR Code não disponível</Text>
-                      <TouchableOpacity 
-                        style={styles.retryButton}
-                        onPress={() => {
-                          setPaymentMethod('pix');
-                          handleGeneratePayment();
-                        }}
-                      >
-                        <Text style={styles.retryButtonText}>Tentar Novamente</Text>
-                      </TouchableOpacity>
+                {(currentInvoice.paymentData?.qr_code || currentInvoice.paymentData?.qr_code_base64) && (
+                  <>
+                    <Text style={styles.qrCodeTitle}>Pague sua fatura usando PIX</Text>
+                    <View style={styles.qrCodeWrapper}>
+                      {currentInvoice.paymentData?.qr_code_base64 ? (
+                        <>
+                          <Image
+                            source={{ uri: `data:image/png;base64,${currentInvoice.paymentData.qr_code_base64}` }}
+                            style={styles.qrCodeImage}
+                            resizeMode="contain"
+                          />
+                          <Text style={styles.qrCodeStatus}>QR Code carregado com sucesso</Text>
+                        </>
+                      ) : currentInvoice.paymentData?.qr_code ? (
+                        <>
+                          <QRCode
+                            value={currentInvoice.paymentData.qr_code}
+                            size={200}
+                            backgroundColor="white"
+                            color={colors.gray[800]}
+                          />
+                          <Text style={styles.qrCodeStatus}>QR Code gerado com sucesso</Text>
+                        </>
+                      ) : null}
                     </View>
-                  )}
-                </View>
-                <TouchableOpacity
-                  style={styles.copyPixButton}
-                  onPress={handleCopyPixCode}
-                >
-                  <MaterialCommunityIcons name="content-copy" size={20} color={colors.white} />
-                  <Text style={styles.copyPixButtonText}>Copiar código PIX</Text>
-                </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.copyPixButton}
+                      onPress={handleCopyPixCode}
+                    >
+                      <MaterialCommunityIcons name="content-copy" size={20} color={colors.white} />
+                      <Text style={styles.copyPixButtonText}>Copiar código PIX</Text>
+                    </TouchableOpacity>
+                    
+                    <View style={styles.divider} />
+                  </>
+                )}
                 
-                <View style={styles.divider} />
-                
-                <Text style={styles.alternativeText}>Ou pague usando boleto</Text>
                 {currentInvoice.paymentData?.ticket_url ? (
-                  <TouchableOpacity
-                    style={styles.boletoButton}
-                    onPress={() => Linking.openURL(currentInvoice.paymentData?.ticket_url || '')}
-                  >
-                    <MaterialCommunityIcons name="barcode" size={24} color={colors.orange} />
-                    <Text style={styles.boletoButtonText}>Abrir Boleto</Text>
-                  </TouchableOpacity>
+                  <View>
+                    <Text style={[styles.qrCodeTitle, { color: colors.gray[800] }]}>Pague sua fatura usando Boleto</Text>
+                    <View style={styles.boletoInfoContainer}>
+                      <View style={styles.boletoCodeContainer}>
+                        <MaterialCommunityIcons name="barcode" size={48} color={colors.gray[800]} />
+                        <View style={styles.boletoCodeTextContainer}>
+                          {currentInvoice.paymentData?.barCode ? (
+                            <Text style={styles.boletoCode} selectable>
+                              {currentInvoice.paymentData.barCode}
+                            </Text>
+                          ) : (
+                            <Text style={styles.boletoCode} numberOfLines={3} ellipsizeMode="middle">
+                              {currentInvoice.paymentData.ticket_url}
+                            </Text>
+                          )}
+                          <Text style={styles.boletoCodeLabel}>
+                            {currentInvoice.paymentData?.barCode ? 'Código de barras do boleto' : 'Link do boleto'}
+                          </Text>
+                        </View>
+                      </View>
+                      
+                      <View style={styles.boletoDueDateContainer}>
+                        <MaterialCommunityIcons name="calendar" size={20} color={colors.gray[600]} />
+                        <Text style={styles.boletoDueDate}>
+                          Vencimento: {formatDate(currentInvoice.endDate)}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <TouchableOpacity
+                      style={styles.boletoButton}
+                      onPress={() => Linking.openURL(currentInvoice.paymentData?.ticket_url || '')}
+                    >
+                      <MaterialCommunityIcons name="open-in-new" size={24} color={colors.orange} />
+                      <Text style={styles.boletoButtonText}>Abrir Boleto no Navegador</Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity
+                      style={styles.copyBoletoButton}
+                      onPress={async () => {
+                        const textToCopy = currentInvoice.paymentData?.barCode || currentInvoice.paymentData?.ticket_url;
+                        if (textToCopy) {
+                          await Clipboard.setStringAsync(textToCopy);
+                          Alert.alert(
+                            currentInvoice.paymentData?.barCode ? 
+                              'Código de barras copiado!' : 
+                              'Link do boleto copiado!'
+                          );
+                        }
+                      }}
+                    >
+                      <MaterialCommunityIcons name="content-copy" size={20} color={colors.orange} />
+                      <Text style={styles.copyBoletoButtonText}>
+                        {currentInvoice.paymentData?.barCode ? 
+                          'Copiar Código de Barras' : 
+                          'Copiar Link do Boleto'
+                        }
+                      </Text>
+                    </TouchableOpacity>
+
+                    <Text style={styles.boletoInstructions}>
+                      Você pode pagar este boleto em qualquer banco ou casa lotérica até a data de vencimento.
+                    </Text>
+                  </View>
                 ) : (
-                  <TouchableOpacity
-                    style={styles.boletoButton}
-                    onPress={async () => {
-                      setPaymentMethod('boleto');
-                      // Aguarda o próximo ciclo para garantir que o estado foi atualizado
-                      await new Promise(resolve => setTimeout(resolve, 0));
-                      handleGeneratePayment();
-                    }}
-                  >
-                    <MaterialCommunityIcons name="barcode" size={24} color={colors.orange} />
-                    <Text style={styles.boletoButtonText}>Gerar Boleto</Text>
-                  </TouchableOpacity>
+                  <>
+                    <Text style={[styles.qrCodeTitle, { color: colors.gray[800], marginTop: 16 }]}>Ou pague usando boleto</Text>
+                    <TouchableOpacity
+                      style={styles.boletoButton}
+                      onPress={async () => {
+                        setPaymentMethod('boleto');
+                        await new Promise(resolve => setTimeout(resolve, 0));
+                        handleGeneratePayment();
+                      }}
+                    >
+                      <MaterialCommunityIcons name="barcode" size={24} color={colors.orange} />
+                      <Text style={styles.boletoButtonText}>Gerar Boleto</Text>
+                    </TouchableOpacity>
+                  </>
                 )}
               </View>
             ) : paymentError ? (
@@ -1103,7 +1267,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderRadius: 16,
     padding: 24,
-    alignItems: 'center',
     marginTop: 16,
     shadowColor: colors.gray[800],
     shadowOffset: { width: 0, height: 4 },
@@ -1191,13 +1354,14 @@ const styles = StyleSheet.create({
   boletoButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: colors.white,
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 8,
-    marginTop: 16,
     borderWidth: 1,
     borderColor: colors.orange,
+    marginBottom: 12,
   },
   boletoButtonText: {
     color: colors.orange,
@@ -1240,5 +1404,74 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.white,
     marginBottom: 16,
+  },
+  copyBoletoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: colors.orange,
+  },
+  copyBoletoButtonText: {
+    color: colors.orange,
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  boletoInfoContainer: {
+    marginBottom: 16,
+  },
+  boletoTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.gray[800],
+    marginBottom: 8,
+  },
+  boletoCodeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+  },
+  boletoCode: {
+    flex: 1,
+    fontSize: 16,
+    color: colors.gray[800],
+  },
+  boletoInstructions: {
+    fontSize: 14,
+    color: colors.gray[600],
+    marginTop: 8,
+  },
+  boletoDueDateContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  boletoDueDate: {
+    fontSize: 14,
+    color: colors.gray[600],
+    marginLeft: 8,
+  },
+  boletoCodeTextContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+  },
+  boletoCodeLabel: {
+    fontSize: 14,
+    color: colors.gray[600],
+    marginLeft: 8,
   },
 }); 
