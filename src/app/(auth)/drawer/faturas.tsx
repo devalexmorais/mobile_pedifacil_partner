@@ -250,10 +250,8 @@ export default function Faturas() {
         try {
           const paymentId = currentInvoice.paymentInfo?.paymentId;
           if (!paymentId) return;
-
-          console.log('Verificando status do pagamento:', paymentId);
           const status = await mercadoPagoService.getPaymentStatus(paymentId.toString());
-          console.log('Status atual:', status);
+
 
           if (status === 'approved') {
             console.log('Pagamento aprovado! Recarregando faturas...');
@@ -521,6 +519,157 @@ export default function Faturas() {
     } finally {
       setIsGeneratingPayment(false);
     }
+  };
+
+  const handleSyncPaymentStatus = async (invoice: Invoice) => {
+    if (!invoice.paymentInfo?.paymentId && !invoice.paymentId) {
+      Alert.alert('Erro', 'Esta fatura não possui um ID de pagamento válido.');
+      return;
+    }
+
+    try {
+      setIsGeneratingPayment(true);
+      console.log('🔄 Iniciando sincronização manual do status do pagamento...');
+      
+      const paymentId = invoice.paymentInfo?.paymentId || invoice.paymentId;
+      const syncPaymentStatus = httpsCallable(functions, 'syncPaymentStatus');
+      
+      const result = await syncPaymentStatus({ paymentId });
+      const resultData = result.data as any;
+      console.log('✅ Resultado da sincronização:', resultData);
+      
+      if (resultData?.success) {
+        Alert.alert('Sucesso', resultData.message || 'Status sincronizado com sucesso');
+        await loadInvoices(); // Recarrega as faturas
+      }
+    } catch (error) {
+      console.error('❌ Erro ao sincronizar status:', error);
+      Alert.alert('Erro', 'Não foi possível sincronizar o status do pagamento. Tente novamente.');
+    } finally {
+      setIsGeneratingPayment(false);
+    }
+  };
+
+  const handleTestWebhook = async (invoice: Invoice) => {
+    if (!invoice.paymentInfo?.paymentId && !invoice.paymentId) {
+      Alert.alert('Erro', 'Esta fatura não possui um pagamento associado');
+      return;
+    }
+
+    try {
+      setIsGeneratingPayment(true);
+      
+      const paymentId = invoice.paymentInfo?.paymentId || invoice.paymentId;
+      console.log('🧪 Testando webhook para fatura:', invoice.id);
+      console.log('🧪 PaymentId:', paymentId);
+      
+      const testWebhook = httpsCallable(functions, 'testWebhook');
+      const result = await testWebhook({ paymentId });
+      
+      console.log('🧪 Resultado do teste webhook:', result.data);
+      
+      const resultData = result.data as any;
+      Alert.alert(
+        'Teste do Webhook',
+        `Status: ${resultData.paymentStatus}\nResultado: ${resultData.message}`,
+        [{ text: 'OK' }]
+      );
+      
+      // Recarrega as faturas após o teste
+      await loadInvoices();
+      
+    } catch (error: any) {
+      console.error('Erro no teste webhook:', error);
+      Alert.alert('Erro', 'Falha ao testar webhook: ' + (error.message || 'Erro desconhecido'));
+    } finally {
+      setIsGeneratingPayment(false);
+    }
+  };
+
+  const handleCheckMercadoPago = async (invoice: Invoice) => {
+    if (!invoice.paymentInfo?.paymentId && !invoice.paymentId) {
+      Alert.alert('Erro', 'Esta fatura não possui um pagamento associado');
+      return;
+    }
+
+    try {
+      setIsGeneratingPayment(true);
+      
+      const paymentId = invoice.paymentInfo?.paymentId || invoice.paymentId;
+      console.log('🔍 Consultando Mercado Pago para fatura:', invoice.id);
+      console.log('🔍 PaymentId:', paymentId);
+      
+      const checkMercadoPago = httpsCallable(functions, 'checkMercadoPagoPayment');
+      const result = await checkMercadoPago({ paymentId });
+      
+      console.log('🔍 Resultado da consulta MP:', result.data);
+      
+      const resultData = result.data as any;
+      const payment = resultData.payment;
+      let statusMessage = `Status: ${payment.status}`;
+      
+      if (payment.status_detail) {
+        statusMessage += `\nDetalhe: ${payment.status_detail}`;
+      }
+      
+      if (payment.date_last_updated) {
+        const lastUpdate = new Date(payment.date_last_updated).toLocaleString('pt-BR');
+        statusMessage += `\nÚltima atualização: ${lastUpdate}`;
+      }
+      
+      Alert.alert(
+        'Status no Mercado Pago',
+        statusMessage,
+        [{ text: 'OK' }]
+      );
+      
+    } catch (error: any) {
+      console.error('Erro ao consultar Mercado Pago:', error);
+      Alert.alert('Erro', 'Falha ao consultar Mercado Pago: ' + (error.message || 'Erro desconhecido'));
+    } finally {
+      setIsGeneratingPayment(false);
+    }
+  };
+
+  const handleClearInvoicePayment = async (invoice: Invoice) => {
+    Alert.alert(
+      'Limpar Dados de Pagamento',
+      'Isso irá remover todos os dados de pagamento desta fatura e permitir gerar um novo pagamento. Continuar?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Limpar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setIsGeneratingPayment(true);
+              
+              console.log('🧹 Limpando dados de pagamento para fatura:', invoice.id);
+              
+              const clearPayment = httpsCallable(functions, 'clearInvoicePayment');
+              const result = await clearPayment({ 
+                invoiceId: invoice.id, 
+                partnerId: invoice.partnerId 
+              });
+              
+              console.log('🧹 Resultado da limpeza:', result.data);
+              
+              const resultData = result.data as any;
+              Alert.alert('Sucesso', resultData.message);
+              
+              // Recarrega as faturas
+              await loadInvoices();
+              
+            } catch (error: any) {
+              console.error('Erro ao limpar dados de pagamento:', error);
+              Alert.alert('Erro', 'Falha ao limpar dados: ' + (error.message || 'Erro desconhecido'));
+            } finally {
+              setIsGeneratingPayment(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleCopyPixCode = async () => {
@@ -803,7 +952,10 @@ export default function Faturas() {
               <View style={styles.headerSpacer} />
             </View>
 
-            <ScrollView style={styles.detailsModalBody}>
+            <ScrollView 
+              style={styles.detailsModalBody}
+              showsVerticalScrollIndicator={false}
+            >
               <View style={styles.detailsCard}>
                 <View style={styles.detailsRow}>
                   <Text style={styles.detailsLabel}>Período</Text>
@@ -851,17 +1003,37 @@ export default function Faturas() {
               </View>
 
               {selectedInvoice.status === 'pending' && (
-                <TouchableOpacity 
-                  style={styles.payNowButton}
-                  onPress={() => {
-                    setDetailsModalVisible(false);
-                    setCurrentInvoice(selectedInvoice);
-                    setPaymentModalVisible(true);
-                  }}
-                >
-                  <MaterialCommunityIcons name="credit-card-outline" size={24} color={colors.white} />
-                  <Text style={styles.payNowButtonText}>Pagar Agora</Text>
-                </TouchableOpacity>
+                <View style={styles.actionButtonsContainer}>
+                  <TouchableOpacity 
+                    style={styles.payNowButton}
+                    onPress={() => {
+                      setDetailsModalVisible(false);
+                      setCurrentInvoice(selectedInvoice);
+                      setPaymentModalVisible(true);
+                    }}
+                  >
+                    <MaterialCommunityIcons name="credit-card-outline" size={24} color={colors.white} />
+                    <Text style={styles.payNowButtonText}>Pagar Agora</Text>
+                  </TouchableOpacity>
+                  
+                  {(selectedInvoice.paymentInfo?.paymentId || selectedInvoice.paymentId) && (
+                    <TouchableOpacity 
+                      style={styles.syncButton}
+                      onPress={() => handleSyncPaymentStatus(selectedInvoice)}
+                      disabled={isGeneratingPayment}
+                    >
+                      <MaterialCommunityIcons 
+                        name="sync" 
+                        size={20} 
+                        color={colors.orange} 
+                      />
+                      <Text style={styles.syncButtonText}>
+                        {isGeneratingPayment ? 'Sincronizando...' : 'Sincronizar Status'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
+                </View>
               )}
             </ScrollView>
           </View>
@@ -914,6 +1086,114 @@ export default function Faturas() {
             <EmptyState />
           )}
         </View>
+
+        {/* Botões de Teste e Debug */}
+        {invoices.some(invoice => 
+          invoice.status === 'pending' && 
+          (invoice.paymentInfo?.paymentId || invoice.paymentId)
+        ) && (
+          <View style={styles.debugSection}>
+            <Text style={styles.debugSectionTitle}>🛠️ Ferramentas de Debug</Text>
+            <View style={styles.debugButtonsContainer}>
+              <TouchableOpacity 
+                style={styles.debugTestButton}
+                onPress={() => {
+                  const pendingInvoice = invoices.find(invoice => 
+                    invoice.status === 'pending' && 
+                    (invoice.paymentInfo?.paymentId || invoice.paymentId)
+                  );
+                  if (pendingInvoice) {
+                    console.log('🧪 Testando webhook para fatura:', pendingInvoice.id);
+                    console.log('🧪 PaymentId:', pendingInvoice.paymentInfo?.paymentId || pendingInvoice.paymentId);
+                    handleTestWebhook(pendingInvoice);
+                  }
+                }}
+                disabled={isGeneratingPayment}
+              >
+                <MaterialCommunityIcons 
+                  name="cog" 
+                  size={24} 
+                  color={colors.white} 
+                />
+                <Text style={styles.debugTestButtonText}>
+                  {isGeneratingPayment ? 'Testando Webhook...' : 'Testar Webhook Manual'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.debugSyncButton}
+                onPress={() => {
+                  const pendingInvoice = invoices.find(invoice => 
+                    invoice.status === 'pending' && 
+                    (invoice.paymentInfo?.paymentId || invoice.paymentId)
+                  );
+                  if (pendingInvoice) {
+                    console.log('🔄 Sincronizando status para fatura:', pendingInvoice.id);
+                    handleSyncPaymentStatus(pendingInvoice);
+                  }
+                }}
+                disabled={isGeneratingPayment}
+              >
+                <MaterialCommunityIcons 
+                  name="sync" 
+                  size={24} 
+                  color={colors.orange} 
+                />
+                <Text style={styles.debugSyncButtonText}>
+                  {isGeneratingPayment ? 'Sincronizando...' : 'Sincronizar Status'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.debugCheckButton}
+                onPress={() => {
+                  const pendingInvoice = invoices.find(invoice => 
+                    invoice.status === 'pending' && 
+                    (invoice.paymentInfo?.paymentId || invoice.paymentId)
+                  );
+                  if (pendingInvoice) {
+                    console.log('🔍 Consultando Mercado Pago para fatura:', pendingInvoice.id);
+                    handleCheckMercadoPago(pendingInvoice);
+                  }
+                }}
+                disabled={isGeneratingPayment}
+              >
+                <MaterialCommunityIcons 
+                  name="magnify" 
+                  size={24} 
+                  color={colors.blue[600]} 
+                />
+                <Text style={styles.debugCheckButtonText}>
+                  {isGeneratingPayment ? 'Consultando...' : 'Consultar Mercado Pago'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.debugClearButton}
+                onPress={() => {
+                  const pendingInvoice = invoices.find(invoice => 
+                    invoice.status === 'pending' && 
+                    (invoice.paymentInfo?.paymentId || invoice.paymentId)
+                  );
+                  if (pendingInvoice) {
+                    console.log('🧹 Limpando dados para fatura:', pendingInvoice.id);
+                    handleClearInvoicePayment(pendingInvoice);
+                  }
+                }}
+                disabled={isGeneratingPayment}
+              >
+                <MaterialCommunityIcons 
+                  name="delete-sweep" 
+                  size={24} 
+                  color={colors.red[600]} 
+                />
+                <Text style={styles.debugClearButtonText}>
+                  {isGeneratingPayment ? 'Limpando...' : 'Limpar Dados de Pagamento'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       </ScrollView>
 
       {renderPaymentModal()}
@@ -1196,7 +1476,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     padding: 24,
     minHeight: '60%',
-    maxHeight: '90%',
+    maxHeight: '95%',
   },
   detailsModalHeader: {
     flexDirection: 'row',
@@ -1473,5 +1753,125 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.gray[600],
     marginLeft: 8,
+  },
+  actionButtonsContainer: {
+    gap: 12,
+    marginTop: 16,
+    marginBottom: 24,
+    paddingBottom: 20,
+  },
+  syncButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.white,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.orange,
+  },
+  syncButtonText: {
+    color: colors.orange,
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  testButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.orange,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  testButtonText: {
+    color: colors.white,
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  debugSection: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+    borderWidth: 2,
+    borderColor: colors.orange,
+    borderStyle: 'dashed',
+  },
+  debugSectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.gray[800],
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  debugButtonsContainer: {
+    gap: 12,
+  },
+  debugTestButton: {
+    backgroundColor: colors.orange,
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  debugTestButtonText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  debugSyncButton: {
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    borderWidth: 2,
+    borderColor: colors.orange,
+  },
+  debugSyncButtonText: {
+    color: colors.orange,
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  debugCheckButton: {
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    borderWidth: 2,
+    borderColor: colors.blue[600],
+  },
+  debugCheckButtonText: {
+    color: colors.blue[600],
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  debugClearButton: {
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    borderWidth: 2,
+    borderColor: colors.red[600],
+  },
+  debugClearButtonText: {
+    color: colors.red[600],
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 }); 

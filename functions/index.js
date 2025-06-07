@@ -220,9 +220,291 @@ exports.gerarPagamento = functions.https.onCall(async (data, context) => {
 });
 
 // Webhook para receber notificações do Mercado Pago
+// Função para testar webhook manualmente
+exports.testWebhook = functions.https.onCall(async (data, context) => {
+  try {
+    // Verificar se o usuário está autenticado
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado');
+    }
+
+    const { paymentId } = data;
+    if (!paymentId) {
+      throw new functions.https.HttpsError('invalid-argument', 'paymentId é obrigatório');
+    }
+
+    console.log('🧪 TESTE: Simulando webhook para paymentId:', paymentId);
+
+    // Simula o payload do webhook
+    const webhookPayload = {
+      type: 'payment',
+      data: { id: paymentId },
+      live_mode: true
+    };
+
+    // Buscar pagamento no Mercado Pago
+    const paymentResponse = await axios.get(
+      `https://api.mercadopago.com/v1/payments/${paymentId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+
+    const payment = paymentResponse.data;
+    console.log('🧪 TESTE: Status do pagamento no MP:', payment.status);
+
+    // Buscar fatura no Firebase - Método alternativo sem collectionGroup
+    console.log('🧪 TESTE: Buscando fatura para paymentId:', paymentId);
+    
+    let invoiceDoc = null;
+    let invoice = null;
+
+    try {
+      // Primeiro, tenta buscar através de todos os partners
+      const partnersSnapshot = await db.collection('partners').get();
+      console.log('🧪 TESTE: Buscando em', partnersSnapshot.size, 'partners');
+      
+      for (const partnerDoc of partnersSnapshot.docs) {
+        console.log('🧪 TESTE: Verificando partner:', partnerDoc.id);
+        
+        // Busca nas invoices deste partner
+        const invoicesQuery = await db
+          .collection('partners')
+          .doc(partnerDoc.id)
+          .collection('invoices')
+          .where('paymentInfo.paymentId', '==', parseInt(paymentId))
+          .limit(1)
+          .get();
+
+        if (!invoicesQuery.empty) {
+          invoiceDoc = invoicesQuery.docs[0];
+          invoice = invoiceDoc.data();
+          console.log('🧪 TESTE: Fatura encontrada no partner:', partnerDoc.id);
+          break;
+        }
+
+        // Se não encontrou, tenta com paymentId como string
+        const invoicesQuery2 = await db
+          .collection('partners')
+          .doc(partnerDoc.id)
+          .collection('invoices')
+          .where('paymentInfo.paymentId', '==', paymentId.toString())
+          .limit(1)
+          .get();
+
+        if (!invoicesQuery2.empty) {
+          invoiceDoc = invoicesQuery2.docs[0];
+          invoice = invoiceDoc.data();
+          console.log('🧪 TESTE: Fatura encontrada no partner (string):', partnerDoc.id);
+          break;
+        }
+
+        // Tenta também com campo paymentId direto
+        const invoicesQuery3 = await db
+          .collection('partners')
+          .doc(partnerDoc.id)
+          .collection('invoices')
+          .where('paymentId', '==', paymentId.toString())
+          .limit(1)
+          .get();
+
+        if (!invoicesQuery3.empty) {
+          invoiceDoc = invoicesQuery3.docs[0];
+          invoice = invoiceDoc.data();
+          console.log('🧪 TESTE: Fatura encontrada no partner (paymentId direto):', partnerDoc.id);
+          break;
+        }
+      }
+
+      if (!invoiceDoc) {
+        // Lista algumas faturas para debug
+        console.log('🧪 TESTE: Fatura não encontrada, listando algumas faturas:');
+        const firstPartner = partnersSnapshot.docs[0];
+        if (firstPartner) {
+          const someInvoices = await db
+            .collection('partners')
+            .doc(firstPartner.id)
+            .collection('invoices')
+            .limit(5)
+            .get();
+          
+          someInvoices.forEach(doc => {
+            const data = doc.data();
+            console.log('🧪 TESTE: Fatura exemplo:', {
+              id: doc.id,
+              paymentId: data.paymentId,
+              paymentInfoPaymentId: data.paymentInfo?.paymentId,
+              status: data.status || data.paymentInfo?.status
+            });
+          });
+        }
+        
+        throw new functions.https.HttpsError('not-found', `Fatura não encontrada para paymentId: ${paymentId}`);
+      }
+    } catch (error) {
+      console.error('🧪 TESTE: Erro na busca:', error);
+      throw new functions.https.HttpsError('internal', `Erro na busca da fatura: ${error.message}`);
+    }
+
+    console.log('🧪 TESTE: Fatura encontrada:', {
+      id: invoiceDoc.id,
+      status: invoice.status || invoice.paymentInfo?.status,
+      paymentId: invoice.paymentInfo?.paymentId || invoice.paymentId
+    });
+
+    // Simula a atualização do webhook
+    if (payment.status === 'approved') {
+      const updateData = {
+        'paymentInfo.status': 'paid',
+        'paymentInfo.paidAt': admin.firestore.Timestamp.now(),
+        status: 'paid',
+        paidAt: admin.firestore.Timestamp.now(),
+        updatedAt: admin.firestore.Timestamp.now(),
+      };
+      
+      await invoiceDoc.ref.update(updateData);
+      console.log('🧪 TESTE: Fatura atualizada para PAID');
+      
+      return { 
+        success: true, 
+        message: 'Webhook testado e fatura atualizada com sucesso!',
+        paymentStatus: payment.status,
+        invoiceUpdated: true
+      };
+    }
+
+    return { 
+      success: true, 
+      message: `Webhook testado. Status do pagamento: ${payment.status}`,
+      paymentStatus: payment.status,
+      invoiceUpdated: false
+    };
+
+  } catch (error) {
+    console.error('🧪 TESTE: Erro:', error);
+    throw new functions.https.HttpsError('internal', `Erro no teste: ${error.message}`);
+  }
+});
+
+// Função para sincronizar status de pagamento manualmente (para debug/recuperação)
+exports.syncPaymentStatus = functions.https.onCall(async (data, context) => {
+  try {
+    // Verificar se o usuário está autenticado
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado');
+    }
+
+    const { paymentId } = data;
+    if (!paymentId) {
+      throw new functions.https.HttpsError('invalid-argument', 'paymentId é obrigatório');
+    }
+
+    console.log('🔄 Sincronizando status do pagamento:', paymentId);
+
+    // Buscar pagamento no Mercado Pago
+    const paymentResponse = await axios.get(
+      `https://api.mercadopago.com/v1/payments/${paymentId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+
+    const payment = paymentResponse.data;
+    console.log('💰 Status atual do pagamento:', payment.status);
+
+    // Buscar fatura no Firebase - Método alternativo sem collectionGroup
+    let foundInvoiceDoc = null;
+    let foundInvoice = null;
+
+    try {
+      const partnersSnapshot = await db.collection('partners').get();
+      
+      for (const partnerDoc of partnersSnapshot.docs) {
+        // Busca nas invoices deste partner
+        const invoicesQuery = await db
+          .collection('partners')
+          .doc(partnerDoc.id)
+          .collection('invoices')
+          .where('paymentInfo.paymentId', '==', parseInt(paymentId))
+          .limit(1)
+          .get();
+
+        if (!invoicesQuery.empty) {
+          foundInvoiceDoc = invoicesQuery.docs[0];
+          foundInvoice = foundInvoiceDoc.data();
+          break;
+        }
+
+        // Tenta como string
+        const invoicesQuery2 = await db
+          .collection('partners')
+          .doc(partnerDoc.id)
+          .collection('invoices')
+          .where('paymentInfo.paymentId', '==', paymentId.toString())
+          .limit(1)
+          .get();
+
+        if (!invoicesQuery2.empty) {
+          foundInvoiceDoc = invoicesQuery2.docs[0];
+          foundInvoice = foundInvoiceDoc.data();
+          break;
+        }
+
+        // Tenta com paymentId direto
+        const invoicesQuery3 = await db
+          .collection('partners')
+          .doc(partnerDoc.id)
+          .collection('invoices')
+          .where('paymentId', '==', paymentId.toString())
+          .limit(1)
+          .get();
+
+        if (!invoicesQuery3.empty) {
+          foundInvoiceDoc = invoicesQuery3.docs[0];
+          foundInvoice = foundInvoiceDoc.data();
+          break;
+        }
+      }
+
+      if (!foundInvoiceDoc) {
+        throw new functions.https.HttpsError('not-found', 'Fatura não encontrada');
+      }
+    } catch (error) {
+      console.error('❌ Erro na busca da fatura:', error);
+      throw new functions.https.HttpsError('internal', 'Erro na busca da fatura');
+    }
+
+    console.log('📄 Fatura encontrada:', foundInvoiceDoc.id, 'Status atual:', foundInvoice.status);
+
+    // Atualizar status se necessário
+    if (payment.status === 'approved' && foundInvoice.status !== 'paid') {
+      await foundInvoiceDoc.ref.update({
+        'paymentInfo.status': 'paid',
+        'paymentInfo.paidAt': admin.firestore.Timestamp.now(),
+        status: 'paid',
+        paidAt: admin.firestore.Timestamp.now(),
+        updatedAt: admin.firestore.Timestamp.now(),
+      });
+      
+      console.log('✅ Fatura sincronizada com sucesso');
+      return { success: true, message: 'Status sincronizado com sucesso', status: 'paid' };
+    }
+
+    return { success: true, message: 'Nenhuma atualização necessária', status: payment.status };
+
+  } catch (error) {
+    console.error('❌ Erro ao sincronizar status:', error);
+    throw new functions.https.HttpsError('internal', 'Erro ao sincronizar status do pagamento');
+  }
+});
+
 exports.mercadoPagoWebhook = functions.https.onRequest(async (request, response) => {
   try {
-    console.log('�� Webhook recebido - Method:', request.method);
+    console.log('🔔 Webhook recebido - Method:', request.method);
     console.log('🔔 Webhook recebido - Headers:', JSON.stringify(request.headers, null, 2));
     console.log('🔔 Webhook recebido - Query:', JSON.stringify(request.query, null, 2));
     console.log('🔔 Webhook recebido - Body:', JSON.stringify(request.body, null, 2));
@@ -309,14 +591,64 @@ exports.mercadoPagoWebhook = functions.https.onRequest(async (request, response)
 
       // Busca a fatura correspondente
       console.log('🔍 Buscando fatura correspondente ao paymentId:', payment.id);
-      const invoicesQuery = await db
+      
+      // Primeira busca: usando paymentInfo.paymentId
+      let invoicesQuery = await db
         .collectionGroup('invoices')
         .where('paymentInfo.paymentId', '==', payment.id)
         .limit(1)
         .get();
 
+      // Se não encontrou, busca usando paymentId diretamente
       if (invoicesQuery.empty) {
-        console.error(`❌ Fatura não encontrada para o pagamento ${payment.id}`);
+        console.log('🔍 Primeira busca falhou, tentando com paymentId direto...');
+        invoicesQuery = await db
+          .collectionGroup('invoices')
+          .where('paymentId', '==', payment.id)
+          .limit(1)
+          .get();
+      }
+
+      // Se ainda não encontrou, busca convertendo para string
+      if (invoicesQuery.empty) {
+        console.log('🔍 Segunda busca falhou, tentando com string...');
+        invoicesQuery = await db
+          .collectionGroup('invoices')
+          .where('paymentInfo.paymentId', '==', payment.id.toString())
+          .limit(1)
+          .get();
+      }
+
+      // Se ainda não encontrou, busca paymentId como string
+      if (invoicesQuery.empty) {
+        console.log('🔍 Terceira busca falhou, tentando paymentId como string...');
+        invoicesQuery = await db
+          .collectionGroup('invoices')
+          .where('paymentId', '==', payment.id.toString())
+          .limit(1)
+          .get();
+      }
+
+      if (invoicesQuery.empty) {
+        console.error(`❌ Fatura não encontrada para o pagamento ${payment.id} após todas as tentativas`);
+        console.log('🔍 Listando todas as faturas para debug...');
+        
+        // Debug: lista algumas faturas para ver a estrutura
+        const allInvoicesQuery = await db
+          .collectionGroup('invoices')
+          .limit(5)
+          .get();
+        
+        allInvoicesQuery.forEach(doc => {
+          const data = doc.data();
+          console.log('📄 Fatura encontrada (debug):', {
+            id: doc.id,
+            paymentId: data.paymentId,
+            paymentInfo: data.paymentInfo,
+            status: data.status
+          });
+        });
+        
         response.status(404).send('Fatura não encontrada');
         return;
       }
@@ -328,7 +660,9 @@ exports.mercadoPagoWebhook = functions.https.onRequest(async (request, response)
       // Atualiza o status da fatura
       if (payment.status === 'approved') {
         console.log('✅ Atualizando status da fatura para PAID');
-        await invoiceDoc.ref.update({
+        
+        const updateData = {
+          // Novos campos (paymentInfo)
           'paymentInfo.status': 'paid',
           'paymentInfo.paidAt': admin.firestore.Timestamp.now(),
           'paymentInfo.history': admin.firestore.FieldValue.arrayUnion({
@@ -336,11 +670,37 @@ exports.mercadoPagoWebhook = functions.https.onRequest(async (request, response)
             date: new Date(),
             detail: 'Pagamento aprovado'
           }),
+          // Campos diretos (compatibilidade)
+          status: 'paid',
+          paidAt: admin.firestore.Timestamp.now(),
+          updatedAt: admin.firestore.Timestamp.now(),
+        };
+        
+        await invoiceDoc.ref.update(updateData);
+        console.log('✅ Fatura atualizada com sucesso - status:', payment.status);
+      } else if (payment.status === 'rejected' || payment.status === 'cancelled') {
+        console.log(`❌ Pagamento rejeitado/cancelado (status: ${payment.status})`);
+        await invoiceDoc.ref.update({
+          'paymentInfo.status': 'failed',
+          'paymentInfo.history': admin.firestore.FieldValue.arrayUnion({
+            status: 'failed',
+            date: new Date(),
+            detail: `Pagamento ${payment.status}`
+          }),
+          status: 'pending', // Mantém pendente para permitir nova tentativa
           updatedAt: admin.firestore.Timestamp.now(),
         });
-        console.log('✅ Fatura atualizada com sucesso');
       } else {
-        console.log(`ℹ️ Status do pagamento não é approved (atual: ${payment.status})`);
+        console.log(`ℹ️ Status do pagamento: ${payment.status} - aguardando aprovação`);
+        await invoiceDoc.ref.update({
+          'paymentInfo.status': payment.status,
+          'paymentInfo.history': admin.firestore.FieldValue.arrayUnion({
+            status: payment.status,
+            date: new Date(),
+            detail: `Status atualizado para ${payment.status}`
+          }),
+          updatedAt: admin.firestore.Timestamp.now(),
+        });
       }
 
       response.status(200).send('Webhook processado com sucesso');
@@ -906,5 +1266,147 @@ exports.fixInconsistentFees = functions.https.onRequest(async (req, res) => {
   } catch (error) {
     console.error('Erro ao corrigir taxas:', error);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Função para consultar detalhes de um pagamento no Mercado Pago (para debug)
+exports.checkMercadoPagoPayment = functions.https.onCall(async (data, context) => {
+  try {
+    // Verificar se o usuário está autenticado
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado');
+    }
+
+    const { paymentId } = data;
+    if (!paymentId) {
+      throw new functions.https.HttpsError('invalid-argument', 'paymentId é obrigatório');
+    }
+
+    console.log('🔍 Consultando pagamento no Mercado Pago:', paymentId);
+
+    // Buscar pagamento no Mercado Pago
+    const paymentResponse = await axios.get(
+      `https://api.mercadopago.com/v1/payments/${paymentId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+
+    const payment = paymentResponse.data;
+    console.log('💰 Dados completos do pagamento:', JSON.stringify(payment, null, 2));
+
+    // Extrair informações importantes
+    const paymentInfo = {
+      id: payment.id,
+      status: payment.status,
+      status_detail: payment.status_detail,
+      transaction_amount: payment.transaction_amount,
+      currency_id: payment.currency_id,
+      date_created: payment.date_created,
+      date_last_updated: payment.date_last_updated,
+      payment_method: {
+        id: payment.payment_method_id,
+        type: payment.payment_type_id
+      },
+      payer: {
+        id: payment.payer?.id,
+        email: payment.payer?.email,
+        type: payment.payer?.type
+      },
+      external_reference: payment.external_reference,
+      description: payment.description,
+      transaction_details: payment.transaction_details,
+      point_of_interaction: payment.point_of_interaction
+    };
+
+    // Verificar se é PIX e se há informações específicas
+    if (payment.payment_method_id === 'pix') {
+      paymentInfo.pix_details = {
+        qr_code_available: !!payment.point_of_interaction?.transaction_data?.qr_code,
+        end_to_end_id: payment.point_of_interaction?.transaction_data?.end_to_end_id
+      };
+    }
+
+    console.log('📊 Informações estruturadas do pagamento:', JSON.stringify(paymentInfo, null, 2));
+
+    return { 
+      success: true, 
+      payment: paymentInfo,
+      raw_data: payment // Dados completos para análise técnica
+    };
+
+  } catch (error) {
+    console.error('❌ Erro ao consultar pagamento:', error);
+    
+    // Se for erro 404, o pagamento não existe
+    if (error.response && error.response.status === 404) {
+      throw new functions.https.HttpsError('not-found', 'Pagamento não encontrado no Mercado Pago');
+    }
+    
+    // Se for erro 401, problema de autenticação
+    if (error.response && error.response.status === 401) {
+      throw new functions.https.HttpsError('permission-denied', 'Erro de autenticação com o Mercado Pago');
+    }
+    
+    throw new functions.https.HttpsError('internal', 'Erro ao consultar pagamento no Mercado Pago: ' + error.message);
+  }
+});
+
+// Função para limpar dados de pagamento de uma fatura (para testes/debug)
+exports.clearInvoicePayment = functions.https.onCall(async (data, context) => {
+  try {
+    // Verificar se o usuário está autenticado
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado');
+    }
+
+    const { invoiceId, partnerId } = data;
+    if (!invoiceId || !partnerId) {
+      throw new functions.https.HttpsError('invalid-argument', 'invoiceId e partnerId são obrigatórios');
+    }
+
+    console.log('🧹 Limpando dados de pagamento para fatura:', invoiceId);
+
+    // Buscar a fatura
+    const invoiceRef = db.collection('partners').doc(partnerId).collection('invoices').doc(invoiceId);
+    const invoiceSnap = await invoiceRef.get();
+    
+    if (!invoiceSnap.exists) {
+      throw new functions.https.HttpsError('not-found', 'Fatura não encontrada');
+    }
+
+    // Limpar todos os dados de pagamento
+    const updateData = {
+      // Remove campos de pagamento
+      paymentInfo: admin.firestore.FieldValue.delete(),
+      paymentId: admin.firestore.FieldValue.delete(),
+      paymentMethod: admin.firestore.FieldValue.delete(),
+      paymentData: admin.firestore.FieldValue.delete(),
+      paidAt: admin.firestore.FieldValue.delete(),
+      
+      // Volta status para pending
+      status: 'pending',
+      updatedAt: admin.firestore.Timestamp.now(),
+    };
+
+    await invoiceRef.update(updateData);
+    
+    console.log('✅ Dados de pagamento limpos com sucesso');
+    
+    return { 
+      success: true, 
+      message: 'Dados de pagamento limpos com sucesso. Você pode gerar um novo pagamento agora.' 
+    };
+
+  } catch (error) {
+    console.error('❌ Erro ao limpar dados de pagamento:', error);
+    
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    
+    throw new functions.https.HttpsError('internal', 'Erro ao limpar dados de pagamento: ' + error.message);
   }
 }); 
