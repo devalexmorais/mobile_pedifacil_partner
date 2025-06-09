@@ -1030,8 +1030,8 @@ exports.sendNotificationOnCreate = functions.firestore
     }
   });
 
-// Função agendada para gerar faturas automaticamente (executa todo dia à meia-noite)
-exports.generateInvoicesScheduled = functions.pubsub.schedule('0 0 * * *')
+// Função agendada para gerar faturas automaticamente (executa todo dia às 20:25)
+exports.generateInvoicesScheduled = functions.pubsub.schedule('25 20 * * *')
   .timeZone('America/Sao_Paulo')
   .onRun(async (context) => {
     try {
@@ -1054,7 +1054,7 @@ exports.generateInvoicesScheduled = functions.pubsub.schedule('0 0 * * *')
         const firstFeeQuery = await partnersRef
           .doc(partnerDoc.id)
           .collection('app_fees')
-          .orderBy('createdAt', 'asc')
+          .orderBy('completedAt', 'asc')
           .limit(1)
           .get();
 
@@ -1065,7 +1065,7 @@ exports.generateInvoicesScheduled = functions.pubsub.schedule('0 0 * * *')
         }
 
         const firstFee = firstFeeQuery.docs[0].data();
-        const firstFeeDate = firstFee.createdAt;
+        const firstFeeDate = firstFee.completedAt;
 
         // Busca a última fatura do parceiro
         const lastInvoiceQuery = await partnersRef
@@ -1104,18 +1104,26 @@ exports.generateInvoicesScheduled = functions.pubsub.schedule('0 0 * * *')
           continue;
         }
 
-        // Busca taxas não liquidadas e sem fatura desde a data de referência
+        // Busca taxas não liquidadas (vamos filtrar o resto no código)
         const nonSettledFeesQuery = await partnersRef
           .doc(partnerDoc.id)
           .collection('app_fees')
           .where('settled', '==', false)
-          .where('invoiceId', '==', null)
-          .where('createdAt', '>=', referenceDate)
           .get();
 
-        console.log(`Total de taxas não liquidadas sem fatura para ${partnerDoc.id}: ${nonSettledFeesQuery.size}`);
+        // Filtra no código as taxas sem fatura e dentro da data de referência
+        const validFees = [];
+        nonSettledFeesQuery.forEach(feeDoc => {
+          const fee = feeDoc.data();
+          // Verifica se não tem invoiceId e se completedAt é >= referenceDate
+          if (!fee.invoiceId && fee.completedAt && fee.completedAt.toMillis() >= referenceDate.toMillis()) {
+            validFees.push({ doc: feeDoc, data: fee });
+          }
+        });
 
-        if (nonSettledFeesQuery.empty) {
+        console.log(`Total de taxas não liquidadas sem fatura para ${partnerDoc.id}: ${validFees.length}`);
+
+        if (validFees.length === 0) {
           console.log(`Nenhuma taxa não liquidada sem fatura encontrada para o parceiro ${partnerDoc.id}`);
           continue;
         }
@@ -1124,8 +1132,7 @@ exports.generateInvoicesScheduled = functions.pubsub.schedule('0 0 * * *')
         let totalFeeAmount = 0;
         const simplifiedDetails = [];
 
-        nonSettledFeesQuery.forEach(feeDoc => {
-          const fee = feeDoc.data();
+        validFees.forEach(({ doc: feeDoc, data: fee }) => {
           console.log(`Processando taxa não liquidada ${feeDoc.id}:`, fee);
           
           if (fee.appFee && typeof fee.appFee.value === 'number') {
@@ -1186,7 +1193,7 @@ exports.generateInvoicesScheduled = functions.pubsub.schedule('0 0 * * *')
           console.log('Criando nova fatura:', newInvoice);
 
           // Atualiza as taxas como liquidadas
-          const updatePromises = nonSettledFeesQuery.docs.map(feeDoc => {
+          const updatePromises = validFees.map(({ doc: feeDoc }) => {
             console.log(`Marcando taxa ${feeDoc.id} como liquidada`);
             return partnersRef
               .doc(partnerDoc.id)
@@ -1195,7 +1202,7 @@ exports.generateInvoicesScheduled = functions.pubsub.schedule('0 0 * * *')
               .update({
                 settled: true,
                 invoiceId: invoiceRef.id,
-                updatedAt: today
+                updatedAt: admin.firestore.Timestamp.now()
               });
           });
 
