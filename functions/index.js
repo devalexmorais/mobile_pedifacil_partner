@@ -11,6 +11,45 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
+// Mapeamento de estados para abreviações
+const stateAbbreviations = {
+  'Acre': 'AC',
+  'Alagoas': 'AL',
+  'Amapá': 'AP',
+  'Amazonas': 'AM',
+  'Bahia': 'BA',
+  'Ceará': 'CE',
+  'Distrito Federal': 'DF',
+  'Espírito Santo': 'ES',
+  'Goiás': 'GO',
+  'Maranhão': 'MA',
+  'Mato Grosso': 'MT',
+  'Mato Grosso do Sul': 'MS',
+  'Minas Gerais': 'MG',
+  'Pará': 'PA',
+  'Paraíba': 'PB',
+  'Paraná': 'PR',
+  'Pernambuco': 'PE',
+  'Piauí': 'PI',
+  'Rio de Janeiro': 'RJ',
+  'Rio Grande do Norte': 'RN',
+  'Rio Grande do Sul': 'RS',
+  'Rondônia': 'RO',
+  'Roraima': 'RR',
+  'Santa Catarina': 'SC',
+  'São Paulo': 'SP',
+  'Sergipe': 'SE',
+  'Tocantins': 'TO'
+};
+
+function mapStateToAbbreviation(stateName) {
+  if (!stateName) return '';
+  // Se já é uma abreviação (2 caracteres), retorna como está
+  if (stateName.length === 2) return stateName.toUpperCase();
+  // Procura na lista de mapeamentos
+  return stateAbbreviations[stateName] || '';
+}
+
 // Configuração do Mercado Pago
 const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN || functions.config().mercadopago?.access_token;
 
@@ -86,41 +125,64 @@ exports.gerarPagamento = functions.https.onCall(async (data, context) => {
     const invoice = invoiceSnap.data();
     console.log('Invoice encontrado:', invoice);
 
-    // 2. Monta os dados do pagamento
+    // 2. Buscar dados do parceiro
+    const partnerRef = db.collection('partners').doc(partnerId);
+    const partnerSnap = await partnerRef.get();
+    
+    if (!partnerSnap.exists) {
+      throw new functions.https.HttpsError(
+        'not-found',
+        'Dados do parceiro não encontrados!'
+      );
+    }
+    
+    const partnerData = partnerSnap.data();
+    console.log('Dados do parceiro:', JSON.stringify(partnerData, null, 2));
+
+    // 3. Monta os dados do pagamento
     const payment_data = {
       transaction_amount: invoice.totalAmount || 1.00,
       description: `Fatura PediFácil - ${invoice.id}`,
       payment_method_id: tipoPagamento === 'pix' ? 'pix' : 'bolbradesco',
       payer: {
-        email: invoice.partnerInfo?.email || 'test@test.com',
-        first_name: invoice.partnerInfo?.name?.split(' ')[0] || 'Test',
-        last_name: invoice.partnerInfo?.name?.split(' ').slice(1).join(' ') || 'User',
+        email: partnerData.email || invoice.partnerInfo?.email || 'test@test.com',
+        first_name: (partnerData.name || invoice.partnerInfo?.name || 'Test').split(' ')[0],
+        last_name: (partnerData.name || invoice.partnerInfo?.name || 'Test').split(' ').slice(1).join(' ') || 'User',
         identification: {
           type: 'CPF',
-          number: invoice.partnerInfo?.cpf?.replace(/\D/g, '') || '19119119100'
+          number: (partnerData.store?.document || partnerData.cpf || invoice.partnerInfo?.cpf || '19119119100').replace(/\D/g, '')
         },
         address: tipoPagamento === 'boleto' ? {
-          zip_code: invoice.partnerInfo?.address?.cep?.replace(/\D/g, '') || '',
-          street_name: invoice.partnerInfo?.address?.street || '',
-          street_number: invoice.partnerInfo?.address?.number || '',
-          neighborhood: invoice.partnerInfo?.address?.neighborhood || '',
-          city: invoice.partnerInfo?.address?.city || '',
-          federal_unit: invoice.partnerInfo?.address?.state || ''
+          zip_code: (partnerData.address?.zip_code || invoice.partnerInfo?.address?.cep || '').replace(/\D/g, ''),
+          street_name: partnerData.address?.street || invoice.partnerInfo?.address?.street || '',
+          street_number: partnerData.address?.number || invoice.partnerInfo?.address?.number || '',
+          neighborhood: partnerData.address?.neighborhoodName || invoice.partnerInfo?.address?.neighborhood || '',
+          city: partnerData.address?.cityName || invoice.partnerInfo?.address?.city || '',
+          federal_unit: mapStateToAbbreviation(partnerData.address?.stateName || invoice.partnerInfo?.address?.state || '')
         } : undefined
       }
     };
 
     // Validação dos campos de endereço para boleto
     if (tipoPagamento === 'boleto') {
+      console.log('🔍 Validando campos de endereço para boleto:', JSON.stringify(payment_data.payer.address, null, 2));
+      
       const requiredFields = ['zip_code', 'street_name', 'street_number', 'neighborhood', 'city', 'federal_unit'];
       const missingFields = requiredFields.filter(field => !payment_data.payer.address[field]);
       
       if (missingFields.length > 0) {
+        console.error('❌ Campos de endereço em falta:', missingFields);
+        console.error('📊 Endereço completo disponível:', {
+          partnerData_address: partnerData.address,
+          invoice_partnerInfo: invoice.partnerInfo
+        });
         throw new functions.https.HttpsError(
           'failed-precondition',
           `Para gerar um boleto, os seguintes campos de endereço são obrigatórios: ${missingFields.join(', ')}`
         );
       }
+      
+      console.log('✅ Todos os campos de endereço estão presentes para o boleto');
     }
 
     console.log('Dados do pagamento a serem enviados:', JSON.stringify(payment_data, null, 2));
@@ -630,8 +692,8 @@ exports.mercadoPagoWebhook = functions.https.onRequest(async (request, response)
       }
 
       if (invoicesQuery.empty) {
-        console.error(`❌ Fatura não encontrada para o pagamento ${payment.id} após todas as tentativas`);
-        console.log('🔍 Listando todas as faturas para debug...');
+        console.warn(`⚠️ Fatura não encontrada para o pagamento ${payment.id} após todas as tentativas`);
+        console.log('🔍 Listando algumas faturas para debug...');
         
         // Debug: lista algumas faturas para ver a estrutura
         const allInvoicesQuery = await db
@@ -649,7 +711,9 @@ exports.mercadoPagoWebhook = functions.https.onRequest(async (request, response)
           });
         });
         
-        response.status(404).send('Fatura não encontrada');
+        // Retorna 200 para o Mercado Pago não tentar reenviar
+        console.log('📤 Retornando 200 para evitar reenvio do webhook');
+        response.status(200).send('Webhook processado - fatura não encontrada mas pagamento válido');
         return;
       }
 

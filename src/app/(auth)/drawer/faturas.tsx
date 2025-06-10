@@ -11,6 +11,7 @@ import {
   Linking,
   Dimensions,
   Image,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/styles/theme/colors';
@@ -49,6 +50,7 @@ interface PaymentInfo {
   paymentUrl?: string;
   qrCodeBase64?: string;
   boletoUrl?: string;
+  barCode?: string;
   paymentId?: number;
   paymentMethod?: 'pix' | 'boleto';
   status?: string;
@@ -388,6 +390,11 @@ export default function Faturas() {
       const partnerRef = doc(db, 'partners', user.uid);
       const partnerSnap = await getDoc(partnerRef);
       const partnerData = partnerSnap.data();
+      
+      console.log('Dados do parceiro para boleto:', {
+        hasAddress: !!partnerData?.address,
+        address: partnerData?.address
+      });
 
       // Validação mais detalhada do endereço para boleto
       if (paymentMethod === 'boleto') {
@@ -399,9 +406,9 @@ export default function Faturas() {
           zip_code: 'CEP',
           street: 'Rua',
           number: 'Número',
-          neighborhood: 'Bairro',
-          city: 'Cidade',
-          state: 'Estado'
+          neighborhoodName: 'Bairro',
+          cityName: 'Cidade',
+          stateName: 'Estado'
         };
 
         const missingFields = Object.entries(requiredFields)
@@ -415,27 +422,180 @@ export default function Faturas() {
         }
       }
 
-      const paymentData = {
+      let paymentData: any = {
         partnerId: user.uid,
         invoiceId: targetInvoice.id,
-        tipoPagamento: paymentMethod,
-        ...(paymentMethod === 'boleto' && partnerData?.address ? {
-          address: {
-            zip_code: partnerData.address.zip_code?.replace(/\D/g, ''),
-            street_name: partnerData.address.street,
-            street_number: partnerData.address.number,
-            neighborhood: partnerData.address.neighborhood,
-            city: partnerData.address.city,
-            federal_unit: partnerData.address.state.toUpperCase(),
-            complement: partnerData.address.complement || ''
-          }
-        } : {})
+        tipoPagamento: paymentMethod
       };
+
+      // Para boleto, adiciona os dados no formato correto do Mercado Pago
+      if (paymentMethod === 'boleto' && partnerData?.address) {
+        // Validação dos dados necessários para boleto
+        const requiredPartnerFields = {
+          email: partnerData.email || partnerData.user?.email,
+          name: partnerData.name || partnerData.displayName,
+          cpf: partnerData.store?.document || partnerData.cpf || partnerData.document
+        };
+
+        console.log('📋 Dados do parceiro para boleto:', {
+          email: requiredPartnerFields.email,
+          name: requiredPartnerFields.name,
+          cpf: requiredPartnerFields.cpf,
+          hasAddress: !!partnerData.address,
+          storeDocument: partnerData.store?.document,
+          directCpf: partnerData.cpf,
+          directDocument: partnerData.document
+        });
+
+        // Extrai primeiro e último nome
+        const nameParts = (requiredPartnerFields.name || '').split(' ');
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts.slice(1).join(' ') || '';
+
+        // Estrutura correta para a API do Mercado Pago
+        paymentData.transaction_amount = targetInvoice.totalAmount;
+        paymentData.description = `Fatura ${getMonthYear(targetInvoice.startDate)} - PediFacil Partner`;
+        paymentData.payment_method_id = 'bolbradesco'; // ou outro banco
+        paymentData.payer = {
+          email: String(requiredPartnerFields.email || ''),
+          first_name: String(firstName || ''),
+          last_name: String(lastName || ''),
+          identification: {
+            type: 'CPF',
+            number: String(requiredPartnerFields.cpf?.replace(/\D/g, '') || '')
+          },
+          address: {
+            zip_code: String(partnerData.address.zip_code?.replace(/\D/g, '') || ''),
+            street_name: String(partnerData.address.street || ''),
+            street_number: String(partnerData.address.number || ''),
+            neighborhood: String(partnerData.address.neighborhoodName || ''),
+            city: String(partnerData.address.cityName || ''),
+            federal_unit: (() => {
+              const stateName = partnerData.address.stateName?.toLowerCase();
+              const stateMap: { [key: string]: string } = {
+                'rio grande do norte': 'RN',
+                'rio grande do sul': 'RS',
+                'minas gerais': 'MG',
+                'são paulo': 'SP',
+                'rio de janeiro': 'RJ',
+                'bahia': 'BA',
+                'paraná': 'PR',
+                'ceará': 'CE',
+                'pernambuco': 'PE',
+                'santa catarina': 'SC',
+                'paraíba': 'PB',
+                'alagoas': 'AL',
+                'sergipe': 'SE',
+                'maranhão': 'MA',
+                'piauí': 'PI',
+                'goiás': 'GO',
+                'mato grosso': 'MT',
+                'mato grosso do sul': 'MS',
+                'distrito federal': 'DF',
+                'espírito santo': 'ES',
+                'rondônia': 'RO',
+                'acre': 'AC',
+                'amazonas': 'AM',
+                'roraima': 'RR',
+                'pará': 'PA',
+                'amapá': 'AP',
+                'tocantins': 'TO'
+              };
+              return stateMap[stateName || ''] || stateName?.substring(0, 2).toUpperCase() || '';
+            })()
+          }
+        };
+
+        // Validação dos campos obrigatórios
+        const missingFields = [];
+        if (!paymentData.payer.email) missingFields.push('email');
+        if (!paymentData.payer.first_name) missingFields.push('nome');
+        if (!paymentData.payer.identification.number) missingFields.push('CPF');
+        if (!paymentData.payer.address.zip_code) missingFields.push('CEP');
+        if (!paymentData.payer.address.street_name) missingFields.push('rua');
+        if (!paymentData.payer.address.street_number) missingFields.push('número');
+        if (!paymentData.payer.address.neighborhood) missingFields.push('bairro');
+        if (!paymentData.payer.address.city) missingFields.push('cidade');
+        if (!paymentData.payer.address.federal_unit) missingFields.push('estado');
+
+        if (missingFields.length > 0) {
+          throw new Error(`Para gerar um boleto, os seguintes dados são obrigatórios: ${missingFields.join(', ')}. Por favor, complete seu cadastro.`);
+        }
+      }
 
       console.log('Dados do pagamento:', paymentData);
 
+      // Log final dos dados que serão enviados
+      console.log('🚀 Enviando para servidor:', JSON.stringify(paymentData, null, 2));
+      
+      // Para boleto, log extra de verificação
+      if (paymentMethod === 'boleto') {
+        console.log('🔍 Verificação final do boleto:', {
+          temTransactionAmount: !!paymentData.transaction_amount,
+          temDescription: !!paymentData.description,
+          temPaymentMethod: !!paymentData.payment_method_id,
+          temPayer: !!paymentData.payer,
+          temPayerEmail: !!paymentData.payer?.email,
+          temPayerName: !!(paymentData.payer?.first_name && paymentData.payer?.last_name),
+          temPayerCPF: !!paymentData.payer?.identification?.number,
+          temPayerAddress: !!paymentData.payer?.address,
+          todosOsCamposAddress: !!(
+            paymentData.payer?.address?.zip_code &&
+            paymentData.payer?.address?.street_name &&
+            paymentData.payer?.address?.street_number &&
+            paymentData.payer?.address?.neighborhood &&
+            paymentData.payer?.address?.city &&
+            paymentData.payer?.address?.federal_unit
+          ),
+          payerAddressCompleto: paymentData.payer?.address
+        });
+      }
+      
       const gerarPagamento = httpsCallable(functions, 'gerarPagamento');
-      const result = await gerarPagamento(paymentData);
+      let result;
+      
+      try {
+        result = await gerarPagamento(paymentData);
+        console.log('✅ Resposta do servidor recebida:', result);
+              } catch (serverError: any) {
+        console.error('❌ Erro detalhado do servidor:', {
+          code: serverError.code,
+          message: serverError.message,
+          details: serverError.details,
+          customData: serverError.customData,
+          stack: serverError.stack
+        });
+
+        // Para boleto, tentar com estrutura alternativa como último recurso
+        if (paymentMethod === 'boleto' && serverError.message?.includes('campos de endereço são obrigatórios')) {
+          console.log('🔄 Tentando enviar boleto com estrutura híbrida...');
+          
+          const hybridPaymentData = {
+            ...paymentData,
+            // Adiciona os campos também no nível raiz (compatibilidade)
+            zip_code: paymentData.payer?.address?.zip_code,
+            street_name: paymentData.payer?.address?.street_name,
+            street_number: paymentData.payer?.address?.street_number,
+            neighborhood: paymentData.payer?.address?.neighborhood,
+            city: paymentData.payer?.address?.city,
+            federal_unit: paymentData.payer?.address?.federal_unit,
+            // E também em uma estrutura address simples
+            address: paymentData.payer?.address
+          };
+
+          console.log('🚀 Estrutura híbrida:', JSON.stringify(hybridPaymentData, null, 2));
+          
+          try {
+            result = await gerarPagamento(hybridPaymentData);
+            console.log('✅ Sucesso com estrutura híbrida!', result);
+          } catch (hybridError: any) {
+            console.error('❌ Erro também na estrutura híbrida:', hybridError.message);
+            throw serverError; // Lança o erro original
+          }
+        } else {
+          throw serverError;
+        }
+      }
 
       console.log('Resposta detalhada do servidor:', {
         data: result.data,
@@ -467,13 +627,15 @@ export default function Faturas() {
             throw new Error('Dados do pagamento não retornados pelo servidor. Tente novamente.');
           }
 
-          boletoUrl = data?.paymentInfo?.boletoUrl || 
-                     data?.paymentData?.ticket_url || 
-                     (result.data as any)?.boletoUrl;
-          
-          boletoBarCode = data?.paymentInfo?.barCode || 
-                         data?.paymentData?.barCode || 
-                         (result.data as any)?.barCode;
+                  boletoUrl = data?.paymentInfo?.boletoUrl || 
+                   data?.paymentData?.ticket_url || 
+                   (result.data as any)?.boletoUrl;
+        
+        boletoBarCode = data?.paymentInfo?.barCode || 
+                       data?.paymentData?.barCode || 
+                       (result.data as any)?.barCode;
+        
+        console.log('🔍 Código de barras encontrado:', boletoBarCode);
           
           if (!boletoUrl) {
             console.error('URL do boleto não encontrado nos dados:', { data, result });
@@ -499,6 +661,10 @@ export default function Faturas() {
             qr_code_base64: data?.paymentInfo?.qrCodeBase64 || data?.paymentData?.qr_code_base64,
             ticket_url: boletoUrl,
             barCode: boletoBarCode
+          },
+          paymentInfo: {
+            ...data?.paymentInfo,
+            barCode: boletoBarCode || data?.paymentInfo?.barCode
           }
         } as Invoice;
         
@@ -672,10 +838,26 @@ export default function Faturas() {
     );
   };
 
+  const formatBoletoCode = (barCode: string): string => {
+    if (!barCode) return '';
+    
+    // Remove espaços e pontos se existirem
+    const cleanCode = barCode.replace(/[\s.]/g, '');
+    
+    // Se tem 44 dígitos, formata no padrão do boleto: XXXXX.XXXXX XXXXX.XXXXXX XXXXX.XXXXXX X XXXXXXXXXXXXXX
+    if (cleanCode.length === 44) {
+      return `${cleanCode.slice(0, 5)}.${cleanCode.slice(5, 10)} ${cleanCode.slice(10, 15)}.${cleanCode.slice(15, 21)} ${cleanCode.slice(21, 26)}.${cleanCode.slice(26, 32)} ${cleanCode.slice(32, 33)} ${cleanCode.slice(33)}`;
+    }
+    
+    // Se não tem 44 dígitos, retorna como está (mas limpo)
+    return cleanCode;
+  };
+
   const handleCopyPixCode = async () => {
-    if (currentInvoice?.paymentData?.qr_code) {
-      await Clipboard.setStringAsync(currentInvoice.paymentData.qr_code);
-      Alert.alert('Código Pix copiado!');
+    const pixCode = currentInvoice?.paymentData?.qr_code || currentInvoice?.paymentInfo?.paymentUrl;
+    if (pixCode) {
+      await Clipboard.setStringAsync(pixCode);
+      Alert.alert('Código PIX copiado!');
     }
   };
 
@@ -725,33 +907,33 @@ export default function Faturas() {
                   {paymentMethod === 'pix' ? 'Gerando QR Code PIX...' : 'Gerando Boleto...'}
                 </Text>
               </View>
-            ) : currentInvoice.paymentData?.qr_code || currentInvoice.paymentData?.qr_code_base64 || currentInvoice.paymentData?.ticket_url ? (
+            ) : currentInvoice.paymentData?.qr_code || currentInvoice.paymentData?.qr_code_base64 || currentInvoice.paymentData?.ticket_url || currentInvoice.paymentInfo?.paymentUrl || currentInvoice.paymentInfo?.qrCodeBase64 || currentInvoice.paymentInfo?.boletoUrl ? (
               <View style={styles.qrCodeContainer}>
-                {(currentInvoice.paymentData?.qr_code || currentInvoice.paymentData?.qr_code_base64) && (
+                {(currentInvoice.paymentData?.qr_code || currentInvoice.paymentData?.qr_code_base64 || currentInvoice.paymentInfo?.paymentUrl || currentInvoice.paymentInfo?.qrCodeBase64) && (
                   <>
                     <Text style={styles.qrCodeTitle}>Pague sua fatura usando PIX</Text>
-                    <View style={styles.qrCodeWrapper}>
-                      {currentInvoice.paymentData?.qr_code_base64 ? (
-                        <>
-                          <Image
-                            source={{ uri: `data:image/png;base64,${currentInvoice.paymentData.qr_code_base64}` }}
-                            style={styles.qrCodeImage}
-                            resizeMode="contain"
-                          />
-                          <Text style={styles.qrCodeStatus}>QR Code carregado com sucesso</Text>
-                        </>
-                      ) : currentInvoice.paymentData?.qr_code ? (
-                        <>
-                          <QRCode
-                            value={currentInvoice.paymentData.qr_code}
-                            size={200}
-                            backgroundColor="white"
-                            color={colors.gray[800]}
-                          />
-                          <Text style={styles.qrCodeStatus}>QR Code gerado com sucesso</Text>
-                        </>
-                      ) : null}
-                    </View>
+                                          <View style={styles.qrCodeWrapper}>
+                        {(currentInvoice.paymentData?.qr_code_base64 || currentInvoice.paymentInfo?.qrCodeBase64) ? (
+                          <>
+                            <Image
+                              source={{ uri: `data:image/png;base64,${currentInvoice.paymentData?.qr_code_base64 || currentInvoice.paymentInfo?.qrCodeBase64}` }}
+                              style={styles.qrCodeImage}
+                              resizeMode="contain"
+                            />
+                            <Text style={styles.qrCodeStatus}>QR Code carregado com sucesso</Text>
+                          </>
+                        ) : (currentInvoice.paymentData?.qr_code || currentInvoice.paymentInfo?.paymentUrl) ? (
+                          <>
+                            <QRCode
+                              value={currentInvoice.paymentData?.qr_code || currentInvoice.paymentInfo?.paymentUrl || ''}
+                              size={200}
+                              backgroundColor="white"
+                              color={colors.gray[800]}
+                            />
+                            <Text style={styles.qrCodeStatus}>QR Code gerado com sucesso</Text>
+                          </>
+                        ) : null}
+                      </View>
                     <TouchableOpacity
                       style={styles.copyPixButton}
                       onPress={handleCopyPixCode}
@@ -764,24 +946,33 @@ export default function Faturas() {
                   </>
                 )}
                 
-                {currentInvoice.paymentData?.ticket_url ? (
+                {(currentInvoice.paymentData?.ticket_url || currentInvoice.paymentInfo?.boletoUrl) ? (
                   <View>
                     <Text style={[styles.qrCodeTitle, { color: colors.gray[800] }]}>Pague sua fatura usando Boleto</Text>
                     <View style={styles.boletoInfoContainer}>
                       <View style={styles.boletoCodeContainer}>
                         <MaterialCommunityIcons name="barcode" size={48} color={colors.gray[800]} />
                         <View style={styles.boletoCodeTextContainer}>
-                          {currentInvoice.paymentData?.barCode ? (
-                            <Text style={styles.boletoCode} selectable>
-                              {currentInvoice.paymentData.barCode}
-                            </Text>
-                          ) : (
-                            <Text style={styles.boletoCode} numberOfLines={3} ellipsizeMode="middle">
-                              {currentInvoice.paymentData.ticket_url}
-                            </Text>
-                          )}
+                          {(() => {
+                            const barCode = currentInvoice.paymentData?.barCode || currentInvoice.paymentInfo?.barCode;
+                            if (barCode) {
+                              const formattedCode = formatBoletoCode(barCode);
+                              return (
+                                <Text style={styles.boletoCode} selectable>
+                                  {formattedCode}
+                                </Text>
+                              );
+                            } else {
+                              // Se não tem código de barras, mostra mensagem de carregamento
+                              return (
+                                <Text style={styles.boletoCode} numberOfLines={2}>
+                                  Código de pagamento será exibido aqui
+                                </Text>
+                              );
+                            }
+                          })()}
                           <Text style={styles.boletoCodeLabel}>
-                            {currentInvoice.paymentData?.barCode ? 'Código de barras do boleto' : 'Link do boleto'}
+                            Código de barras para pagamento
                           </Text>
                         </View>
                       </View>
@@ -796,7 +987,7 @@ export default function Faturas() {
 
                     <TouchableOpacity
                       style={styles.boletoButton}
-                      onPress={() => Linking.openURL(currentInvoice.paymentData?.ticket_url || '')}
+                      onPress={() => Linking.openURL(currentInvoice.paymentData?.ticket_url || currentInvoice.paymentInfo?.boletoUrl || '')}
                     >
                       <MaterialCommunityIcons name="open-in-new" size={24} color={colors.orange} />
                       <Text style={styles.boletoButtonText}>Abrir Boleto no Navegador</Text>
@@ -805,28 +996,26 @@ export default function Faturas() {
                     <TouchableOpacity
                       style={styles.copyBoletoButton}
                       onPress={async () => {
-                        const textToCopy = currentInvoice.paymentData?.barCode || currentInvoice.paymentData?.ticket_url;
-                        if (textToCopy) {
-                          await Clipboard.setStringAsync(textToCopy);
-                          Alert.alert(
-                            currentInvoice.paymentData?.barCode ? 
-                              'Código de barras copiado!' : 
-                              'Link do boleto copiado!'
-                          );
+                        const barCode = currentInvoice.paymentData?.barCode || currentInvoice.paymentInfo?.barCode;
+                        
+                        if (barCode) {
+                          // Copia o código de barras formatado
+                          const formattedCode = formatBoletoCode(barCode);
+                          await Clipboard.setStringAsync(formattedCode);
+                          Alert.alert('Sucesso', 'Código de barras copiado!\nVocê pode colar este código em qualquer app bancário.');
+                        } else {
+                          Alert.alert('Atenção', 'Código de barras ainda não disponível. Tente novamente em alguns segundos.');
                         }
                       }}
                     >
                       <MaterialCommunityIcons name="content-copy" size={20} color={colors.orange} />
                       <Text style={styles.copyBoletoButtonText}>
-                        {currentInvoice.paymentData?.barCode ? 
-                          'Copiar Código de Barras' : 
-                          'Copiar Link do Boleto'
-                        }
+                        Copiar código de pagamento
                       </Text>
                     </TouchableOpacity>
 
                     <Text style={styles.boletoInstructions}>
-                      Você pode pagar este boleto em qualquer banco ou casa lotérica até a data de vencimento.
+                      Use o código de pagamento acima em qualquer banco, casa lotérica ou app bancário até a data de vencimento.
                     </Text>
                   </View>
                 ) : (
@@ -1721,9 +1910,11 @@ const styles = StyleSheet.create({
     borderColor: colors.gray[200],
   },
   boletoCode: {
-    flex: 1,
-    fontSize: 16,
+    fontSize: 14,
     color: colors.gray[800],
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    flex: 1,
+    lineHeight: 20,
   },
   boletoInstructions: {
     fontSize: 14,
@@ -1741,18 +1932,13 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   boletoCodeTextContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.white,
-    borderRadius: 8,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
+    flex: 1,
+    marginLeft: 12,
   },
   boletoCodeLabel: {
-    fontSize: 14,
+    fontSize: 12,
     color: colors.gray[600],
-    marginLeft: 8,
+    marginTop: 4,
   },
   actionButtonsContainer: {
     gap: 12,
