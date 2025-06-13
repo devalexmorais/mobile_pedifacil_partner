@@ -29,6 +29,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { mercadoPagoService } from '@/services/mercadoPagoService';
+import { usePaymentStatus } from '@/hooks/usePaymentStatus';
 
 interface InvoiceDetail {
   id: string;
@@ -189,6 +190,9 @@ export default function Faturas() {
   const navigation = useNavigation();
   const { user } = useAuth();
   const functions = getFunctions();
+  
+  // Hook para monitoramento em tempo real do status de pagamento
+  const paymentStatus = usePaymentStatus();
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -322,6 +326,20 @@ export default function Faturas() {
         snapshot.docs.map(async (doc) => {
           const data = doc.data();
           console.log('Dados da fatura:', data);
+          
+          // Calcula se a fatura está vencida
+          let status = data.status || 'pending';
+          if (status === 'pending' && data.endDate) {
+            const today = new Date();
+            const dueDate = data.endDate.toDate();
+            const daysPastDue = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+            
+            if (daysPastDue > 0) {
+              status = 'overdue';
+              console.log(`Fatura ${doc.id} está vencida há ${daysPastDue} dias`);
+            }
+          }
+          
           const invoice: Invoice = {
             id: doc.id,
             partnerId: user.uid,
@@ -329,7 +347,7 @@ export default function Faturas() {
             endDate: data.endDate || data.createdAt,
             createdAt: data.createdAt,
             totalAmount: data.totalAmount || 0,
-            status: data.status || 'pending',
+            status: status as 'pending' | 'paid' | 'overdue',
             details: data.details || [],
             paymentId: data.paymentId,
             paymentMethod: data.paymentMethod,
@@ -342,15 +360,33 @@ export default function Faturas() {
       );
       
       setInvoices(loadedInvoices);
-      const pendingInvoice = loadedInvoices.find(inv => inv.status === 'pending');
       
-      if (pendingInvoice) {
-        console.log('Fatura pendente encontrada:', pendingInvoice);
-        setCurrentInvoice(pendingInvoice);
+      // Debug: mostra todas as faturas carregadas
+      console.log('📋 Faturas carregadas:', loadedInvoices.map(inv => ({
+        id: inv.id,
+        status: inv.status,
+        totalAmount: inv.totalAmount,
+        endDate: inv.endDate?.toDate?.()?.toLocaleDateString?.() || 'N/A'
+      })));
+      
+      // Busca fatura pendente ou vencida (não paga)
+      const currentInvoiceCandidate = loadedInvoices.find(inv => 
+        inv.status === 'pending' || inv.status === 'overdue'
+      );
+      
+      if (currentInvoiceCandidate) {
+        console.log('✅ Fatura atual encontrada:', {
+          id: currentInvoiceCandidate.id,
+          status: currentInvoiceCandidate.status,
+          totalAmount: currentInvoiceCandidate.totalAmount,
+          endDate: currentInvoiceCandidate.endDate?.toDate?.()?.toLocaleDateString?.()
+        });
+        setCurrentInvoice(currentInvoiceCandidate);
         
         // Não gera pagamento automaticamente - deixa o usuário escolher
         console.log('Fatura carregada. Aguardando escolha do método de pagamento pelo usuário.');
       } else {
+        console.log('❌ Nenhuma fatura pendente ou vencida encontrada');
         setCurrentInvoice(null);
       }
     } catch (error) {
@@ -862,17 +898,58 @@ export default function Faturas() {
   const renderCurrentInvoiceCard = () => {
     if (!currentInvoice) return null;
 
+    // Usa o status do hook em tempo real
+    const { isBlocked, daysPastDue, hasOverdueInvoice } = paymentStatus.paymentStatus;
+    const isOverdue = hasOverdueInvoice;
+    
+    console.log('🏪 Faturas - Status de pagamento:', { isBlocked, daysPastDue, hasOverdueInvoice });
+
     return (
       <LinearGradient
-        colors={[colors.orange, colors.orange + '90']}
+        colors={isOverdue 
+          ? isBlocked 
+            ? [colors.red[500], colors.red[600]] 
+            : [colors.yellow[500], colors.yellow[600]]
+          : [colors.orange, colors.orange + '90']
+        }
         style={styles.currentInvoiceCard}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
+        {/* Aviso de bloqueio crítico */}
+        {isBlocked && (
+          <View style={styles.criticalWarningContainer}>
+            <Ionicons name="warning" size={24} color={colors.white} />
+            <Text style={styles.criticalWarningText}>
+              🚨 APLICATIVO BLOQUEADO
+            </Text>
+            <Text style={styles.criticalWarningSubtext}>
+              Fatura vencida há {daysPastDue} dias
+            </Text>
+          </View>
+        )}
+
+        {/* Aviso de atraso */}
+        {isOverdue && !isBlocked && (
+          <View style={styles.overdueWarningContainer}>
+            <Ionicons name="time" size={20} color={colors.white} />
+            <Text style={styles.overdueWarningText}>
+              Fatura em atraso há {daysPastDue} dia{daysPastDue !== 1 ? 's' : ''}
+            </Text>
+            {daysPastDue >= 4 && (
+              <Text style={styles.overdueWarningSubtext}>
+                Em {7 - daysPastDue} dia{7 - daysPastDue !== 1 ? 's' : ''} o app será bloqueado
+              </Text>
+            )}
+          </View>
+        )}
+
         <View style={styles.currentInvoiceHeader}>
           <View style={styles.currentInvoiceHeaderLeft}>
             <MaterialCommunityIcons name="file-document" size={28} color={colors.white} />
-            <Text style={styles.currentInvoiceTitle}>Fatura Atual</Text>
+            <Text style={styles.currentInvoiceTitle}>
+              {isBlocked ? 'Fatura Bloqueada' : isOverdue ? 'Fatura Atrasada' : 'Fatura Atual'}
+            </Text>
           </View>
           <InvoiceStatusBadge status={currentInvoice.status} />
         </View>
@@ -892,11 +969,16 @@ export default function Faturas() {
             </Text>
             <Text style={styles.currentInvoiceDueDate}>
               Vencimento: {formatDate(currentInvoice.endDate)}
+              {isOverdue && (
+                <Text style={styles.overdueText}>
+                  {' '}(Vencida{daysPastDue > 1 ? ` há ${daysPastDue} dias` : ' ontem'})
+                </Text>
+              )}
             </Text>
           </View>
         </View>
 
-        {currentInvoice.status === 'pending' && (
+        {(currentInvoice.status === 'pending' || currentInvoice.status === 'overdue') && (
           <View style={styles.paymentContainer}>
             {isGeneratingPayment ? (
               <View style={styles.paymentLoadingContainer}>
@@ -1312,7 +1394,20 @@ export default function Faturas() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {currentInvoice && renderCurrentInvoiceCard()}
+        {currentInvoice ? (
+          renderCurrentInvoiceCard()
+        ) : (
+          <View style={styles.noCurrentInvoiceContainer}>
+            <View style={styles.noCurrentInvoiceIconContainer}>
+              <MaterialCommunityIcons name="file-check" size={64} color={colors.green[500]} />
+            </View>
+            <Text style={styles.noCurrentInvoiceTitle}>Nenhuma fatura pendente</Text>
+            <Text style={styles.noCurrentInvoiceDescription}>
+              Você está em dia com seus pagamentos! 
+              {invoices.length > 0 ? ' Confira seu histórico abaixo.' : ' Suas faturas aparecerão aqui quando você começar a receber pedidos.'}
+            </Text>
+          </View>
+        )}
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Histórico de Faturas</Text>
@@ -1354,6 +1449,22 @@ export default function Faturas() {
               </Text>
             </View>
           )}
+        </View>
+
+        {/* Debug: Status atual das faturas */}
+        <View style={styles.debugSection}>
+          <Text style={styles.debugSectionTitle}>🔍 Debug - Status das Faturas</Text>
+          <Text style={styles.debugText}>
+            Total de faturas: {invoices.length}
+          </Text>
+          <Text style={styles.debugText}>
+            Fatura atual: {currentInvoice ? `${currentInvoice.status} - ${formatCurrency(currentInvoice.totalAmount)}` : 'Nenhuma'}
+          </Text>
+          {invoices.map(invoice => (
+            <Text key={invoice.id} style={styles.debugText}>
+              • {invoice.id.substring(0, 8)}: {invoice.status} - {formatDate(invoice.endDate)} - {formatCurrency(invoice.totalAmount)}
+            </Text>
+          ))}
         </View>
 
         {/* Botões de Teste e Debug */}
@@ -2216,5 +2327,96 @@ const styles = StyleSheet.create({
      marginLeft: 8,
      fontSize: 14,
      fontWeight: '500',
+   },
+   // Estilos para avisos de atraso
+   criticalWarningContainer: {
+     backgroundColor: 'rgba(0, 0, 0, 0.2)',
+     borderRadius: 12,
+     padding: 16,
+     marginBottom: 16,
+     alignItems: 'center',
+     borderWidth: 2,
+     borderColor: 'rgba(255, 255, 255, 0.3)',
+   },
+   criticalWarningText: {
+     fontSize: 18,
+     fontWeight: 'bold',
+     color: colors.white,
+     marginLeft: 8,
+     textAlign: 'center',
+   },
+   criticalWarningSubtext: {
+     fontSize: 14,
+     color: colors.white,
+     marginTop: 4,
+     textAlign: 'center',
+     opacity: 0.9,
+   },
+   overdueWarningContainer: {
+     backgroundColor: 'rgba(0, 0, 0, 0.15)',
+     borderRadius: 12,
+     padding: 12,
+     marginBottom: 12,
+     flexDirection: 'row',
+     alignItems: 'center',
+     borderWidth: 1,
+     borderColor: 'rgba(255, 255, 255, 0.3)',
+   },
+   overdueWarningText: {
+     fontSize: 16,
+     fontWeight: 'bold',
+     color: colors.white,
+     marginLeft: 8,
+     flex: 1,
+   },
+   overdueWarningSubtext: {
+     fontSize: 12,
+     color: colors.white,
+     marginTop: 4,
+     opacity: 0.9,
+   },
+   overdueText: {
+     fontSize: 14,
+     color: colors.white,
+     fontWeight: 'bold',
+     opacity: 0.8,
+   },
+   // Estilos para quando não há fatura atual
+   noCurrentInvoiceContainer: {
+     backgroundColor: colors.white,
+     borderRadius: 20,
+     padding: 32,
+     marginBottom: 24,
+     alignItems: 'center',
+     elevation: 4,
+     shadowColor: colors.gray[400],
+     shadowOffset: { width: 0, height: 2 },
+     shadowOpacity: 0.1,
+     shadowRadius: 8,
+   },
+   noCurrentInvoiceIconContainer: {
+     backgroundColor: colors.green[100],
+     borderRadius: 50,
+     padding: 20,
+     marginBottom: 16,
+   },
+   noCurrentInvoiceTitle: {
+     fontSize: 20,
+     fontWeight: 'bold',
+     color: colors.gray[800],
+     marginBottom: 8,
+     textAlign: 'center',
+   },
+   noCurrentInvoiceDescription: {
+     fontSize: 16,
+     color: colors.gray[600],
+     textAlign: 'center',
+     lineHeight: 24,
+   },
+   debugText: {
+     fontSize: 12,
+     color: colors.gray[700],
+     marginBottom: 4,
+     fontFamily: 'monospace',
    },
 }); 

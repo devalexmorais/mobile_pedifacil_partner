@@ -1,6 +1,7 @@
 import { doc, updateDoc, getDoc, setDoc, collection, query, where, orderBy, limit, getDocs, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
 import { establishmentSettingsService, Schedule } from './establishmentSettingsService';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 export const establishmentService = {
   // Tempo de inatividade em minutos antes de fechar a loja automaticamente
@@ -377,6 +378,36 @@ export const establishmentService = {
       const user = auth.currentUser;
       if (!user) throw new Error('Usuário não autenticado');
 
+      console.log('🔒 Tentando alterar status do estabelecimento:', isOpen ? 'ABRIR' : 'FECHAR');
+
+      // Se estiver tentando abrir, primeiro verifica se pode via Cloud Function
+      if (isOpen) {
+        const functions = getFunctions();
+        const verificarPermissao = httpsCallable(functions, 'verificarPermissaoAbertura');
+        
+        try {
+          const result = await verificarPermissao();
+          const data = result.data as any;
+          
+          if (!data.canOpen) {
+            console.log('🔒 ❌ ABERTURA NEGADA pelo backend:', data.reason);
+            throw new Error(data.reason || 'Estabelecimento não pode ser aberto devido a pendências de pagamento');
+          }
+          
+          console.log('🔒 ✅ ABERTURA PERMITIDA pelo backend');
+        } catch (cloudError: any) {
+          console.error('🔒 ❌ ERRO na verificação de permissão:', cloudError);
+          
+          // Se é erro de permissão, repassa a mensagem
+          if (cloudError.code === 'functions/permission-denied') {
+            throw new Error(cloudError.message);
+          }
+          
+          // Para outros erros, permite continuar (fail-safe)
+          console.warn('🔒 ⚠️ Erro na Cloud Function, continuando com verificação local...');
+        }
+      }
+
       // Se estiver fechando, verifica pedidos pendentes
       if (!isOpen) {
         const ordersRef = collection(db, 'partners', user.uid, 'orders');
@@ -391,19 +422,46 @@ export const establishmentService = {
         }
       }
 
-      const partnerRef = doc(db, 'partners', user.uid);
-      await updateDoc(partnerRef, {
-        isOpen,
-        operationMode: this.OPERATION_MODE.MANUAL,
-        lastStatusChange: new Date().toISOString(),
-        statusChangeReason: isOpen 
-          ? 'Aberto manualmente pelo usuário'
-          : 'Fechado manualmente pelo usuário'
-      });
+      // Usa a Cloud Function segura para atualizar o status
+      const functions = getFunctions();
+      const atualizarStatus = httpsCallable(functions, 'atualizarStatusEstabelecimento');
+      
+      try {
+        const result = await atualizarStatus({
+          isOpen,
+          reason: isOpen 
+            ? 'Aberto manualmente pelo usuário'
+            : 'Fechado manualmente pelo usuário'
+        });
+        
+        const data = result.data as any;
+        console.log('🔒 ✅ Status atualizado via Cloud Function:', data.message);
+        
+      } catch (cloudError: any) {
+        console.error('🔒 ❌ ERRO na Cloud Function de atualização:', cloudError);
+        
+        // Se é erro de permissão, repassa a mensagem
+        if (cloudError.code === 'functions/permission-denied') {
+          throw new Error(cloudError.message);
+        }
+        
+        // Para outros erros, tenta atualização local como fallback
+        console.warn('🔒 ⚠️ Erro na Cloud Function, tentando atualização local...');
+        
+        const partnerRef = doc(db, 'partners', user.uid);
+        await updateDoc(partnerRef, {
+          'establishmentStatus.isOpen': isOpen,
+          'establishmentStatus.operationMode': this.OPERATION_MODE.MANUAL,
+          'establishmentStatus.lastStatusChange': new Date().toISOString(),
+          'establishmentStatus.statusChangeReason': isOpen 
+            ? 'Aberto manualmente pelo usuário (fallback)'
+            : 'Fechado manualmente pelo usuário (fallback)'
+        });
+      }
 
-      console.log(`Estabelecimento ${isOpen ? 'aberto' : 'fechado'} manualmente`);
+      console.log(`🔒 Estabelecimento ${isOpen ? 'aberto' : 'fechado'} com sucesso`);
     } catch (error) {
-      console.error('Erro ao alternar status do estabelecimento:', error);
+      console.error('🔒 ❌ Erro ao alternar status do estabelecimento:', error);
       throw error;
     }
   },
