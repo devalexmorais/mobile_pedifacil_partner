@@ -348,14 +348,8 @@ export default function Faturas() {
         console.log('Fatura pendente encontrada:', pendingInvoice);
         setCurrentInvoice(pendingInvoice);
         
-        // Se não tiver QR Code gerado, gera automaticamente
-        if (!pendingInvoice.paymentData?.qr_code) {
-          console.log('Iniciando geração automática do QR Code PIX...');
-          setPaymentMethod('pix');
-          await handleGeneratePayment(pendingInvoice);
-        } else {
-          console.log('QR Code já existe:', pendingInvoice.paymentData);
-        }
+        // Não gera pagamento automaticamente - deixa o usuário escolher
+        console.log('Fatura carregada. Aguardando escolha do método de pagamento pelo usuário.');
       } else {
         setCurrentInvoice(null);
       }
@@ -1049,9 +1043,44 @@ export default function Faturas() {
                 </TouchableOpacity>
               </View>
             ) : (
-              <View style={styles.paymentLoadingContainer}>
-                <ActivityIndicator size="large" color={colors.white} />
-                <Text style={styles.loadingText}>Carregando dados do pagamento...</Text>
+              <View style={styles.paymentOptionsContainer}>
+                <Text style={styles.paymentOptionsTitle}>Escolha como pagar sua fatura:</Text>
+                
+                <View style={styles.paymentButtonsContainer}>
+                  <TouchableOpacity
+                    style={styles.paymentOptionButton}
+                    onPress={async () => {
+                      setPaymentMethod('pix');
+                      await handleGeneratePayment();
+                    }}
+                    disabled={isGeneratingPayment}
+                  >
+                    <View style={styles.paymentOptionContent}>
+                      <Ionicons name="qr-code-outline" size={32} color={colors.white} />
+                      <Text style={styles.paymentOptionTitle}>PIX</Text>
+                      <Text style={styles.paymentOptionDescription}>Instantâneo</Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.paymentOptionButton}
+                    onPress={async () => {
+                      setPaymentMethod('boleto');
+                      await handleGeneratePayment();
+                    }}
+                    disabled={isGeneratingPayment}
+                  >
+                    <View style={styles.paymentOptionContent}>
+                      <MaterialCommunityIcons name="barcode" size={32} color={colors.white} />
+                      <Text style={styles.paymentOptionTitle}>Boleto</Text>
+                      <Text style={styles.paymentOptionDescription}>Até 3 dias úteis</Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.paymentOptionsNote}>
+                  Selecione uma opção para gerar o pagamento da sua fatura
+                </Text>
               </View>
             )}
           </View>
@@ -1246,9 +1275,11 @@ export default function Faturas() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Histórico de Faturas</Text>
-          {invoices.length > 0 ? (
+          {invoices.filter(invoice => invoice.status === 'paid').length > 0 ? (
             <View style={styles.invoicesList}>
-              {invoices.map((invoice) => (
+              {invoices
+                .filter(invoice => invoice.status === 'paid')
+                .map((invoice) => (
                 <TouchableOpacity
                   key={invoice.id}
                   style={styles.invoiceItem}
@@ -1272,7 +1303,15 @@ export default function Faturas() {
               ))}
             </View>
           ) : (
-            <EmptyState />
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIconContainer}>
+                <MaterialCommunityIcons name="receipt" size={48} color={colors.orange} />
+              </View>
+              <Text style={styles.emptyTitle}>Nenhuma fatura paga ainda</Text>
+              <Text style={styles.emptyDescription}>
+                Quando você efetuar o pagamento de uma fatura, ela aparecerá aqui no seu histórico.
+              </Text>
+            </View>
           )}
         </View>
 
@@ -2060,4 +2099,51 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
+     paymentOptionsContainer: {
+     marginTop: 16,
+   },
+   paymentOptionsTitle: {
+     fontSize: 18,
+     fontWeight: 'bold',
+     color: colors.white,
+     marginBottom: 16,
+     textAlign: 'center',
+   },
+   paymentButtonsContainer: {
+     flexDirection: 'row',
+     justifyContent: 'space-between',
+     marginBottom: 16,
+     gap: 12,
+   },
+   paymentOptionButton: {
+     flex: 1,
+     backgroundColor: 'rgba(255, 255, 255, 0.2)',
+     borderRadius: 16,
+     padding: 20,
+     alignItems: 'center',
+     borderWidth: 2,
+     borderColor: 'rgba(255, 255, 255, 0.3)',
+   },
+   paymentOptionContent: {
+     alignItems: 'center',
+   },
+   paymentOptionTitle: {
+     fontSize: 16,
+     fontWeight: 'bold',
+     color: colors.white,
+     marginTop: 8,
+     marginBottom: 4,
+   },
+   paymentOptionDescription: {
+     fontSize: 12,
+     color: colors.white,
+     opacity: 0.8,
+   },
+   paymentOptionsNote: {
+     fontSize: 14,
+     color: colors.white,
+     opacity: 0.9,
+     textAlign: 'center',
+     fontStyle: 'italic',
+   },
 }); 
