@@ -370,9 +370,13 @@ export default function Faturas() {
     setDetailsModalVisible(true);
   };
 
-  const handleGeneratePayment = async (invoice?: Invoice) => {
+  const handleGeneratePayment = async (invoice?: Invoice, forceMethod?: 'pix' | 'boleto') => {
     const targetInvoice = invoice || currentInvoice;
     if (!targetInvoice || !user?.uid) return;
+    
+    // Usa o método forçado se fornecido, senão usa o estado atual
+    const methodToUse = forceMethod || paymentMethod;
+    console.log('🎯 Método de pagamento sendo usado:', methodToUse);
     
     setIsGeneratingPayment(true);
     setPaymentError(null);
@@ -391,7 +395,7 @@ export default function Faturas() {
       });
 
       // Validação mais detalhada do endereço para boleto
-      if (paymentMethod === 'boleto') {
+      if (methodToUse === 'boleto') {
         if (!partnerData?.address) {
           throw new Error('Endereço não encontrado. Por favor, atualize seu cadastro.');
         }
@@ -419,11 +423,11 @@ export default function Faturas() {
       let paymentData: any = {
         partnerId: user.uid,
         invoiceId: targetInvoice.id,
-        tipoPagamento: paymentMethod
+        tipoPagamento: methodToUse
       };
 
       // Para boleto, adiciona os dados no formato correto do Mercado Pago
-      if (paymentMethod === 'boleto' && partnerData?.address) {
+      if (methodToUse === 'boleto' && partnerData?.address) {
         // Validação dos dados necessários para boleto
         const requiredPartnerFields = {
           email: partnerData.email || partnerData.user?.email,
@@ -523,7 +527,7 @@ export default function Faturas() {
       console.log('🚀 Enviando para servidor:', JSON.stringify(paymentData, null, 2));
       
       // Para boleto, log extra de verificação
-      if (paymentMethod === 'boleto') {
+      if (methodToUse === 'boleto') {
         console.log('🔍 Verificação final do boleto:', {
           temTransactionAmount: !!paymentData.transaction_amount,
           temDescription: !!paymentData.description,
@@ -561,7 +565,7 @@ export default function Faturas() {
         });
 
         // Para boleto, tentar com estrutura alternativa como último recurso
-        if (paymentMethod === 'boleto' && serverError.message?.includes('campos de endereço são obrigatórios')) {
+        if (methodToUse === 'boleto' && serverError.message?.includes('campos de endereço são obrigatórios')) {
           console.log('🔄 Tentando enviar boleto com estrutura híbrida...');
           
           const hybridPaymentData = {
@@ -615,7 +619,7 @@ export default function Faturas() {
         
         let boletoUrl = null;
         let boletoBarCode = null;
-        if (paymentMethod === 'boleto') {
+        if (methodToUse === 'boleto') {
           if (!result.data) {
             console.error('Dados do pagamento não retornados:', result);
             throw new Error('Dados do pagamento não retornados pelo servidor. Tente novamente.');
@@ -665,7 +669,7 @@ export default function Faturas() {
         console.log('Fatura atualizada:', updatedInvoice);
         setCurrentInvoice(updatedInvoice);
 
-        if (paymentMethod === 'boleto' && boletoUrl) {
+        if (methodToUse === 'boleto' && boletoUrl) {
           console.log('Abrindo URL do boleto:', boletoUrl);
           Linking.openURL(boletoUrl);
         }
@@ -940,6 +944,25 @@ export default function Faturas() {
                   </>
                 )}
                 
+                {/* Botão para alternar para Boleto quando tem PIX */}
+                {(currentInvoice.paymentData?.qr_code || currentInvoice.paymentData?.qr_code_base64 || currentInvoice.paymentInfo?.paymentUrl || currentInvoice.paymentInfo?.qrCodeBase64) && 
+                 !(currentInvoice.paymentData?.ticket_url || currentInvoice.paymentInfo?.boletoUrl) && (
+                  <View style={styles.alternatePaymentSection}>
+                    <Text style={styles.alternatePaymentTitle}>Prefere pagar com boleto?</Text>
+                    <TouchableOpacity
+                      style={styles.alternatePaymentButton}
+                      onPress={async () => {
+                        console.log('🔄 Usuário quer trocar PIX por Boleto');
+                        await handleGeneratePayment(undefined, 'boleto');
+                      }}
+                      disabled={isGeneratingPayment}
+                    >
+                      <MaterialCommunityIcons name="barcode" size={20} color={colors.orange} />
+                      <Text style={styles.alternatePaymentButtonText}>Gerar Boleto</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                
                 {(currentInvoice.paymentData?.ticket_url || currentInvoice.paymentInfo?.boletoUrl) ? (
                   <View>
                     <Text style={[styles.qrCodeTitle, { color: colors.gray[800] }]}>Pague sua fatura usando Boleto</Text>
@@ -1011,6 +1034,22 @@ export default function Faturas() {
                     <Text style={styles.boletoInstructions}>
                       Use o código de pagamento acima em qualquer banco, casa lotérica ou app bancário até a data de vencimento.
                     </Text>
+                    
+                    {/* Botão para alternar para PIX quando tem Boleto */}
+                    <View style={styles.alternatePaymentSection}>
+                      <Text style={styles.alternatePaymentTitle}>Prefere pagar com PIX?</Text>
+                      <TouchableOpacity
+                        style={styles.alternatePaymentButton}
+                        onPress={async () => {
+                          console.log('🔄 Usuário quer trocar Boleto por PIX');
+                          await handleGeneratePayment(undefined, 'pix');
+                        }}
+                        disabled={isGeneratingPayment}
+                      >
+                        <Ionicons name="qr-code-outline" size={20} color={colors.orange} />
+                        <Text style={styles.alternatePaymentButtonText}>Gerar PIX</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 ) : (
                   <>
@@ -1018,9 +1057,8 @@ export default function Faturas() {
                     <TouchableOpacity
                       style={styles.boletoButton}
                       onPress={async () => {
-                        setPaymentMethod('boleto');
-                        await new Promise(resolve => setTimeout(resolve, 0));
-                        handleGeneratePayment();
+                        console.log('🎯 Usuário clicou em Gerar Boleto (alternativo)');
+                        await handleGeneratePayment(undefined, 'boleto');
                       }}
                     >
                       <MaterialCommunityIcons name="barcode" size={24} color={colors.orange} />
@@ -1035,8 +1073,8 @@ export default function Faturas() {
                 <TouchableOpacity 
                   style={styles.retryButton}
                   onPress={() => {
-                    setPaymentMethod('pix');
-                    handleGeneratePayment();
+                    console.log('🎯 Usuário clicou em Tentar Novamente (PIX)');
+                    handleGeneratePayment(undefined, 'pix');
                   }}
                 >
                   <Text style={styles.retryButtonText}>Tentar Novamente</Text>
@@ -1050,8 +1088,8 @@ export default function Faturas() {
                   <TouchableOpacity
                     style={styles.paymentOptionButton}
                     onPress={async () => {
-                      setPaymentMethod('pix');
-                      await handleGeneratePayment();
+                      console.log('🎯 Usuário clicou em PIX');
+                      await handleGeneratePayment(undefined, 'pix');
                     }}
                     disabled={isGeneratingPayment}
                   >
@@ -1065,8 +1103,8 @@ export default function Faturas() {
                   <TouchableOpacity
                     style={styles.paymentOptionButton}
                     onPress={async () => {
-                      setPaymentMethod('boleto');
-                      await handleGeneratePayment();
+                      console.log('🎯 Usuário clicou em BOLETO');
+                      await handleGeneratePayment(undefined, 'boleto');
                     }}
                     disabled={isGeneratingPayment}
                   >
@@ -1131,7 +1169,10 @@ export default function Faturas() {
 
           <TouchableOpacity 
             style={styles.generatePaymentButton}
-            onPress={() => handleGeneratePayment()}
+            onPress={() => {
+              console.log('🎯 Usuário clicou em Gerar no modal:', paymentMethod);
+              handleGeneratePayment(undefined, paymentMethod);
+            }}
             disabled={isGeneratingPayment}
           >
             {isGeneratingPayment ? (
@@ -2145,5 +2186,35 @@ const styles = StyleSheet.create({
      opacity: 0.9,
      textAlign: 'center',
      fontStyle: 'italic',
+   },
+   alternatePaymentSection: {
+     backgroundColor: 'rgba(255, 255, 255, 0.1)',
+     borderRadius: 12,
+     padding: 16,
+     marginTop: 16,
+     alignItems: 'center',
+   },
+   alternatePaymentTitle: {
+     fontSize: 16,
+     color: colors.white,
+     marginBottom: 12,
+     textAlign: 'center',
+     opacity: 0.9,
+   },
+   alternatePaymentButton: {
+     flexDirection: 'row',
+     alignItems: 'center',
+     backgroundColor: colors.white,
+     paddingVertical: 10,
+     paddingHorizontal: 20,
+     borderRadius: 8,
+     borderWidth: 1,
+     borderColor: colors.orange,
+   },
+   alternatePaymentButtonText: {
+     color: colors.orange,
+     marginLeft: 8,
+     fontSize: 14,
+     fontWeight: '500',
    },
 }); 

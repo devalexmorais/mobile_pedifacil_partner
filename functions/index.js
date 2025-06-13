@@ -71,6 +71,212 @@ const MERCADO_PAGO_IPS = [
   '34.200.230.236'
 ];
 
+// Função de segurança para cancelar pagamentos pendentes e evitar duplicatas
+async function cancelarPagamentosPendentesSeguro(invoice, novoTipoPagamento, invoiceRef) {
+  try {
+    console.log('🛡️ SEGURANÇA: Verificando pagamentos pendentes para evitar duplicatas...');
+    console.log('🛡️ Novo tipo solicitado:', novoTipoPagamento);
+    
+    // Verifica se já existe um pagamento pendente
+    if (!invoice.paymentInfo || !invoice.paymentInfo.paymentId) {
+      console.log('🛡️ Nenhum pagamento anterior encontrado - prosseguindo');
+      return;
+    }
+    
+    const pagamentoExistente = invoice.paymentInfo;
+    console.log('🛡️ Pagamento existente encontrado:', {
+      paymentId: pagamentoExistente.paymentId,
+      status: pagamentoExistente.status,
+      method: pagamentoExistente.paymentMethod
+    });
+    
+    // Se o pagamento já está pago ou falhou, não precisa cancelar
+    if (pagamentoExistente.status === 'paid' || pagamentoExistente.status === 'failed') {
+      console.log('🛡️ Pagamento anterior já finalizado (paid/failed) - não precisa cancelar');
+      return;
+    }
+    
+    // Se o tipo de pagamento é o mesmo, não precisa cancelar
+    if (pagamentoExistente.paymentMethod === novoTipoPagamento) {
+      console.log('🛡️ Mesmo tipo de pagamento - não precisa cancelar');
+      return;
+    }
+    
+    // AQUI É ONDE A SEGURANÇA ATUA: tipos diferentes, cancela o anterior
+    console.log('🛡️ CANCELANDO pagamento anterior (tipo diferente):');
+    console.log(`🛡️ Anterior: ${pagamentoExistente.paymentMethod} | Novo: ${novoTipoPagamento}`);
+    
+    try {
+      // 1. Tenta cancelar no Mercado Pago
+      console.log('🛡️ Tentando cancelar no Mercado Pago:', pagamentoExistente.paymentId);
+      
+      const cancelResponse = await axios.put(
+        `https://api.mercadopago.com/v1/payments/${pagamentoExistente.paymentId}`,
+        { status: 'cancelled' },
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 10000 // 10 segundos de timeout
+        }
+      );
+      
+      console.log('🛡️ ✅ Pagamento cancelado no Mercado Pago:', cancelResponse.data.status);
+      
+      // Verifica se o cancelamento realmente funcionou
+      const foiCancelado = await verificarCancelamentoMP(pagamentoExistente.paymentId);
+      if (foiCancelado) {
+        console.log('🛡️ ✅ Cancelamento confirmado no Mercado Pago');
+      } else {
+        console.warn('🛡️ ⚠️ Cancelamento pode não ter sido efetivo no MP');
+      }
+      
+    } catch (cancelError) {
+      console.warn('🛡️ ⚠️ Erro ao cancelar no Mercado Pago (continuando mesmo assim):', {
+        status: cancelError.response?.status,
+        data: cancelError.response?.data,
+        message: cancelError.message
+      });
+      
+      // Não falha aqui - continua com a limpeza local mesmo se não conseguir cancelar no MP
+    }
+    
+    // 2. SEMPRE limpa os dados locais (independente do cancelamento no MP)
+    console.log('🛡️ Limpando dados de pagamento local na fatura...');
+    
+    const updateData = {
+      // Remove todos os dados de pagamento
+      'paymentInfo.paymentId': admin.firestore.FieldValue.delete(),
+      'paymentInfo.paymentMethod': admin.firestore.FieldValue.delete(),
+      'paymentInfo.paymentUrl': admin.firestore.FieldValue.delete(),
+      'paymentInfo.qrCodeBase64': admin.firestore.FieldValue.delete(),
+      'paymentInfo.boletoUrl': admin.firestore.FieldValue.delete(),
+      'paymentInfo.barCode': admin.firestore.FieldValue.delete(),
+      'paymentInfo.boletoExpirationDate': admin.firestore.FieldValue.delete(),
+      'paymentInfo.status': 'cancelled',
+      'paymentInfo.history': admin.firestore.FieldValue.arrayUnion({
+        status: 'cancelled',
+        date: new Date(),
+        detail: `Cancelado por segurança - novo ${novoTipoPagamento} solicitado`
+      }),
+      
+      // Volta status da fatura para pending
+      status: 'pending',
+      updatedAt: admin.firestore.Timestamp.now(),
+    };
+    
+    await invoiceRef.update(updateData);
+    console.log('🛡️ ✅ Dados de pagamento anterior limpos com sucesso');
+    
+    // 3. Log de segurança
+    console.log('🛡️ ✅ SEGURANÇA APLICADA: Pagamento anterior cancelado e limpo');
+    console.log('🛡️ ✅ Agora pode gerar novo pagamento do tipo:', novoTipoPagamento);
+    
+  } catch (error) {
+    console.error('🛡️ ❌ ERRO CRÍTICO na função de segurança:', error);
+    // Em caso de erro crítico, ainda permite continuar mas loga o problema
+    console.error('🛡️ ❌ Continuando com geração do pagamento mesmo com erro de segurança');
+  }
+}
+
+// Função de segurança adicional para verificar outras faturas pendentes do mesmo parceiro
+async function verificarOutrasFaturasPendentes(partnerId, faturaAtualId) {
+  try {
+    console.log('🛡️ SEGURANÇA ADICIONAL: Verificando outras faturas pendentes...');
+    
+    // Busca outras faturas pendentes do mesmo parceiro (excluindo a atual)
+    const outrasForturasQuery = await db
+      .collection('partners')
+      .doc(partnerId)
+      .collection('invoices')
+      .where('status', '==', 'pending')
+      .get();
+    
+    const outrasFacturas = outrasForturasQuery.docs.filter(doc => doc.id !== faturaAtualId);
+    
+    if (outrasFacturas.length === 0) {
+      console.log('🛡️ ✅ Nenhuma outra fatura pendente encontrada');
+      return;
+    }
+    
+    console.log(`🛡️ ⚠️ ATENÇÃO: Encontradas ${outrasFacturas.length} outras faturas pendentes`);
+    
+    // Para cada fatura pendente, cancela seus pagamentos
+    for (const faturaDoc of outrasFacturas) {
+      const faturaData = faturaDoc.data();
+      console.log(`🛡️ Processando fatura pendente: ${faturaDoc.id}`);
+      
+      if (faturaData.paymentInfo && faturaData.paymentInfo.paymentId) {
+        console.log(`🛡️ Cancelando pagamento da fatura ${faturaDoc.id}: ${faturaData.paymentInfo.paymentId}`);
+        
+        try {
+          // Cancela no Mercado Pago
+          await axios.put(
+            `https://api.mercadopago.com/v1/payments/${faturaData.paymentInfo.paymentId}`,
+            { status: 'cancelled' },
+            {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+              },
+              timeout: 5000
+            }
+          );
+          
+          console.log(`🛡️ ✅ Pagamento da fatura ${faturaDoc.id} cancelado no MP`);
+        } catch (error) {
+          console.warn(`🛡️ ⚠️ Erro ao cancelar pagamento da fatura ${faturaDoc.id}:`, error.message);
+        }
+        
+        // Limpa dados de pagamento da fatura
+        await faturaDoc.ref.update({
+          'paymentInfo.status': 'cancelled',
+          'paymentInfo.history': admin.firestore.FieldValue.arrayUnion({
+            status: 'cancelled',
+            date: new Date(),
+            detail: 'Cancelado por segurança - nova fatura sendo processada'
+          }),
+          updatedAt: admin.firestore.Timestamp.now(),
+        });
+        
+        console.log(`🛡️ ✅ Dados da fatura ${faturaDoc.id} atualizados`);
+      }
+    }
+    
+    console.log('🛡️ ✅ SEGURANÇA ADICIONAL: Outras faturas pendentes processadas');
+    
+  } catch (error) {
+    console.error('🛡️ ❌ Erro na verificação de outras faturas pendentes:', error);
+    // Não falha a operação principal
+  }
+}
+
+// Função auxiliar para verificar se um pagamento foi cancelado no Mercado Pago
+async function verificarCancelamentoMP(paymentId) {
+  try {
+    console.log('🔍 Verificando status do pagamento cancelado:', paymentId);
+    
+    const response = await axios.get(
+      `https://api.mercadopago.com/v1/payments/${paymentId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        timeout: 5000
+      }
+    );
+    
+    const status = response.data.status;
+    console.log(`🔍 Status atual no MP: ${status}`);
+    
+    return status === 'cancelled';
+  } catch (error) {
+    console.warn('🔍 ⚠️ Erro ao verificar cancelamento no MP:', error.message);
+    return false; // Assume que não foi cancelado se houver erro
+  }
+}
+
 // Função para gerar pagamento de uma fatura
 exports.gerarPagamento = functions.https.onCall(async (data, context) => {
   try {
@@ -125,53 +331,37 @@ exports.gerarPagamento = functions.https.onCall(async (data, context) => {
     const invoice = invoiceSnap.data();
     console.log('Invoice encontrado:', invoice);
 
-    // ✅ VERIFICAÇÃO: Se já existe um pagamento válido, retorna ele ao invés de criar um novo
-    if (invoice.paymentInfo && invoice.paymentInfo.paymentId && invoice.paymentInfo.status !== 'failed') {
-      console.log('⚠️ Já existe um pagamento para esta fatura:', invoice.paymentInfo.paymentId);
+    // ✅ FUNÇÃO DE SEGURANÇA: Cancelar pagamentos pendentes para evitar duplicatas
+    await cancelarPagamentosPendentesSeguro(invoice, tipoPagamento, invoiceRef);
+    
+    // ✅ SEGURANÇA ADICIONAL: Verificar se existem outras faturas pendentes do mesmo parceiro
+    await verificarOutrasFaturasPendentes(partnerId, invoiceId);
+    
+    // Recarrega a fatura após possível cancelamento
+    const updatedInvoiceSnap = await invoiceRef.get();
+    const updatedInvoice = updatedInvoiceSnap.data();
+    
+    // ✅ VERIFICAÇÃO: Se já existe um pagamento válido do mesmo tipo, retorna ele
+    if (updatedInvoice.paymentInfo && updatedInvoice.paymentInfo.paymentId && 
+        updatedInvoice.paymentInfo.status !== 'failed' && updatedInvoice.paymentInfo.status !== 'cancelled' &&
+        updatedInvoice.paymentInfo.paymentMethod === tipoPagamento) {
+      console.log('✅ Retornando pagamento existente do mesmo tipo após verificação de segurança');
       
-      // Verifica se o tipo de pagamento é o mesmo solicitado
-      if (invoice.paymentInfo.paymentMethod === tipoPagamento) {
-        console.log('✅ Retornando pagamento existente do mesmo tipo');
-        
-        // Retorna os dados do pagamento existente
-        const existingResult = {
-          paymentId: invoice.paymentInfo.paymentId,
-          status: invoice.paymentInfo.status,
-          ...(tipoPagamento === 'pix' ? {
-            qrCode: invoice.paymentInfo.paymentUrl,
-            qrCodeBase64: invoice.paymentInfo.qrCodeBase64
-          } : {
-            boletoUrl: invoice.paymentInfo.boletoUrl,
-            barCode: invoice.paymentInfo.barCode,
-            boletoExpirationDate: invoice.paymentInfo.boletoExpirationDate
-          })
-        };
-        
-        return { success: true, existing: true, ...existingResult };
-      } else {
-        // Se o tipo de pagamento for diferente, tenta cancelar o pagamento anterior
-        console.log('⚠️ Tipo de pagamento diferente. Tentando cancelar pagamento anterior.');
-        console.log('Existente:', invoice.paymentInfo.paymentMethod, 'Solicitado:', tipoPagamento);
-        
-        try {
-          // Tenta cancelar o pagamento anterior no Mercado Pago
-          console.log('🔄 Tentando cancelar pagamento anterior:', invoice.paymentInfo.paymentId);
-          await axios.put(
-            `https://api.mercadopago.com/v1/payments/${invoice.paymentInfo.paymentId}`,
-            { status: 'cancelled' },
-            {
-              headers: {
-                Authorization: `Bearer ${accessToken}`,
-                'Content-Type': 'application/json',
-              },
-            }
-          );
-          console.log('✅ Pagamento anterior cancelado com sucesso');
-        } catch (cancelError) {
-          console.warn('⚠️ Não foi possível cancelar o pagamento anterior:', cancelError.response?.data || cancelError.message);
-          // Continua mesmo se não conseguir cancelar o anterior
-        }
-      }
+      // Retorna os dados do pagamento existente
+      const existingResult = {
+        paymentId: updatedInvoice.paymentInfo.paymentId,
+        status: updatedInvoice.paymentInfo.status,
+        ...(tipoPagamento === 'pix' ? {
+          qrCode: updatedInvoice.paymentInfo.paymentUrl,
+          qrCodeBase64: updatedInvoice.paymentInfo.qrCodeBase64
+        } : {
+          boletoUrl: updatedInvoice.paymentInfo.boletoUrl,
+          barCode: updatedInvoice.paymentInfo.barCode,
+          boletoExpirationDate: updatedInvoice.paymentInfo.boletoExpirationDate
+        })
+      };
+      
+      return { success: true, existing: true, ...existingResult };
     }
 
     // 2. Buscar dados do parceiro
@@ -190,26 +380,26 @@ exports.gerarPagamento = functions.https.onCall(async (data, context) => {
 
     // 3. Monta os dados do pagamento
     const payment_data = {
-      transaction_amount: invoice.totalAmount || 1.00,
-      description: `Fatura PediFácil - ${invoice.id}`,
+      transaction_amount: updatedInvoice.totalAmount || 1.00,
+      description: `Fatura PediFácil - ${updatedInvoice.id}`,
       payment_method_id: tipoPagamento === 'pix' ? 'pix' : 'bolbradesco',
-      payer: {
-        email: partnerData.email || invoice.partnerInfo?.email || 'test@test.com',
-        first_name: (partnerData.name || invoice.partnerInfo?.name || 'Test').split(' ')[0],
-        last_name: (partnerData.name || invoice.partnerInfo?.name || 'Test').split(' ').slice(1).join(' ') || 'User',
-        identification: {
-          type: 'CPF',
-          number: (partnerData.store?.document || partnerData.cpf || invoice.partnerInfo?.cpf || '19119119100').replace(/\D/g, '')
-        },
-        address: tipoPagamento === 'boleto' ? {
-          zip_code: (partnerData.address?.zip_code || invoice.partnerInfo?.address?.cep || '').replace(/\D/g, ''),
-          street_name: partnerData.address?.street || invoice.partnerInfo?.address?.street || '',
-          street_number: partnerData.address?.number || invoice.partnerInfo?.address?.number || '',
-          neighborhood: partnerData.address?.neighborhoodName || invoice.partnerInfo?.address?.neighborhood || '',
-          city: partnerData.address?.cityName || invoice.partnerInfo?.address?.city || '',
-          federal_unit: mapStateToAbbreviation(partnerData.address?.stateName || invoice.partnerInfo?.address?.state || '')
-        } : undefined
-      }
+              payer: {
+          email: partnerData.email || updatedInvoice.partnerInfo?.email || 'test@test.com',
+          first_name: (partnerData.name || updatedInvoice.partnerInfo?.name || 'Test').split(' ')[0],
+          last_name: (partnerData.name || updatedInvoice.partnerInfo?.name || 'Test').split(' ').slice(1).join(' ') || 'User',
+          identification: {
+            type: 'CPF',
+            number: (partnerData.store?.document || partnerData.cpf || updatedInvoice.partnerInfo?.cpf || '19119119100').replace(/\D/g, '')
+          },
+          address: tipoPagamento === 'boleto' ? {
+            zip_code: (partnerData.address?.zip_code || updatedInvoice.partnerInfo?.address?.cep || '').replace(/\D/g, ''),
+            street_name: partnerData.address?.street || updatedInvoice.partnerInfo?.address?.street || '',
+            street_number: partnerData.address?.number || updatedInvoice.partnerInfo?.address?.number || '',
+            neighborhood: partnerData.address?.neighborhoodName || updatedInvoice.partnerInfo?.address?.neighborhood || '',
+            city: partnerData.address?.cityName || updatedInvoice.partnerInfo?.address?.city || '',
+            federal_unit: mapStateToAbbreviation(partnerData.address?.stateName || updatedInvoice.partnerInfo?.address?.state || '')
+          } : undefined
+        }
     };
 
     // Validação dos campos de endereço para boleto
@@ -223,7 +413,7 @@ exports.gerarPagamento = functions.https.onCall(async (data, context) => {
         console.error('❌ Campos de endereço em falta:', missingFields);
         console.error('📊 Endereço completo disponível:', {
           partnerData_address: partnerData.address,
-          invoice_partnerInfo: invoice.partnerInfo
+          invoice_partnerInfo: updatedInvoice.partnerInfo
         });
         throw new functions.https.HttpsError(
           'failed-precondition',
