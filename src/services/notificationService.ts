@@ -407,6 +407,158 @@ export const notificationService = {
     }
   },
 
+  // Criar notificação de cancelamento por inatividade
+  async createInactivityNotification(orderId: string, orderDetails?: { customerName?: string, totalValue?: number, minutesPending?: number }): Promise<void> {
+    try {
+      const user = auth.currentUser;
+      if (!user) {
+        console.error('❌ Usuário não autenticado para criar notificação de inatividade');
+        return;
+      }
+
+      const { customerName, totalValue, minutesPending } = orderDetails || {};
+      
+      const title = '🚫 Pedido Cancelado por Inatividade';
+      const body = customerName 
+        ? `Pedido #${orderId.slice(-4)} de ${customerName} foi cancelado automaticamente por inatividade após ${minutesPending || 15} minutos.`
+        : `Pedido #${orderId.slice(-4)} foi cancelado automaticamente por inatividade após ${minutesPending || 15} minutos.`;
+
+      const notificationsRef = collection(db, 'partners', user.uid, 'notifications');
+      
+      await addDoc(notificationsRef, {
+        title,
+        body,
+        data: {
+          orderId,
+          status: 'canceled',
+          reason: 'inactivity',
+          minutesPending: minutesPending || 15,
+          totalValue: totalValue || 0,
+          customerName: customerName || 'N/A'
+        },
+        read: false,
+        createdAt: serverTimestamp()
+      });
+
+      console.log(`✅ Notificação de inatividade criada para pedido ${orderId}`);
+      
+      // Também envia notificação push local
+      await this.sendPushNotification(title, body, {
+        orderId,
+        type: 'inactivity_cancellation',
+        screen: 'notifications'
+      });
+
+    } catch (error) {
+      console.error('❌ Erro ao criar notificação de inatividade:', error);
+    }
+  },
+
+  // Criar notificação de fechamento por inatividade
+  async createStoreClosedInactivityNotification(canceledOrdersCount: number): Promise<void> {
+    try {
+      const user = auth.currentUser;
+      if (!user) {
+        console.error('❌ Usuário não autenticado para criar notificação de fechamento');
+        return;
+      }
+
+      const title = '🏪 Estabelecimento Fechado por Inatividade';
+      const body = canceledOrdersCount === 1 
+        ? `Seu estabelecimento foi fechado automaticamente após cancelar 1 pedido por inatividade.`
+        : `Seu estabelecimento foi fechado automaticamente após cancelar ${canceledOrdersCount} pedidos por inatividade.`;
+
+      const notificationsRef = collection(db, 'partners', user.uid, 'notifications');
+      
+      await addDoc(notificationsRef, {
+        title,
+        body,
+        data: {
+          reason: 'store_closed_inactivity',
+          canceledOrdersCount,
+          timestamp: new Date().toISOString()
+        },
+        read: false,
+        createdAt: serverTimestamp()
+      });
+
+      console.log(`✅ Notificação de fechamento por inatividade criada (${canceledOrdersCount} pedidos cancelados)`);
+      
+      // Também envia notificação push local
+      await this.sendPushNotification(title, body, {
+        type: 'store_closed_inactivity',
+        screen: 'notifications'
+      });
+
+    } catch (error) {
+      console.error('❌ Erro ao criar notificação de fechamento por inatividade:', error);
+    }
+  },
+
+  // Criar notificação resumo de cancelamentos por inatividade (quando há múltiplos)
+  async createBulkInactivityNotification(canceledOrders: Array<{ orderId: string, customerName?: string, totalValue?: number, minutesPending?: number }>): Promise<void> {
+    try {
+      const user = auth.currentUser;
+      if (!user) {
+        console.error('❌ Usuário não autenticado para criar notificação de cancelamentos em lote');
+        return;
+      }
+
+      if (canceledOrders.length === 0) return;
+
+      if (canceledOrders.length === 1) {
+        // Se é apenas um pedido, usa a função individual
+        const order = canceledOrders[0];
+        await this.createInactivityNotification(order.orderId, {
+          customerName: order.customerName,
+          totalValue: order.totalValue,
+          minutesPending: order.minutesPending
+        });
+        return;
+      }
+
+      const title = `🚫 ${canceledOrders.length} Pedidos Cancelados por Inatividade`;
+      const totalValue = canceledOrders.reduce((sum, order) => sum + (order.totalValue || 0), 0);
+      
+      // Verifica se há pedidos com diferentes tempos de espera
+      const maxMinutes = Math.max(...canceledOrders.map(o => o.minutesPending || 0));
+      const hasMultipleTimes = canceledOrders.some(o => (o.minutesPending || 0) < 15);
+      
+      const body = hasMultipleTimes
+        ? `${canceledOrders.length} pedidos foram cancelados automaticamente por inatividade (cancelamento em massa devido a pedido com ${maxMinutes} minutos). Valor total: R$ ${totalValue.toFixed(2)}`
+        : `${canceledOrders.length} pedidos foram cancelados automaticamente por inatividade. Valor total: R$ ${totalValue.toFixed(2)}`;
+
+      const notificationsRef = collection(db, 'partners', user.uid, 'notifications');
+      
+      await addDoc(notificationsRef, {
+        title,
+        body,
+        data: {
+          reason: 'bulk_inactivity',
+          canceledOrdersCount: canceledOrders.length,
+          totalValue,
+          orderIds: canceledOrders.map(o => o.orderId),
+          maxMinutesPending: maxMinutes,
+          isMassCancellation: hasMultipleTimes,
+          timestamp: new Date().toISOString()
+        },
+        read: false,
+        createdAt: serverTimestamp()
+      });
+
+      console.log(`✅ Notificação de cancelamentos em lote criada (${canceledOrders.length} pedidos)`);
+      
+      // Também envia notificação push local
+      await this.sendPushNotification(title, body, {
+        type: 'bulk_inactivity_cancellation',
+        screen: 'notifications'
+      });
+
+    } catch (error) {
+      console.error('❌ Erro ao criar notificação de cancelamentos em lote:', error);
+    }
+  },
+
   // Excluir todas as notificações
   async deleteAllNotifications(): Promise<void> {
     try {

@@ -4,6 +4,8 @@ import { establishmentService } from '../services/establishmentService';
 import { usePaymentStatus } from '@/hooks/usePaymentStatus';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/styles/theme/colors';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db, auth } from '@/config/firebase';
 
 export function MainEstablishmentButton() {
   const [status, setStatus] = useState<{
@@ -35,20 +37,60 @@ export function MainEstablishmentButton() {
   }, [paymentStatus, paymentLoading]);
 
   useEffect(() => {
+    // Primeiro carregamento
     loadStatus();
-    // Inicia a verificação automática
+    
+    // Inicia a verificação automática - APENAS PARA FECHAMENTO AUTOMÁTICO
+    // O estabelecimento NUNCA será aberto automaticamente, apenas fechado quando necessário
     establishmentService.startAutoStatusCheck();
     
-    // Limpa o intervalo quando o componente é desmontado
+    // Listener em tempo real para mudanças no status
+    const user = auth.currentUser;
+    let unsubscribe: (() => void) | null = null;
+    
+    if (user) {
+      const partnerRef = doc(db, 'partners', user.uid);
+      unsubscribe = onSnapshot(partnerRef, (doc) => {
+        if (doc.exists()) {
+          const data = doc.data();
+          console.log('🔄 MUDANÇA EM TEMPO REAL detectada:', {
+            isOpen: data.isOpen,
+            operationMode: data.operationMode,
+            statusChangeReason: data.statusChangeReason
+          });
+          
+          setStatus({
+            isOpen: data.isOpen || false,
+            operationMode: data.operationMode || establishmentService.OPERATION_MODE.MANUAL,
+            lastStatusChange: data.lastStatusChange || new Date().toISOString(),
+            statusChangeReason: data.statusChangeReason || 'Status inicial'
+          });
+        }
+      }, (error) => {
+        console.error('Erro no listener do status:', error);
+      });
+    }
+    
+    // Limpeza quando o componente é desmontado
     return () => {
       establishmentService.stopAutoStatusCheck();
+      if (unsubscribe) {
+        unsubscribe();
+      }
     };
   }, []);
 
   const loadStatus = async () => {
     try {
       setLoading(true);
+      
+      // Primeiro, migra dados antigos se necessário
+      await establishmentService.migrateEstablishmentData();
+      
+      // Depois carrega o status atual
       const currentStatus = await establishmentService.getEstablishmentStatus();
+      
+      console.log('🏪 MainEstablishmentButton - Status carregado:', currentStatus);
       setStatus(currentStatus);
     } catch (error) {
       console.error('Erro ao carregar status:', error);
@@ -95,6 +137,8 @@ export function MainEstablishmentButton() {
     }
   };
 
+
+
   if (loading || !status || paymentLoading) {
     return (
       <View style={styles.container}>
@@ -135,7 +179,7 @@ export function MainEstablishmentButton() {
             {status.isOpen ? 'Toque para fechar' : 'Toque para abrir'}
           </Text>
           <Text style={styles.modeText}>
-            Modo: {status.operationMode === establishmentService.OPERATION_MODE.MANUAL ? 'Manual' : 'Automático'}
+            Modo: {status.operationMode === establishmentService.OPERATION_MODE.MANUAL ? 'Manual' : 'Automático (só fecha)'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -184,9 +228,11 @@ export function MainEstablishmentButton() {
           {status.isOpen ? 'Toque para fechar' : 'Toque para abrir'}
         </Text>
         <Text style={styles.modeText}>
-          Modo: {status.operationMode === establishmentService.OPERATION_MODE.MANUAL ? 'Manual' : 'Automático'}
+          Modo: {status.operationMode === establishmentService.OPERATION_MODE.MANUAL ? 'Manual' : 'Automático (só fecha)'}
         </Text>
       </TouchableOpacity>
+      
+
       
       {status.statusChangeReason && (
         <Text style={styles.reasonText}>

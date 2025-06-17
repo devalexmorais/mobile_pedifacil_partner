@@ -1538,17 +1538,21 @@ exports.atualizarStatusEstabelecimento = functions.https.onCall(async (data, con
     // Atualiza o status do estabelecimento
     const partnerRef = db.collection('partners').doc(partnerId);
     const updateData = {
-      'establishmentStatus.isOpen': isOpen,
-      'establishmentStatus.lastStatusChange': admin.firestore.Timestamp.now(),
-      'establishmentStatus.statusChangeReason': reason || (isOpen ? 'Aberto pelo usuário' : 'Fechado pelo usuário'),
-      'establishmentStatus.operationMode': 'manual',
-      updatedAt: admin.firestore.Timestamp.now()
+      isOpen: isOpen,
+      lastStatusChange: admin.firestore.Timestamp.now(),
+      statusChangeReason: reason || (isOpen ? 'Aberto pelo usuário' : 'Fechado pelo usuário'),
+      operationMode: 'manual',
+      updatedAt: admin.firestore.Timestamp.now(),
+      // Remove completamente a estrutura aninhada antiga
+      establishmentStatus: admin.firestore.FieldValue.delete()
     };
 
-    // Remove campos de bloqueio se estiver abrindo normalmente
+    // Se estiver abrindo, limpa campos de inatividade e bloqueio
     if (isOpen) {
-      updateData['establishmentStatus.blockedSince'] = admin.firestore.FieldValue.delete();
-      updateData['establishmentStatus.blockingReason'] = admin.firestore.FieldValue.delete();
+      updateData.closedDueToInactivity = false;
+      updateData.inactivityMessage = admin.firestore.FieldValue.delete();
+      updateData.blockedSince = admin.firestore.FieldValue.delete();
+      updateData.blockingReason = admin.firestore.FieldValue.delete();
     }
 
     await partnerRef.update(updateData);

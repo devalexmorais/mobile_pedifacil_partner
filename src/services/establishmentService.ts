@@ -1,7 +1,8 @@
-import { doc, updateDoc, getDoc, setDoc, collection, query, where, orderBy, limit, getDocs, onSnapshot } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, setDoc, collection, query, where, orderBy, limit, getDocs, onSnapshot, deleteField } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
 import { establishmentSettingsService, Schedule } from './establishmentSettingsService';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { notificationService } from './notificationService';
 
 export const establishmentService = {
   // Tempo de inatividade em minutos antes de fechar a loja automaticamente
@@ -37,8 +38,8 @@ export const establishmentService = {
       
       if (partnerDoc.exists()) {
         const data = partnerDoc.data();
-        // Se a loja está aberta manualmente, retorna true
-        if (data.isOpen === true && !data.closedDueToInactivity) {
+        // Se a loja está aberta manualmente, retorna true (removido check de inatividade)
+        if (data.isOpen === true) {
           return true;
         }
       }
@@ -89,12 +90,28 @@ export const establishmentService = {
 
       if (partnerDoc.exists()) {
         const data = partnerDoc.data();
-        return {
+        
+        // DEBUG: Log dos dados lidos do Firestore
+        console.log('🔍 DEBUG - Dados lidos do Firestore:', {
+          isOpen: data.isOpen,
+          operationMode: data.operationMode,
+          closedDueToInactivity: data.closedDueToInactivity,
+          inactivityMessage: data.inactivityMessage,
+          lastStatusChange: data.lastStatusChange,
+          statusChangeReason: data.statusChangeReason,
+          // Verifica se ainda há estrutura aninhada
+          establishmentStatus: data.establishmentStatus
+        });
+        
+        const result = {
           isOpen: data.isOpen || false,
           operationMode: data.operationMode || this.OPERATION_MODE.MANUAL,
           lastStatusChange: data.lastStatusChange || new Date().toISOString(),
           statusChangeReason: data.statusChangeReason || 'Status inicial'
         };
+        
+        console.log('🔍 DEBUG - Resultado retornado:', result);
+        return result;
       }
 
       // Se não existir, cria com status padrão
@@ -102,51 +119,106 @@ export const establishmentService = {
         isOpen: false,
         operationMode: this.OPERATION_MODE.MANUAL,
         lastStatusChange: new Date().toISOString(),
-        statusChangeReason: 'Status inicial'
+        statusChangeReason: 'Status inicial',
+        closedDueToInactivity: false,
+        inactivityMessage: null
       };
 
       await setDoc(partnerRef, defaultStatus);
-      return defaultStatus;
+      
+      return {
+        isOpen: defaultStatus.isOpen,
+        operationMode: defaultStatus.operationMode,
+        lastStatusChange: defaultStatus.lastStatusChange,
+        statusChangeReason: defaultStatus.statusChangeReason
+      };
     } catch (error) {
       console.error('Erro ao obter status do estabelecimento:', error);
       throw error;
     }
   },
 
+  // Migra estrutura antiga para nova (se necessário)
+  async migrateEstablishmentData(): Promise<void> {
+    try {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      const partnerRef = doc(db, 'partners', user.uid);
+      const partnerDoc = await getDoc(partnerRef);
+
+      if (partnerDoc.exists()) {
+        const data = partnerDoc.data();
+        
+        // Se ainda tem a estrutura aninhada antiga, migra e limpa
+        if (data.establishmentStatus) {
+          console.log('🔄 LIMPANDO estrutura aninhada desnecessária...');
+          
+          const establishmentStatus = data.establishmentStatus;
+          
+          const updateData: any = {
+            // Mantém apenas os campos essenciais na estrutura direta
+            isOpen: data.isOpen !== undefined ? data.isOpen : (establishmentStatus.isOpen || false),
+            operationMode: data.operationMode || establishmentStatus.operationMode || this.OPERATION_MODE.MANUAL,
+            lastStatusChange: data.lastStatusChange || establishmentStatus.lastStatusChange || new Date().toISOString(),
+            statusChangeReason: data.statusChangeReason || establishmentStatus.statusChangeReason || 'Estrutura limpa',
+            
+            // Remove estrutura aninhada e campos desnecessários
+            establishmentStatus: deleteField(),
+            closedDueToInactivity: false,
+            inactivityMessage: deleteField(),
+            blockedSince: deleteField(),
+            blockingReason: deleteField(),
+            manuallyClosedUntil: deleteField(),
+            hasUnSettledFees: deleteField() // Remove este campo também
+          };
+          
+          await updateDoc(partnerRef, updateData);
+          console.log('✅ LIMPEZA concluída - estrutura simplificada');
+        }
+        
+        // Limpeza adicional de campos desnecessários mesmo sem estrutura aninhada
+        else if (data.hasUnSettledFees !== undefined || data.establishmentStatus !== undefined) {
+          console.log('🧹 LIMPANDO campos desnecessários...');
+          
+          const cleanupData: any = {};
+          
+          if (data.hasUnSettledFees !== undefined) {
+            cleanupData.hasUnSettledFees = deleteField();
+          }
+          if (data.establishmentStatus !== undefined) {
+            cleanupData.establishmentStatus = deleteField();
+          }
+          
+          await updateDoc(partnerRef, cleanupData);
+          console.log('✅ LIMPEZA adicional concluída');
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao migrar dados do estabelecimento:', error);
+    }
+  },
+
   // Método para registrar a última atividade de pedido
   registerOrderActivity() {
-    // Se a loja estiver fechada, não devemos registrar atividade
-    this.getEstablishmentStatus().then(isOpen => {
-      if (!isOpen) {
-        console.log("Loja está fechada, ignorando registro de atividade");
-        return;
-      }
-      
-      const now = new Date();
-      this.lastOrderProcessedTime = now;
-      console.log(`Atividade de pedido registrada às ${now.toLocaleTimeString()}, resetando temporizador de inatividade`);
-      
-      // Ativa o monitoramento de inatividade se for o primeiro pedido
-      this._inactivityMonitoringActive = true;
-      
-      // Reinicia a verificação de inatividade
-      this.startInactivityCheck();
-    }).catch(error => {
-      console.error("Erro ao verificar status da loja:", error);
-    });
+    const now = new Date();
+    this.lastOrderProcessedTime = now;
+    console.log(`🔔 Atividade de pedido registrada às ${now.toLocaleTimeString()}, resetando temporizador de inatividade`);
+    
+    // Ativa o monitoramento de inatividade SEMPRE que há novo pedido
+    this._inactivityMonitoringActive = true;
+    
+    // Reinicia a verificação de inatividade
+    this.startInactivityCheck();
   },
   
   // Inicia a verificação de inatividade
   startInactivityCheck() {
-    // Se não há monitoramento ativo, não inicia o timer
-    if (!this._inactivityMonitoringActive) {
-      console.log("Monitoramento de inatividade não iniciado - aguardando primeiro pedido");
-      return;
-    }
+    console.log("🔄 Iniciando verificação de inatividade");
     
     // Limpa qualquer temporizador existente
     if (this._inactivityTimer) {
-      clearTimeout(this._inactivityTimer);
+      clearInterval(this._inactivityTimer);
       this._inactivityTimer = null;
     }
     
@@ -155,21 +227,28 @@ export const establishmentService = {
       try {
         await this.checkInactivity();
       } catch (error) {
-        console.error('Erro ao verificar inatividade:', error);
+        console.error('❌ Erro ao verificar inatividade:', error);
       }
     }, 60000); // Verifica a cada minuto
     
-    console.log("Temporizador de inatividade iniciado - próxima verificação em 1 minuto");
+    console.log("⏰ Temporizador de inatividade iniciado - próxima verificação em 1 minuto");
+    
+    // Executa uma verificação imediata também
+    setTimeout(() => {
+      this.checkInactivity().catch(error => {
+        console.error('❌ Erro na verificação imediata de inatividade:', error);
+      });
+    }, 5000); // Verifica após 5 segundos
   },
   
   // Verifica se houve inatividade por tempo suficiente para fechar a loja
   async checkInactivity() {
     try {
-      console.log("Iniciando verificação de inatividade");
+      console.log("🔍 Iniciando verificação de inatividade");
       
       const user = auth.currentUser;
       if (!user) {
-        console.log("Usuário não autenticado, parando verificações de inatividade");
+        console.log("❌ Usuário não autenticado, parando verificações de inatividade");
         return;
       }
 
@@ -182,54 +261,143 @@ export const establishmentService = {
       
       const snapshot = await getDocs(pendingOrdersQuery);
       
-      if (!snapshot.empty) {
-        const now = new Date();
+      if (snapshot.empty) {
+        console.log("✅ Nenhum pedido pendente encontrado");
+        return;
+      }
+
+      console.log(`📋 Encontrados ${snapshot.size} pedido(s) pendente(s)`);
+      const now = new Date();
+      let canceledCount = 0;
+      const canceledOrders: Array<{ orderId: string, customerName?: string, totalValue?: number, minutesPending?: number }> = [];
+      
+      // Primeiro, verifica se algum pedido deve ser cancelado por inatividade (15+ min)
+      let hasInactiveOrder = false;
+      const ordersWithTimes: Array<{ doc: any, orderData: any, diffMinutes: number, orderCreatedAt: Date }> = [];
+      
+      for (const doc of snapshot.docs) {
+        const orderData = doc.data();
         
-        // Para cada pedido pendente, verifica o tempo de inatividade
-        for (const doc of snapshot.docs) {
-          const orderData = doc.data();
-          const orderCreatedAt = orderData.createdAt?.toDate?.() || new Date(orderData.createdAt);
+        // Melhor conversão de data para lidar com diferentes formatos
+        let orderCreatedAt: Date;
+        
+        if (orderData.createdAt?.toDate) {
+          // Firebase Timestamp
+          orderCreatedAt = orderData.createdAt.toDate();
+        } else if (orderData.createdAt?.seconds) {
+          // Firebase Timestamp em formato object
+          orderCreatedAt = new Date(orderData.createdAt.seconds * 1000);
+        } else if (typeof orderData.createdAt === 'string') {
+          // String ISO
+          orderCreatedAt = new Date(orderData.createdAt);
+        } else {
+          // Fallback para agora
+          console.log(`⚠️ Não foi possível determinar data de criação do pedido ${doc.id}`);
+          orderCreatedAt = now;
+        }
+        
+        const diffMinutes = Math.floor((now.getTime() - orderCreatedAt.getTime()) / (1000 * 60));
+        console.log(`⏱️ Pedido ${doc.id} está pendente há ${diffMinutes} minutos (criado em: ${orderCreatedAt.toLocaleString()})`);
+        
+        ordersWithTimes.push({ doc, orderData, diffMinutes, orderCreatedAt });
+        
+        // Verifica se tem pelo menos um pedido com 15+ minutos
+        if (diffMinutes >= this.INACTIVITY_TIMEOUT_MINUTES) {
+          hasInactiveOrder = true;
+        }
+      }
+      
+      // Se encontrou pelo menos um pedido inativo, cancela TODOS os pedidos pendentes
+      if (hasInactiveOrder) {
+        console.log(`🚨 INATIVIDADE DETECTADA - Cancelando TODOS os ${ordersWithTimes.length} pedidos pendentes`);
+        
+        for (const { doc, orderData, diffMinutes } of ordersWithTimes) {
+          console.log(`🚫 CANCELANDO pedido ${doc.id} (${diffMinutes} minutos) - cancelamento em massa por inatividade`);
           
-          const diffMinutes = Math.floor((now.getTime() - orderCreatedAt.getTime()) / (1000 * 60));
-          console.log(`Pedido ${doc.id} está pendente há ${diffMinutes} minutos`);
-          
-          // Se o pedido está pendente há mais de 15 minutos, cancela automaticamente
-          if (diffMinutes >= this.INACTIVITY_TIMEOUT_MINUTES) {
-            console.log(`Cancelando pedido ${doc.id} por inatividade`);
+          try {
+            // Cancela o pedido no Firestore
             await updateDoc(doc.ref, {
               status: 'canceled',
               canceledAt: new Date().toISOString(),
-              cancelReason: 'Pedido cancelado automaticamente por inatividade após 15 minutos'
+              cancelReason: diffMinutes >= this.INACTIVITY_TIMEOUT_MINUTES 
+                ? `Pedido cancelado automaticamente por inatividade após ${diffMinutes} minutos`
+                : `Pedido cancelado automaticamente junto com outros pedidos por inatividade do estabelecimento`
             });
+            
+            // Adiciona à lista de pedidos cancelados para notificação
+            canceledOrders.push({
+              orderId: doc.id,
+              customerName: orderData.userName || orderData.customerName,
+              totalValue: orderData.totalPrice || orderData.finalPrice,
+              minutesPending: diffMinutes
+            });
+            
+            canceledCount++;
+            console.log(`✅ Pedido ${doc.id} cancelado com sucesso`);
+          } catch (error) {
+            console.error(`❌ Erro ao cancelar pedido ${doc.id}:`, error);
           }
         }
+      } else {
+        console.log(`⏳ Nenhum pedido atingiu o limite de inatividade (${this.INACTIVITY_TIMEOUT_MINUTES} min)`);
       }
       
-      // Verifica se ainda existem pedidos pendentes após o cancelamento automático
-      const updatedSnapshot = await getDocs(pendingOrdersQuery);
-      
-      // Se não houver mais pedidos pendentes, fecha a loja
-      if (updatedSnapshot.empty) {
-        const partnerRef = doc(db, 'partners', user.uid);
-        await updateDoc(partnerRef, {
-          isOpen: false,
-          closedDueToInactivity: true,
-          inactivityMessage: "Loja fechada automaticamente por inatividade"
-        });
+      // Cria notificações para todos os pedidos cancelados
+      if (canceledOrders.length > 0) {
+        console.log(`📬 Criando notificação(ões) para ${canceledOrders.length} pedido(s) cancelado(s)`);
         
-        console.log("Loja fechada automaticamente por inatividade");
-        
-        // Desativa o monitoramento de inatividade
-        this._inactivityMonitoringActive = false;
-        this.lastOrderProcessedTime = null;
-        
-        if (this._inactivityTimer) {
-          clearTimeout(this._inactivityTimer);
-          this._inactivityTimer = null;
+        if (canceledOrders.length === 1) {
+          // Notificação individual
+          const order = canceledOrders[0];
+          await notificationService.createInactivityNotification(order.orderId, {
+            customerName: order.customerName,
+            totalValue: order.totalValue,
+            minutesPending: order.minutesPending
+          });
+        } else {
+          // Notificação em lote
+          await notificationService.createBulkInactivityNotification(canceledOrders);
         }
+        
+        console.log(`✅ Notificação(ões) de inatividade enviada(s)`);
+      }
+      
+      if (canceledCount > 0) {
+        console.log(`🎯 TOTAL CANCELADO: ${canceledCount} pedido(s) por inatividade`);
+        
+        // Verifica se ainda existem pedidos pendentes após o cancelamento automático
+        const updatedSnapshot = await getDocs(pendingOrdersQuery);
+        
+        // Se não houver mais pedidos pendentes, fecha a loja
+        if (updatedSnapshot.empty) {
+          console.log("🏪 Fechando loja automaticamente - nenhum pedido pendente restante");
+          
+          const partnerRef = doc(db, 'partners', user.uid);
+          await updateDoc(partnerRef, {
+            isOpen: false,
+            lastStatusChange: new Date().toISOString(),
+            statusChangeReason: `Loja fechada automaticamente por inatividade - ${canceledCount} pedido(s) cancelado(s)`
+          });
+          
+          // Cria notificação sobre o fechamento da loja
+          await notificationService.createStoreClosedInactivityNotification(canceledCount);
+          
+          console.log("✅ Loja fechada automaticamente por inatividade e notificação enviada");
+          
+          // Desativa o monitoramento de inatividade
+          this._inactivityMonitoringActive = false;
+          this.lastOrderProcessedTime = null;
+          
+          if (this._inactivityTimer) {
+            clearInterval(this._inactivityTimer);
+            this._inactivityTimer = null;
+          }
+        }
+      } else {
+        console.log("⏳ Nenhum pedido precisa ser cancelado ainda");
       }
     } catch (error) {
-      console.error('Erro ao verificar inatividade:', error);
+      console.error('❌ Erro ao verificar inatividade:', error);
     }
   },
   
@@ -241,7 +409,7 @@ export const establishmentService = {
       
       if (partnerDoc.exists()) {
         const data = partnerDoc.data();
-        return data.isOpen === true;  // Simplificado para apenas verificar isOpen
+        return data.isOpen === true;  // Usa apenas o campo isOpen
       }
       
       return false;
@@ -449,14 +617,24 @@ export const establishmentService = {
         console.warn('🔒 ⚠️ Erro na Cloud Function, tentando atualização local...');
         
         const partnerRef = doc(db, 'partners', user.uid);
-        await updateDoc(partnerRef, {
-          'establishmentStatus.isOpen': isOpen,
-          'establishmentStatus.operationMode': this.OPERATION_MODE.MANUAL,
-          'establishmentStatus.lastStatusChange': new Date().toISOString(),
-          'establishmentStatus.statusChangeReason': isOpen 
+        
+        // Prepara os dados de atualização
+        const updateData: any = {
+          isOpen: isOpen,
+          operationMode: this.OPERATION_MODE.MANUAL,
+          lastStatusChange: new Date().toISOString(),
+          statusChangeReason: isOpen 
             ? 'Aberto manualmente pelo usuário (fallback)'
             : 'Fechado manualmente pelo usuário (fallback)'
-        });
+        };
+        
+        // Se estiver abrindo, limpa campos de inatividade
+        if (isOpen) {
+          updateData.closedDueToInactivity = false;
+          updateData.inactivityMessage = null;
+        }
+        
+        await updateDoc(partnerRef, updateData);
       }
 
       console.log(`🔒 Estabelecimento ${isOpen ? 'aberto' : 'fechado'} com sucesso`);
@@ -539,9 +717,13 @@ export const establishmentService = {
 
       console.log(`Modo de operação alterado para: ${mode}`);
 
-      // Se mudou para automático, verifica o status imediatamente
+      // Gerencia o timer baseado no novo modo
       if (mode === this.OPERATION_MODE.AUTOMATIC) {
-        await this.checkAndUpdateStatus();
+        console.log('⏰ Mudou para automático - iniciando timer de verificação');
+        this.startAutoStatusCheck(); // Inicia timer para modo automático
+      } else {
+        console.log('🎛️ Mudou para manual - parando timer de verificação (economia de recursos)');
+        this.stopAutoStatusCheck(); // Para timer no modo manual
       }
     } catch (error) {
       console.error('Erro ao alternar modo de operação:', error);
@@ -549,76 +731,110 @@ export const establishmentService = {
     }
   },
 
-  // Inicia a verificação automática de status
+  // Inicia a verificação automática de status APENAS se modo automático
   startAutoStatusCheck(): void {
     // Limpa intervalo existente
     if (this._statusCheckInterval) {
       clearInterval(this._statusCheckInterval);
+      this._statusCheckInterval = null;
     }
 
-    // Verifica a cada 5 minutos ao invés de 1 minuto
-    this._statusCheckInterval = setInterval(async () => {
-      try {
-        const user = auth.currentUser;
-        if (!user) return;
+    // Verifica o modo atual antes de iniciar timer
+    const user = auth.currentUser;
+    if (!user) return;
 
-        const partnerRef = doc(db, 'partners', user.uid);
-        const partnerDoc = await getDoc(partnerRef);
-        
-        if (!partnerDoc.exists()) return;
+    // Verifica modo atual de forma assíncrona
+    this.checkCurrentModeAndStartTimer();
+    
+    // NOVO: Inicia monitoramento de pedidos se a loja estiver aberta
+    this.initializeOrdersMonitoring();
+  },
 
-        const data = partnerDoc.data();
-        
-        // Se estiver no modo manual, não faz nada
-        if (data.operationMode === this.OPERATION_MODE.MANUAL) {
-          console.log('Modo manual ativo - status não será alterado automaticamente');
-          return;
-        }
+  // Função auxiliar para verificar modo e iniciar timer se necessário
+  async checkCurrentModeAndStartTimer(): Promise<void> {
+    try {
+      const user = auth.currentUser;
+      if (!user) return;
 
-        // Verifica se a loja está aberta manualmente
-        if (data.isOpen && data.lastStatusChange && data.statusChangeReason?.includes('manualmente')) {
-          console.log('Loja aberta manualmente, ignorando verificação automática');
-          return;
-        }
+      const partnerRef = doc(db, 'partners', user.uid);
+      const partnerDoc = await getDoc(partnerRef);
+      
+      if (!partnerDoc.exists()) return;
 
-        // Verifica o horário atual
-        const schedule = await establishmentSettingsService.getSchedule();
-        if (!schedule) return;
-
-        const dayNames = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
-        const now = new Date();
-        const dayOfWeek = dayNames[now.getDay()];
-        
-        const dayConfig = schedule[dayOfWeek];
-        if (!dayConfig || !dayConfig.isOpen) {
-          if (data.isOpen) {
-            await updateDoc(partnerRef, {
-              isOpen: false,
-              lastStatusChange: new Date().toISOString(),
-              statusChangeReason: 'Fechado automaticamente - fora do horário de funcionamento'
-            });
-            console.log('Loja fechada automaticamente - fora do horário de funcionamento');
-          }
-          return;
-        }
-        
-        const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-        const shouldBeOpen = currentTime >= dayConfig.openTime && currentTime <= dayConfig.closeTime;
-        
-        if (data.isOpen !== shouldBeOpen) {
-          await updateDoc(partnerRef, {
-            isOpen: shouldBeOpen,
-            lastStatusChange: new Date().toISOString(),
-            statusChangeReason: shouldBeOpen 
-              ? 'Aberto automaticamente - dentro do horário de funcionamento'
-              : 'Fechado automaticamente - fora do horário de funcionamento'
-          });
-          console.log(`Status atualizado automaticamente: isOpen=${shouldBeOpen}`);
-        }
-      } catch (error) {
-        console.error('Erro ao verificar status:', error);
+      const data = partnerDoc.data();
+      
+      // Se estiver no modo manual, NÃO inicia timer
+      if (data.operationMode === this.OPERATION_MODE.MANUAL) {
+        console.log('🎛️ Modo manual ativo - timer de verificação automática NÃO será iniciado (economia de recursos)');
+        return;
       }
-    }, 5 * 60 * 1000); // 5 minutos
+
+      // Se estiver no modo automático, inicia timer
+      console.log('⏰ Modo automático ativo - iniciando timer de verificação a cada 5 minutos');
+      
+      this._statusCheckInterval = setInterval(async () => {
+        try {
+          // Verifica novamente o modo a cada execução (caso tenha mudado)
+          const currentPartnerDoc = await getDoc(partnerRef);
+          if (!currentPartnerDoc.exists()) return;
+
+          const currentData = currentPartnerDoc.data();
+          
+          // Se mudou para manual, para o timer
+          if (currentData.operationMode === this.OPERATION_MODE.MANUAL) {
+            console.log('🎛️ Modo mudou para manual - parando timer automático');
+            this.stopAutoStatusCheck();
+            return;
+          }
+
+          // Verifica se a loja está aberta manualmente
+          if (currentData.isOpen && currentData.lastStatusChange && currentData.statusChangeReason?.includes('manualmente')) {
+            console.log('Loja aberta manualmente, ignorando verificação automática');
+            return;
+          }
+
+          // Verifica o horário atual
+          const schedule = await establishmentSettingsService.getSchedule();
+          if (!schedule) return;
+
+          const dayNames = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+          const now = new Date();
+          const dayOfWeek = dayNames[now.getDay()];
+          
+          const dayConfig = schedule[dayOfWeek];
+          if (!dayConfig || !dayConfig.isOpen) {
+            if (currentData.isOpen) {
+              await updateDoc(partnerRef, {
+                isOpen: false,
+                lastStatusChange: new Date().toISOString(),
+                statusChangeReason: 'Fechado automaticamente - fora do horário de funcionamento'
+              });
+              console.log('Loja fechada automaticamente - fora do horário de funcionamento');
+            }
+            return;
+          }
+          
+          const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+          const shouldBeOpen = currentTime >= dayConfig.openTime && currentTime <= dayConfig.closeTime;
+          
+          if (currentData.isOpen !== shouldBeOpen) {
+            await updateDoc(partnerRef, {
+              isOpen: shouldBeOpen,
+              lastStatusChange: new Date().toISOString(),
+              statusChangeReason: shouldBeOpen 
+                ? 'Aberto automaticamente - dentro do horário de funcionamento'
+                : 'Fechado automaticamente - fora do horário de funcionamento'
+            });
+            console.log(`Status atualizado automaticamente: isOpen=${shouldBeOpen}`);
+          }
+        } catch (error) {
+          console.error('Erro ao verificar status:', error);
+        }
+      }, 5 * 60 * 1000); // 5 minutos
+
+    } catch (error) {
+      console.error('Erro ao verificar modo atual:', error);
+    }
   },
 
   // Para a verificação automática
@@ -626,6 +842,49 @@ export const establishmentService = {
     if (this._statusCheckInterval) {
       clearInterval(this._statusCheckInterval);
       this._statusCheckInterval = null;
+    }
+  },
+
+  // NOVA: Inicializa o monitoramento de pedidos se a loja estiver aberta
+  async initializeOrdersMonitoring(): Promise<void> {
+    try {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      // Verifica se a loja está aberta
+      const isOpen = await this.isStoreOpen(user.uid);
+      if (!isOpen) {
+        console.log('🏪 Loja fechada - não iniciará monitoramento de pedidos');
+        return;
+      }
+
+      console.log('🏪 Loja aberta - verificando pedidos pendentes existentes...');
+
+      // Verifica se já existem pedidos pendentes
+      const ordersRef = collection(db, 'partners', user.uid, 'orders');
+      const pendingOrdersQuery = query(
+        ordersRef,
+        where('status', '==', 'pending')
+      );
+      
+      const snapshot = await getDocs(pendingOrdersQuery);
+      
+      if (!snapshot.empty) {
+        console.log(`🔔 Encontrados ${snapshot.size} pedido(s) pendente(s) existente(s) - ativando monitoramento`);
+        
+        // Ativa o monitoramento de inatividade
+        this._inactivityMonitoringActive = true;
+        this.registerOrderActivity();
+        
+        // Inicia o monitoramento de novos pedidos
+        this.startNewOrdersMonitoring();
+      } else {
+        console.log('✅ Nenhum pedido pendente - monitoramento ficará em standby');
+        // Ainda assim inicia o listener para novos pedidos
+        this.startNewOrdersMonitoring();
+      }
+    } catch (error) {
+      console.error('❌ Erro ao inicializar monitoramento de pedidos:', error);
     }
   },
   
@@ -668,13 +927,19 @@ export const establishmentService = {
           // Verifica se existem pedidos pendentes
           const hasPendingOrders = !snapshot.empty;
           
-          // Se não houver pedidos pendentes, desativa o monitoramento de inatividade
-          if (!hasPendingOrders) {
-            console.log('Nenhum pedido pendente, desativando monitoramento de inatividade');
+          console.log(`📊 Monitor de pedidos: ${snapshot.size} pedido(s) pendente(s)`);
+          
+          // Se há pedidos pendentes, ativa o monitoramento de inatividade
+          if (hasPendingOrders) {
+            console.log('🔔 Pedidos pendentes detectados, ativando monitoramento de inatividade');
+            this._inactivityMonitoringActive = true;
+            this.registerOrderActivity(); // Registra atividade e inicia timer
+          } else {
+            console.log('✅ Nenhum pedido pendente, desativando monitoramento de inatividade');
             this._inactivityMonitoringActive = false;
             this.lastOrderProcessedTime = null;
             if (this._inactivityTimer) {
-              clearTimeout(this._inactivityTimer);
+              clearInterval(this._inactivityTimer);
               this._inactivityTimer = null;
             }
             return;
@@ -732,27 +997,192 @@ export const establishmentService = {
   
   // Para todos os timers e listeners (usar ao fazer logout)
   stopAllMonitoring() {
+    console.log('🛑 Parando todo o monitoramento...');
+    
     // Para o monitoramento de horário automático
-    if (this._autoStatusInterval) {
-      clearInterval(this._autoStatusInterval);
-      this._autoStatusInterval = null;
+    if (this._statusCheckInterval) {
+      clearInterval(this._statusCheckInterval);
+      this._statusCheckInterval = null;
+      console.log('✅ Timer de verificação de status parado');
     }
     
     // Para a verificação de inatividade
     if (this._inactivityTimer) {
-      clearTimeout(this._inactivityTimer);
+      clearInterval(this._inactivityTimer);
       this._inactivityTimer = null;
+      console.log('✅ Timer de inatividade parado');
     }
     
     // Para o monitoramento de novos pedidos
     if (this._newOrdersUnsubscribe) {
       this._newOrdersUnsubscribe();
       this._newOrdersUnsubscribe = null;
+      console.log('✅ Listener de pedidos parado');
     }
     
-    // Reseta a flag de monitoramento
+    // Reseta as flags de monitoramento
     this._inactivityMonitoringActive = false;
+    this.lastOrderProcessedTime = null;
     
-    console.log('Todo o monitoramento foi parado');
+    console.log('✅ Todo o monitoramento foi parado');
+  },
+
+  // Função para debug - verifica pedidos pendentes manualmente
+  async debugPendingOrders(): Promise<void> {
+    try {
+      const user = auth.currentUser;
+      if (!user) {
+        console.log('❌ Usuário não autenticado');
+        return;
+      }
+
+      console.log('🔍 DEBUG: Verificando pedidos pendentes...');
+      
+      const ordersRef = collection(db, 'partners', user.uid, 'orders');
+      const pendingOrdersQuery = query(
+        ordersRef,
+        where('status', '==', 'pending')
+      );
+      
+      const snapshot = await getDocs(pendingOrdersQuery);
+      
+      if (snapshot.empty) {
+        console.log('✅ DEBUG: Nenhum pedido pendente encontrado');
+        return;
+      }
+
+      console.log(`📋 DEBUG: Encontrados ${snapshot.size} pedido(s) pendente(s)`);
+      const now = new Date();
+      
+             let hasInactiveOrderDebug = false;
+       
+       snapshot.docs.forEach((doc) => {
+        const orderData = doc.data();
+        console.log(`📄 DEBUG: Pedido ${doc.id}:`, {
+          status: orderData.status,
+          createdAt: orderData.createdAt,
+          customerName: orderData.customerName || 'N/A',
+          total: orderData.total || 'N/A'
+        });
+        
+        // Conversão de data
+        let orderCreatedAt: Date;
+        if (orderData.createdAt?.toDate) {
+          orderCreatedAt = orderData.createdAt.toDate();
+        } else if (orderData.createdAt?.seconds) {
+          orderCreatedAt = new Date(orderData.createdAt.seconds * 1000);
+        } else if (typeof orderData.createdAt === 'string') {
+          orderCreatedAt = new Date(orderData.createdAt);
+        } else {
+          orderCreatedAt = now;
+        }
+        
+        const diffMinutes = Math.floor((now.getTime() - orderCreatedAt.getTime()) / (1000 * 60));
+        console.log(`⏱️ DEBUG: Pedido ${doc.id} pendente há ${diffMinutes} minutos`);
+        
+        if (diffMinutes >= this.INACTIVITY_TIMEOUT_MINUTES) {
+          console.log(`🚨 DEBUG: Pedido ${doc.id} ACIONARÁ CANCELAMENTO EM MASSA (${diffMinutes} >= ${this.INACTIVITY_TIMEOUT_MINUTES} minutos)`);
+          hasInactiveOrderDebug = true;
+        } else {
+          console.log(`⏳ DEBUG: Pedido ${doc.id} ainda não atingiu o limite (${diffMinutes} < ${this.INACTIVITY_TIMEOUT_MINUTES} minutos)`);
+        }
+      });
+      
+      if (hasInactiveOrderDebug) {
+        console.log(`🚨 DEBUG: TODOS os ${snapshot.size} pedidos serão cancelados por inatividade`);
+      } else {
+        console.log(`✅ DEBUG: Nenhum pedido será cancelado (nenhum atingiu ${this.INACTIVITY_TIMEOUT_MINUTES} minutos)`);
+      }
+      
+      console.log(`🔧 DEBUG: Status do monitoramento:`);
+      console.log(`- _inactivityMonitoringActive: ${this._inactivityMonitoringActive}`);
+      console.log(`- _inactivityTimer exists: ${!!this._inactivityTimer}`);
+      console.log(`- lastOrderProcessedTime: ${this.lastOrderProcessedTime}`);
+      
+      // Força verificação de inatividade
+      console.log('🔄 DEBUG: Forçando verificação de inatividade...');
+      await this.checkInactivity();
+      
+      console.log('📬 DEBUG: Verificando notificações criadas...');
+      // Aguarda um pouco para dar tempo das notificações serem criadas
+      setTimeout(async () => {
+        try {
+          const notifications = await notificationService.getNotifications();
+          const inactivityNotifications = notifications.filter(n => 
+            n.data?.reason === 'inactivity' || n.data?.reason === 'store_closed_inactivity'
+          );
+          console.log(`📬 DEBUG: ${inactivityNotifications.length} notificação(ões) de inatividade encontrada(s)`);
+        } catch (error) {
+          console.error('❌ DEBUG: Erro ao verificar notificações:', error);
+        }
+      }, 2000);
+      
+    } catch (error) {
+      console.error('❌ DEBUG: Erro ao verificar pedidos pendentes:', error);
+    }
+  },
+
+  // Função para limpeza manual completa - USE APENAS UMA VEZ
+  async cleanupAllUnnecessaryFields(): Promise<void> {
+    try {
+      const user = auth.currentUser;
+      if (!user) throw new Error('Usuário não autenticado');
+
+      const partnerRef = doc(db, 'partners', user.uid);
+      const partnerDoc = await getDoc(partnerRef);
+
+      if (partnerDoc.exists()) {
+        const data = partnerDoc.data();
+        
+        console.log('🧹 INICIANDO LIMPEZA COMPLETA...');
+        console.log('📋 Campos antes da limpeza:', Object.keys(data));
+        
+        // Lista de campos desnecessários para remover
+        const fieldsToRemove = [
+          'establishmentStatus',
+          'hasUnSettledFees', 
+          'closedDueToInactivity',
+          'inactivityMessage',
+          'blockedSince', 
+          'blockingReason',
+          'manuallyClosedUntil',
+          'lastUpdated' // Campo antigo
+        ];
+        
+        const cleanupData: any = {};
+        let fieldsRemoved = 0;
+        
+        // Remove apenas os campos que realmente existem
+        fieldsToRemove.forEach(field => {
+          if (data[field] !== undefined) {
+            cleanupData[field] = deleteField();
+            fieldsRemoved++;
+            console.log(`🗑️ Removendo campo: ${field}`);
+          }
+        });
+        
+        // Preserva apenas os campos essenciais
+        const essentialFields = {
+          isOpen: data.isOpen || false,
+          operationMode: data.operationMode || this.OPERATION_MODE.MANUAL,
+          lastStatusChange: data.lastStatusChange || new Date().toISOString(),
+          statusChangeReason: 'Documento limpo - apenas campos essenciais'
+        };
+        
+        // Combina limpeza + campos essenciais
+        const finalUpdateData = { ...cleanupData, ...essentialFields };
+        
+        if (fieldsRemoved > 0) {
+          await updateDoc(partnerRef, finalUpdateData);
+          console.log(`✅ LIMPEZA COMPLETA CONCLUÍDA - ${fieldsRemoved} campos removidos`);
+          console.log('📋 Campos essenciais mantidos:', Object.keys(essentialFields));
+        } else {
+          console.log('✅ Documento já estava limpo');
+        }
+      }
+    } catch (error) {
+      console.error('❌ Erro na limpeza completa:', error);
+      throw error;
+    }
   }
 }; 
