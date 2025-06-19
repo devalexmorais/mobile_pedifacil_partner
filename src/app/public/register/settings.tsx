@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -55,10 +55,13 @@ const formatTime = (value: string): string => {
 
 export default function Settings() {
   const router = useRouter();
-  const params = useLocalSearchParams();
+  const rawParams = useLocalSearchParams();
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{[key: string]: string}>({});
   const { formData: contextData, updateFormData: updateContextData } = useRegisterForm();
+  
+  // Memoize params to prevent unnecessary re-renders
+  const params = useMemo(() => rawParams, [JSON.stringify(rawParams)]);
   
   const [formData, setFormData] = useState<SettingsFormData>({
     delivery: contextData.delivery || {
@@ -97,7 +100,7 @@ export default function Settings() {
   });
 
   useEffect(() => {
-    console.log('Dados recebidos do contexto:', contextData);
+    // Inicialização se necessário
   }, []);
 
   const updateDeliveryData = (field: string, value: string) => {
@@ -222,9 +225,6 @@ export default function Settings() {
       schedule: formData.schedule
     });
 
-    console.log('Dados do formulário Settings:', formData);
-    console.log('Parâmetros anteriores:', params);
-
     // Prepara os parâmetros a serem enviados
     const paramsToSend = {
       ...params,
@@ -233,8 +233,6 @@ export default function Settings() {
       paymentOptions: JSON.stringify(formData.paymentOptions),
       schedule: JSON.stringify(formData.schedule)
     };
-
-    console.log('Parâmetros que serão enviados:', paramsToSend);
 
     router.push({
       pathname: '/public/register/documents',

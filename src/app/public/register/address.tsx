@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -15,6 +15,7 @@ interface State {
 interface City {
   id: string;
   name: string;
+  zip_code?: string;
 }
 
 interface Neighborhood {
@@ -30,6 +31,7 @@ interface AddressFormData {
   neighborhoodName: string;
   city: string;
   cityName: string;
+  zip_code: string;
   state: string;
   stateName: string;
 }
@@ -39,10 +41,10 @@ const capitalizeWords = (s: string): string => s.replace(/\b\w/g, c => c.toUpper
 
 export default function RegisterAddress() {
   const router = useRouter();
-  const params = useLocalSearchParams();
+  const rawParams = useLocalSearchParams();
   
-  // Log inicial para ver os parâmetros recebidos
-  console.log('Parâmetros recebidos ao montar o componente:', params);
+  // Memoize params to prevent unnecessary re-renders
+  const params = useMemo(() => rawParams, [JSON.stringify(rawParams)]);
 
   const [loading, setLoading] = useState(false);
   const [states, setStates] = useState<State[]>([]);
@@ -56,6 +58,7 @@ export default function RegisterAddress() {
     neighborhoodName: '',
     city: '',
     cityName: '',
+    zip_code: '',
     state: '',
     stateName: ''
   });
@@ -83,12 +86,12 @@ export default function RegisterAddress() {
     }
   }, [formData.state, formData.city]);
 
-  const updateFormData = (field: Partial<AddressFormData>) => {
+  const updateFormData = useCallback((field: Partial<AddressFormData>) => {
     setFormData(prev => ({
       ...prev,
       ...field
     }));
-  };
+  }, []);
 
   const loadStates = async () => {
     try {
@@ -110,6 +113,7 @@ export default function RegisterAddress() {
       updateFormData({ 
         city: '', 
         cityName: '',
+        zip_code: '',
         neighborhood: '', 
         neighborhoodName: '' 
       });
@@ -172,12 +176,8 @@ export default function RegisterAddress() {
   };
 
   const handleSubmit = (values: any) => {    
-    // Logs para debug dos dados
-    console.log('Valores do formulário:', values);
-    console.log('Parâmetros atuais:', params);
-
     const paramsToSend = {
-      ...params, // Usando a variável params definida no escopo do componente
+      ...params,
       street: values.street,
       number: values.number,
       complement: values.complement || '',
@@ -185,12 +185,10 @@ export default function RegisterAddress() {
       neighborhoodName: values.neighborhoodName,
       city: values.city,
       cityName: values.cityName,
+      zip_code: values.zip_code,
       state: values.state,
       stateName: values.stateName
     };
-
-    // Log dos parâmetros finais que serão enviados
-    console.log('Parâmetros que serão enviados:', paramsToSend);
 
     router.push({
       pathname: '/public/register/settings',
@@ -234,6 +232,7 @@ export default function RegisterAddress() {
                     stateName: selectedState?.name || '', 
                     city: '', 
                     cityName: '',
+                    zip_code: '',
                     neighborhood: '', 
                     neighborhoodName: '' 
                   });
@@ -261,6 +260,7 @@ export default function RegisterAddress() {
                   updateFormData({ 
                     city: itemValue, 
                     cityName: selectedCity?.name || '',
+                    zip_code: selectedCity?.zip_code || '',
                     neighborhood: '', 
                     neighborhoodName: '' 
                   });

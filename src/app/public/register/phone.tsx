@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -28,9 +28,12 @@ const PhoneSchema = Yup.object().shape({
 
 export default function Phone() {
   const router = useRouter();
-  const params = useLocalSearchParams();
+  const rawParams = useLocalSearchParams();
   const [isVerifying, setIsVerifying] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
+  
+  // Memoize params to prevent unnecessary re-renders
+  const params = useMemo(() => rawParams, [JSON.stringify(rawParams)]);
 
   const handleSubmit = async (
     values: FormValues, 
@@ -179,7 +182,6 @@ export default function Phone() {
                     value={values.phone}
                     onChangeText={(text) => {
                       const formatted = formatPhoneInput(text);
-                      console.log('Telefone digitado:', formatted);
                       setFieldValue('phone', formatted);
                     }}
                     onBlur={handleBlur('phone')}
@@ -202,7 +204,6 @@ export default function Phone() {
                     onChangeText={(text) => {
                       // Permite apenas números e limita a 6 dígitos
                       const digits = text.replace(/\D/g, '').substring(0, 6);
-                      console.log('Código digitado:', digits);
                       handleChange('code')(digits);
                     }}
                     onBlur={handleBlur('code')}
@@ -218,10 +219,7 @@ export default function Phone() {
 
               <TouchableOpacity
                 style={[styles.button, isSubmitting && styles.buttonDisabled]}
-                onPress={() => {
-                  console.log('Botão pressionado. Valores atuais:', values);
-                  handleSubmit();
-                }}
+                onPress={handleSubmit}
                 disabled={isSubmitting}
               >
                 {isSubmitting ? (

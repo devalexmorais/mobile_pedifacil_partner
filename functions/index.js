@@ -1101,22 +1101,45 @@ exports.onUserCreated = functions.auth.user().onCreate(async (userRecord) => {
     
     await admin.auth().setCustomUserClaims(userRecord.uid, defaultClaims);
     
-    // Cria o documento do usuário na coleção partners
-    await admin.firestore().collection('partners').doc(userRecord.uid).set({
-      email: userRecord.email,
-      role: 'partner',
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      store: {
-        isPremium: false,
-        premiumExpiresAt: null,
-        premiumFeatures: {
-          analytics: false,
-          advancedReports: false,
-          prioritySupport: false,
+    // Verifica se o documento já existe (criado pelo registerService)
+    const existingDoc = await admin.firestore().collection('partners').doc(userRecord.uid).get();
+    
+    if (existingDoc.exists) {
+      console.log(`Documento do parceiro ${userRecord.uid} já existe - apenas atualizando campos necessários`);
+      
+      // Se o documento já existe, apenas adiciona/atualiza campos específicos que podem estar faltando
+      await admin.firestore().collection('partners').doc(userRecord.uid).update({
+        email: userRecord.email, // Garante que o email está correto
+        role: 'partner', // Garante que a role está definida
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        // Adiciona store apenas se não existir
+        ...(existingDoc.data().store ? {} : {
+          'store.isPremium': false,
+          'store.premiumExpiresAt': null,
+          'store.premiumFeatures.analytics': false,
+          'store.premiumFeatures.advancedReports': false,
+          'store.premiumFeatures.prioritySupport': false,
+        })
+      });
+    } else {
+      // Se o documento não existe, cria um novo (caso raro - usuário criado fora do fluxo de registro)
+      console.log(`Criando novo documento para parceiro ${userRecord.uid}`);
+      await admin.firestore().collection('partners').doc(userRecord.uid).set({
+        email: userRecord.email,
+        role: 'partner',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        store: {
+          isPremium: false,
+          premiumExpiresAt: null,
+          premiumFeatures: {
+            analytics: false,
+            advancedReports: false,
+            prioritySupport: false,
+          }
         }
-      }
-    });
+      });
+    }
 
     console.log(`Usuário ${userRecord.uid} criado com sucesso com role padrão`);
     return null;

@@ -57,6 +57,7 @@ interface RegisterFormData {
   neighborhoodName: string;
   city: string;
   cityName: string;
+  zip_code: string;
   state: string;
   stateName: string;
   
@@ -92,6 +93,7 @@ const initialFormData: RegisterFormData = {
   neighborhoodName: '',
   city: '',
   cityName: '',
+  zip_code: '',
   state: '',
   stateName: '',
   delivery: {

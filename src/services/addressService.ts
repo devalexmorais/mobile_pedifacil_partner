@@ -15,6 +15,7 @@ interface Neighborhood {
 interface City {
   id: string;
   name: string;
+  zip_code?: string;
   neighborhoods?: Neighborhood[];
 }
 
@@ -57,9 +58,11 @@ export const addressService = {
             name: neighborhoodDoc.data().name
           }));
 
+          const cityData = cityDoc.data();
           return {
             id: cityDoc.id,
-            name: cityDoc.data().name,
+            name: cityData.name,
+            zip_code: cityData.zip_code || cityData.cep || cityData.zipCode,
             neighborhoods: neighborhoods
           };
         });
@@ -105,15 +108,24 @@ export const addressService = {
           name: doc.data().name
         }));
 
+        const cityData = cityDoc.data();
+        console.log(`🔍 DEBUG - Cidade ${cityData.name}:`);
+        console.log(`  - zip_code:`, cityData.zip_code);
+        console.log(`  - cep:`, cityData.cep);
+        console.log(`  - zipCode:`, cityData.zipCode);
+        console.log(`  - Todos os campos:`, Object.keys(cityData));
+        
         return {
           id: cityDoc.id,
-          name: cityDoc.data().name,
+          name: cityData.name,
+          zip_code: cityData.zip_code || cityData.cep || cityData.zipCode,
           neighborhoods: neighborhoods
         };
       });
 
       const cities = await Promise.all(citiesPromises);
       console.log('Cidades encontradas:', cities);
+      console.log('🔍 DEBUG - Primeira cidade com zip_code:', cities.find(c => c.zip_code));
       return cities;
     } catch (error) {
       console.error('Erro ao buscar cidades:', error);

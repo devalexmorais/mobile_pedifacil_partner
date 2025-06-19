@@ -168,7 +168,7 @@ export default function RegisterBasicInfo() {
       return;
     }
 
-    console.log('Dados sendo enviados do basic-info:', values);
+
     
     router.push({
       pathname: '/public/register/phone',

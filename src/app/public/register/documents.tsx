@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -40,7 +40,10 @@ const capitalizeWords = (s: string): string => s.replace(/\b\w/g, c => c.toUpper
 
 export default function Documents() {
   const router = useRouter();
-  const params = useLocalSearchParams();
+  const rawParams = useLocalSearchParams();
+  
+  // Memoize params to prevent unnecessary re-renders
+  const params = useMemo(() => rawParams, [JSON.stringify(rawParams)]);
   const [formData, setFormData] = useState<DocumentsFormData>({
     storeName: '',
     category: '',
@@ -74,10 +77,8 @@ export default function Documents() {
 
   const loadCategories = async () => {
     try {
-      console.log('Iniciando carregamento de categorias...');
       setLoading(true);
       const categoriesData = await categoryService.getCategories();
-      console.log('Categorias carregadas com sucesso:', categoriesData);
       setCategories(categoriesData);
       
       if (categoriesData.length === 0) {
@@ -286,42 +287,7 @@ export default function Documents() {
     try {
       setLoading(true);
 
-      console.log('Parâmetros para registro:', params);
 
-      // Log detalhado de todos os dados
-      console.log('============ DADOS COMPLETOS DO CADASTRO ============');
-      console.log('Dados básicos:', {
-        name: params.name,
-        email: params.email,
-        phone: params.phone
-      });
-      
-      console.log('Endereço:', {
-        street: params.street,
-        number: params.number,
-        complement: params.complement,
-        neighborhood: params.neighborhood,
-        neighborhoodName: params.neighborhoodName,
-        city: params.city,
-        cityName: params.cityName,
-        state: params.state,
-        stateName: params.stateName
-      });
-      
-      console.log('Configurações:', {
-        delivery: params.delivery ? JSON.parse(String(params.delivery)) : null,
-        pickup: params.pickup ? JSON.parse(String(params.pickup)) : null,
-        paymentOptions: params.paymentOptions ? JSON.parse(String(params.paymentOptions)) : null,
-        schedule: params.schedule ? JSON.parse(String(params.schedule)) : null
-      });
-      
-      console.log('Documentos:', {
-        storeName: formData.storeName,
-        category: formData.category,
-        subcategory: formData.subcategory,
-        cnpj_or_cpf: formData.cnpj_or_cpf
-      });
-      console.log('===================================================');
 
       // Verificação mais detalhada dos dados
       if (!params.name || !params.email || !params.password || 
@@ -349,6 +315,7 @@ export default function Documents() {
           neighborhoodName: params.neighborhoodName ? String(params.neighborhoodName) : '',
           city: String(params.city),
           cityName: params.cityName ? String(params.cityName) : '',
+          zip_code: params.zip_code ? String(params.zip_code) : '',
           state: String(params.state),
           stateName: params.stateName ? String(params.stateName) : '',
           storeName: formData.storeName,
@@ -365,7 +332,7 @@ export default function Documents() {
           throw new Error(String(result.error));
         }
 
-        console.log('Usuário registrado com sucesso:', result);
+
 
         Alert.alert(
           'Sucesso!',

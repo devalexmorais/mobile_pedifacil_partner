@@ -1,8 +1,9 @@
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, collection, query, where, getDocs, getDoc } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 import { getAnalytics, logEvent, isSupported, Analytics } from 'firebase/analytics';
 import { Platform } from 'react-native';
+
 
 // Inicializar o analytics apenas se estiver em um ambiente compatível
 let analytics: Analytics | null = null;
@@ -58,6 +59,7 @@ interface RegisterPartnerData {
   neighborhoodName?: string;
   city: string;
   cityName?: string;
+  zip_code?: string;
   state: string;
   stateName?: string;
   
@@ -126,55 +128,86 @@ export const registerService = {
       // Documento armazenado sem criptografia
       const documentValue = data.cnpj_or_cpf;
 
-      // Preparar dados para o Firestore
+      // Preparar dados para o Firestore - Dividindo em partes para debug
+      const addressData = {
+        street: data.street,
+        number: data.number,
+        complement: data.complement || '',
+        neighborhood: data.neighborhood,
+        neighborhoodName: data.neighborhoodName || '',
+        city: data.city,
+        cityName: data.cityName || '',
+        zip_code: data.zip_code || '',
+        state: data.state,
+        stateName: data.stateName || '',
+      };
+
+      const settingsData = {
+        delivery: data.delivery ? JSON.parse(data.delivery) : null,
+        pickup: data.pickup ? JSON.parse(data.pickup) : null,
+        paymentOptions: data.paymentOptions ? JSON.parse(data.paymentOptions) : null,
+        schedule: data.schedule ? JSON.parse(data.schedule) : null,
+      };
+
+      const storeData = {
+        name: data.storeName,
+        category: data.category,
+        subcategory: data.subcategory,
+        document: documentValue,
+        isPremium: false,
+        premiumExpiresAt: null,
+      };
+
+      const premiumFeaturesData = {
+        advancedReports: false,
+        analytics: false,
+        prioritySupport: false,
+      };
+
+      // Dados completos do parceiro
       const partnerData = {
         name: data.name,
         email: data.email,
         phone: data.phone,
-        address: {
-          street: data.street,
-          number: data.number,
-          complement: data.complement || '',
-          neighborhood: data.neighborhood,
-          neighborhoodName: data.neighborhoodName || '',
-          city: data.city,
-          cityName: data.cityName || '',
-          state: data.state,
-          stateName: data.stateName || '',
-        },
-        settings: {
-          delivery: data.delivery ? JSON.parse(data.delivery) : null,
-          pickup: data.pickup ? JSON.parse(data.pickup) : null,
-          paymentOptions: data.paymentOptions ? JSON.parse(data.paymentOptions) : null,
-          schedule: data.schedule ? JSON.parse(data.schedule) : null,
-        },
+        address: addressData,
+        settings: settingsData,
         createdAt: new Date(),
         isActive: true,
         isOpen: false,
         lastUpdated: new Date().toISOString(),
         role: 'partner',
         status: 'pending',
-        store: {
-          name: data.storeName,
-          category: data.category,
-          subcategory: data.subcategory,
-          document: documentValue,
-          isPremium: false,
-          premiumExpiresAt: null,
-        },
-        premiumFeatures: {
-          advancedReports: false,
-          analytics: false,
-          prioritySupport: false,
-        },
+        store: storeData,
+        premiumFeatures: premiumFeaturesData,
         updatedAt: new Date(),
       };
 
+      // Log de cada seção separadamente para debug
+      console.log('🏠 Dados de endereço:', addressData);
+      console.log('📮 CEP capturado:', data.zip_code);
+      console.log('⚙️ Dados de configurações:', settingsData);
+      console.log('🏪 Dados da loja:', storeData);
+      console.log('💎 Dados premium:', premiumFeaturesData);
+
       console.log('Salvando dados do parceiro no Firestore:', partnerData);
 
-      // Salvar no Firestore
-      await setDoc(doc(db, 'partners', userId), partnerData);
-      console.log('Dados do parceiro salvos com sucesso');
+      // Salvar no Firestore (a Cloud Function está corrigida para não sobrescrever)
+      try {
+        await setDoc(doc(db, 'partners', userId), partnerData);
+        console.log('✅ Dados do parceiro salvos com sucesso no Firestore');
+        
+        // Verificar se os dados foram salvos corretamente
+        const savedDoc = await getDoc(doc(db, 'partners', userId));
+        if (savedDoc.exists()) {
+          console.log('✅ Verificação: Documento salvo com sucesso');
+          console.log('📋 Dados finais:', savedDoc.data());
+        } else {
+          console.error('❌ ERRO: Documento não foi encontrado após a gravação!');
+        }
+      } catch (firestoreError) {
+        console.error('❌ ERRO detalhado ao salvar no Firestore:', firestoreError);
+        throw firestoreError;
+      }
 
       try {
         // Log de sucesso apenas se analytics estiver disponível
