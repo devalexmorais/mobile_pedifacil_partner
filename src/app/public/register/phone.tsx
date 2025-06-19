@@ -2,16 +2,24 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Formik } from 'formik';
+import { Formik, FormikHelpers } from 'formik';
 import * as Yup from 'yup';
 import { CustomInput } from '../../../components/CustomInput';
+import { TwilioService } from '../../../services/twilioService';
 import { colors } from '../../../styles/theme/colors';
+
+interface FormValues {
+  phone: string;
+  code: string;
+}
 
 const PhoneSchema = Yup.object().shape({
   phone: Yup.string()
     .required('Telefone é obrigatório')
-    .min(11, 'Telefone inválido')
-    .max(11, 'Telefone inválido'),
+    .test('valid-phone', 'Formato de telefone inválido', (value) => {
+      if (!value) return false;
+      return TwilioService.isValidPhoneNumber(value);
+    }),
   code: Yup.string().when('$isVerifying', {
     is: true,
     then: (schema) => schema.required('Código é obrigatório').length(6, 'Código deve ter 6 dígitos'),
@@ -22,51 +30,129 @@ export default function Phone() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const [isVerifying, setIsVerifying] = useState(false);
-  const [verificationCode, setVerificationCode] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
 
-  const generateVerificationCode = () => {
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    console.log('Código gerado:', code);
-    setVerificationCode(code);
-    return code;
-  };
-
-  const handleSubmit = async (values, { setSubmitting }) => {
+  const handleSubmit = async (
+    values: FormValues, 
+    { setSubmitting }: FormikHelpers<FormValues>
+  ) => {
     console.log('handleSubmit chamado com valores:', values);
     console.log('isVerifying:', isVerifying);
     
     try {
       if (!isVerifying) {
-        console.log('Etapa 1: Enviando código...');
-        generateVerificationCode();
-        setIsVerifying(true);
-        Alert.alert('Código Enviado', 'Verifique o console para o código.');
+        // Etapa 1: Enviar código de verificação (método direto temporário)
+        console.log('Etapa 1: Enviando código via método direto (temporário)...');
+        
+        const response = await TwilioService.sendVerificationCodeDirect(values.phone);
+        
+        if (response.success) {
+          console.log('Código enviado com sucesso:', response);
+          setPhoneNumber(values.phone);
+          setIsVerifying(true);
+          
+          Alert.alert(
+            'Código Enviado', 
+            `Um código de verificação foi enviado para ${TwilioService.formatPhoneDisplay(values.phone)}.`
+          );
+        } else {
+          throw new Error('Falha ao enviar código de verificação');
+        }
       } else {
-        console.log('Etapa 2: Verificando código...');
-        const inputCode = String(values.code).trim();
-        const expectedCode = String(verificationCode).trim();
-
-        console.log('Código digitado (inputCode):', inputCode);
-        console.log('Código esperado (expectedCode):', expectedCode);
-        console.log('Comparação (inputCode === expectedCode):', inputCode === expectedCode);
-
-        if (inputCode === expectedCode) {
-          console.log('Verificação bem-sucedida! Navegando para address...');
-          const formattedPhone = values.phone.replace(/\D/g, '');
+        // Etapa 2: Verificar código (método direto temporário)
+        console.log('Etapa 2: Verificando código via método direto (temporário)...');
+        
+        const response = await TwilioService.verifyCodeDirect(phoneNumber, values.code);
+        
+        if (response.success && response.valid) {
+          console.log('=================================================');
+          console.log('VERIFICAÇÃO BEM-SUCEDIDA VIA TWILIO!');
+          console.log('Telefone validado:', phoneNumber);
+          console.log('=================================================');
+          
+          const formattedPhone = phoneNumber.replace(/\D/g, '');
           router.push({
             pathname: '/public/register/address',
             params: { ...params, phone: formattedPhone },
           });
         } else {
-          console.log('Código inválido.');
-          Alert.alert('Código Inválido', 'O código digitado não corresponde ao enviado.');
+          console.log('ERRO: Código inválido via Twilio');
+          Alert.alert('Código Inválido', response.message || 'O código digitado está incorreto.');
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro no handleSubmit:', error);
-      Alert.alert('Erro', 'Ocorreu um erro. Tente novamente.');
+      
+      // Tratamento específico de erros
+      let errorMessage = 'Ocorreu um erro. Tente novamente.';
+      
+      if (error.message.includes('Número de telefone inválido')) {
+        errorMessage = 'Número de telefone inválido. Verifique o formato.';
+      } else if (error.message.includes('Muitas tentativas')) {
+        errorMessage = 'Muitas tentativas de verificação. Aguarde alguns minutos e tente novamente.';
+      } else if (error.message.includes('expirado')) {
+        errorMessage = 'Código expirado. Solicite um novo código.';
+      } else if (error.message.includes('Código de verificação inválido')) {
+        errorMessage = 'Código inválido. Verifique se digitou corretamente.';
+      }
+      
+      Alert.alert('Erro', errorMessage);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    try {
+      console.log('Reenviando código via método direto (temporário)...');
+      
+      const response = await TwilioService.sendVerificationCodeDirect(phoneNumber);
+      
+      if (response.success) {
+        console.log('Código reenviado com sucesso:', response);
+        Alert.alert(
+          'Código Reenviado', 
+          `Um novo código de verificação foi enviado para ${TwilioService.formatPhoneDisplay(phoneNumber)}.`
+        );
+      } else {
+        throw new Error('Falha ao reenviar código');
+      }
+    } catch (error: any) {
+      console.error('Erro ao reenviar código:', error);
+      Alert.alert('Erro', 'Não foi possível reenviar o código. Tente novamente.');
+    }
+  };
+
+  const formatPhoneInput = (text: string) => {
+    // Remove todos os caracteres não numéricos
+    const digits = text.replace(/\D/g, '');
+    
+    // Formatar para (11) 99999-9999
+    if (digits.length <= 2) {
+      return `(${digits}`;
+    } else if (digits.length <= 7) {
+      return `(${digits.substring(0, 2)}) ${digits.substring(2)}`;
+    } else if (digits.length <= 11) {
+      return `(${digits.substring(0, 2)}) ${digits.substring(2, 7)}-${digits.substring(7)}`;
+    } else {
+      // Limita a 11 dígitos
+      const truncated = digits.substring(0, 11);
+      return `(${truncated.substring(0, 2)}) ${truncated.substring(2, 7)}-${truncated.substring(7)}`;
+    }
+  };
+
+  const testTwilioCredentials = async () => {
+    try {
+      console.log('Testando credenciais do Twilio...');
+      const result = await TwilioService.testCredentials();
+      
+      if (result.success) {
+        Alert.alert('✅ Credenciais OK', `Conta: ${result.accountInfo?.friendlyName}\nStatus: ${result.accountInfo?.status}`);
+      } else {
+        Alert.alert('❌ Erro nas Credenciais', JSON.stringify(result.error, null, 2));
+      }
+    } catch (error: any) {
+      Alert.alert('❌ Erro', error.message);
     }
   };
 
@@ -84,7 +170,7 @@ export default function Phone() {
           onSubmit={handleSubmit}
           context={{ isVerifying }}
         >
-          {({ handleChange, handleBlur, handleSubmit, values, errors, touched, isSubmitting }) => (
+          {({ handleChange, handleBlur, handleSubmit, values, errors, touched, isSubmitting, setFieldValue }) => (
             <View>
               {!isVerifying ? (
                 <>
@@ -92,12 +178,14 @@ export default function Phone() {
                     label="Telefone"
                     value={values.phone}
                     onChangeText={(text) => {
-                      console.log('Telefone digitado:', text);
-                      handleChange('phone')(text);
+                      const formatted = formatPhoneInput(text);
+                      console.log('Telefone digitado:', formatted);
+                      setFieldValue('phone', formatted);
                     }}
                     onBlur={handleBlur('phone')}
                     keyboardType="phone-pad"
                     placeholder="(11) 99999-9999"
+                    maxLength={15} // (11) 99999-9999
                   />
                   {touched.phone && errors.phone && (
                     <Text style={styles.errorText}>{errors.phone}</Text>
@@ -105,13 +193,17 @@ export default function Phone() {
                 </>
               ) : (
                 <>
-                  <Text style={styles.phoneDisplay}>Código enviado para: {values.phone}</Text>
+                  <Text style={styles.phoneDisplay}>
+                    Código enviado para: {TwilioService.formatPhoneDisplay(phoneNumber)}
+                  </Text>
                   <CustomInput
                     label="Código de Verificação"
                     value={values.code}
                     onChangeText={(text) => {
-                      console.log('Código digitado:', text);
-                      handleChange('code')(text);
+                      // Permite apenas números e limita a 6 dígitos
+                      const digits = text.replace(/\D/g, '').substring(0, 6);
+                      console.log('Código digitado:', digits);
+                      handleChange('code')(digits);
                     }}
                     onBlur={handleBlur('code')}
                     keyboardType="numeric"
@@ -144,10 +236,7 @@ export default function Phone() {
               {isVerifying && (
                 <TouchableOpacity
                   style={styles.resendButton}
-                  onPress={() => {
-                    generateVerificationCode();
-                    Alert.alert('Código Reenviado', 'Verifique o console.');
-                  }}
+                  onPress={handleResendCode}
                 >
                   <Text style={styles.resendButtonText}>Reenviar Código</Text>
                 </TouchableOpacity>
@@ -159,6 +248,16 @@ export default function Phone() {
               >
                 <Text style={styles.backButtonText}>
                   {isVerifying ? 'Voltar para Telefone' : 'Voltar'}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Botão temporário para testar credenciais */}
+              <TouchableOpacity
+                style={[styles.backButton, { backgroundColor: '#4CAF50', borderColor: '#4CAF50' }]}
+                onPress={testTwilioCredentials}
+              >
+                <Text style={[styles.backButtonText, { color: '#fff' }]}>
+                  🧪 Testar Credenciais Twilio
                 </Text>
               </TouchableOpacity>
             </View>
