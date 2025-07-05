@@ -164,4 +164,6 @@ export function useRegisterForm() {
     throw new Error('useRegisterForm deve ser usado dentro de um RegisterFormProvider');
   }
   return context;
-} 
+}
+
+export default RegisterFormProvider; 

@@ -16,7 +16,8 @@
         "UIBackgroundModes": [
           "remote-notification"
         ]
-      }
+      },
+      "runtimeVersion": "1.0.0"
     },
     "android": {
       "adaptiveIcon": {
@@ -29,7 +30,8 @@
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE",
         "NOTIFICATIONS"
-      ]
+      ],
+      "runtimeVersion": "1.0.0"
     },
     "web": {
       "bundler": "metro",
@@ -62,10 +64,6 @@
         "expo-notifications",
         {
           "icon": "./assets/images/notifications.png",
-          "color": "#FFA500",
-          "sounds": [
-            "./assets/sounds/notification.wav"
-          ],
           "androidMode": "default",
           "androidCollapsedTitle": "pediFacil Parceiros",
           "iosDisplayInForeground": true
@@ -80,14 +78,8 @@
         "origin": false
       },
       "eas": {
-        "projectId": "9b4318e9-f138-4787-811a-fb7649720e3e"
+        "projectId": "64a25875-5d0c-4f66-b987-30bafb5fec21"
       }
-    },
-    "owner": "alexmorais1910"
-  },
-  "doctor": {
-    "reactNativeDirectoryCheck": {
-      "listUnknownPackages": false
     }
   }
 }
