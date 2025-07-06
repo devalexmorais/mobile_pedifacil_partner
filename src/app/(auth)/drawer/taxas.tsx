@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, Alert, ActivityIndicator, TouchableOpacity, Modal, Animated } from 'react-native';
 import { colors } from '@/styles/theme/colors';
 import { useAuth } from '@/contexts/AuthContext';
 import { deliveryFeeService, DeliveryFee } from '@/services/deliveryFeeService';
@@ -28,7 +28,13 @@ export default function TaxasEntrega() {
   const [isLoading, setIsLoading] = useState(true);
   const [storeCity, setStoreCity] = useState<string | null>(null);
   const [storeState, setStoreState] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  
+  // Modal states
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [editingFee, setEditingFee] = useState<DeliveryFee | null>(null);
+  const [editingValue, setEditingValue] = useState('');
+  const [modalAnimation] = useState(new Animated.Value(0));
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     loadInitialData();
@@ -94,46 +100,93 @@ export default function TaxasEntrega() {
     }
   };
 
-  const handleUpdateFee = async (id: string, newValue: string) => {
+  const handleEditFee = (fee: DeliveryFee) => {
+    setEditingFee(fee);
+    setEditingValue(formatToBRL(fee.fee));
+    setIsModalVisible(true);
+    
+    // Animate modal appearance
+    Animated.spring(modalAnimation, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 100,
+      friction: 8,
+    }).start();
+  };
+
+  const handleCloseModal = () => {
+    Animated.timing(modalAnimation, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      setIsModalVisible(false);
+      setEditingFee(null);
+      setEditingValue('');
+    });
+  };
+
+  const handleSaveFee = async () => {
+    if (!editingFee || !user?.uid) return;
+
     try {
-      if (!user?.uid) return;
+      setIsSaving(true);
       
       // Converter o valor formatado para número
-      const value = cleanFormat(newValue);
-      if (isNaN(value) || value < 0) return;
-
-      const fee = deliveryFees.find(f => f.id === id);
-      if (!fee) return;
+      const value = cleanFormat(editingValue);
+      if (isNaN(value) || value < 0) {
+        Alert.alert('Erro', 'Por favor, insira um valor válido');
+        return;
+      }
 
       // Se é uma taxa temporária e o valor é maior que 0, criar nova no banco
-      if (id.startsWith('temp_') && value > 0) {
+      if (editingFee.id.startsWith('temp_') && value > 0) {
         const newFeeId = await deliveryFeeService.createDeliveryFee({
-          neighborhood: fee.neighborhood,
+          neighborhood: editingFee.neighborhood,
           fee: value,
           storeId: user.uid
         });
 
         // Atualizar o estado local com o novo ID
         setDeliveryFees(prev =>
-          prev.map(f => f.id === id ? { ...f, id: newFeeId, fee: value } : f)
+          prev.map(f => f.id === editingFee.id ? { ...f, id: newFeeId, fee: value } : f)
         );
-      } else if (!id.startsWith('temp_')) {
+      } else if (!editingFee.id.startsWith('temp_')) {
         // Atualizar taxa existente
-        await deliveryFeeService.updateDeliveryFee(user.uid, id, {
+        await deliveryFeeService.updateDeliveryFee(user.uid, editingFee.id, {
           fee: value
         });
 
         setDeliveryFees(prev =>
-          prev.map(f => f.id === id ? { ...f, fee: value } : f)
+          prev.map(f => f.id === editingFee.id ? { ...f, fee: value } : f)
         );
       }
+
+      handleCloseModal();
     } catch (error) {
-      Alert.alert('Erro', 'Não foi possível atualizar o valor da taxa');
+      Alert.alert('Erro', 'Não foi possível salvar a taxa de entrega');
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleEditToggle = (id: string) => {
-    setEditingId(editingId === id ? null : id);
+  const formatInputValue = (value: string) => {
+    // Remove todos os caracteres não numéricos
+    const cleanValue = value.replace(/\D/g, '');
+    
+    // Converte para número e divide por 100 para ter centavos
+    const numericValue = parseInt(cleanValue, 10) / 100;
+    
+    // Formata como moeda brasileira
+    return numericValue.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  };
+
+  const handleValueChange = (value: string) => {
+    const formatted = formatInputValue(value);
+    setEditingValue(formatted);
   };
 
   return (
@@ -158,35 +211,98 @@ export default function TaxasEntrega() {
                   <Text style={styles.neighborhoodName}>{fee.neighborhood}</Text>
                   <TouchableOpacity
                     style={styles.editButton}
-                    onPress={() => handleEditToggle(fee.id)}
+                    onPress={() => handleEditFee(fee)}
                   >
-                    <Feather 
-                      name={editingId === fee.id ? "check" : "more-vertical"} 
-                      size={18} 
-                      color="#FF7700" 
-                    />
+                    <Feather name="more-vertical" size={18} color="#FF7700" />
                   </TouchableOpacity>
                 </View>
                 
-                <View style={styles.feeInputContainer}>
+                <View style={styles.feeDisplay}>
                   <Text style={styles.currencySymbol}>R$</Text>
-                  <TextInput
-                    style={[
-                      styles.feeInput,
-                      editingId !== fee.id && styles.feeInputDisabled
-                    ]}
-                    value={formatToBRL(fee.fee)}
-                    onChangeText={(value) => handleUpdateFee(fee.id, value)}
-                    keyboardType="numeric"
-                    editable={editingId === fee.id}
-                    placeholder="0,00"
-                  />
+                  <Text style={styles.feeValue}>{formatToBRL(fee.fee)}</Text>
                 </View>
               </View>
             ))}
           </View>
         )}
       </ScrollView>
+
+      {/* Modal para editar taxa */}
+      <Modal
+        transparent={true}
+        visible={isModalVisible}
+        animationType="none"
+        onRequestClose={handleCloseModal}
+      >
+        <View style={styles.modalOverlay}>
+          <Animated.View
+            style={[
+              styles.modalContent,
+              {
+                transform: [
+                  {
+                    scale: modalAnimation.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.8, 1],
+                    }),
+                  },
+                ],
+                opacity: modalAnimation,
+              },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Editar Taxa de Entrega</Text>
+              <TouchableOpacity onPress={handleCloseModal} style={styles.closeButton}>
+                <Feather name="x" size={24} color={colors.gray[600]} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              <Text style={styles.neighborhoodTitle}>
+                {editingFee?.neighborhood}
+              </Text>
+              
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Valor da taxa</Text>
+                <View style={styles.inputWrapper}>
+                  <Text style={styles.inputCurrency}>R$</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    value={editingValue}
+                    onChangeText={handleValueChange}
+                    keyboardType="numeric"
+                    placeholder="0,00"
+                    placeholderTextColor={colors.gray[400]}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.cancelButton]}
+                  onPress={handleCloseModal}
+                  disabled={isSaving}
+                >
+                  <Text style={styles.cancelButtonText}>Cancelar</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.saveButton]}
+                  onPress={handleSaveFee}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <ActivityIndicator size="small" color={colors.white} />
+                  ) : (
+                    <Text style={styles.saveButtonText}>Salvar</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Animated.View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -199,7 +315,6 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-
   infoContainer: {
     backgroundColor: '#FFF0E6',
     borderWidth: 1,
@@ -242,7 +357,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: colors.gray[800],
   },
-  feeInputContainer: {
+  feeDisplay: {
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -251,13 +366,10 @@ const styles = StyleSheet.create({
     color: colors.gray[600],
     marginRight: 4,
   },
-  feeInput: {
-    flex: 1,
-    fontSize: 16,
+  feeValue: {
+    fontSize: 18,
+    fontWeight: '600',
     color: colors.gray[800],
-    padding: 8,
-    backgroundColor: '#FFF0E6',
-    borderRadius: 8,
   },
   loadingContainer: {
     flex: 1,
@@ -271,15 +383,121 @@ const styles = StyleSheet.create({
     color: colors.gray[600],
   },
   editButton: {
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 18,
+    backgroundColor: '#FFF0E6',
+  },
+  
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  modalContent: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 400,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[200],
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.gray[800],
+  },
+  closeButton: {
     width: 32,
     height: 32,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 16,
-    backgroundColor: '#FFF0E6',
+    backgroundColor: colors.gray[100],
   },
-  feeInputDisabled: {
-    backgroundColor: colors.gray[200],
+  modalBody: {
+    padding: 20,
+  },
+  neighborhoodTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.gray[700],
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  inputContainer: {
+    marginBottom: 24,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.gray[700],
+    marginBottom: 8,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.gray[50],
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  inputCurrency: {
+    fontSize: 16,
+    fontWeight: '500',
     color: colors.gray[600],
-  }
+    marginRight: 8,
+  },
+  modalInput: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.gray[800],
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  actionButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 44,
+  },
+  cancelButton: {
+    backgroundColor: colors.gray[100],
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.gray[700],
+  },
+  saveButton: {
+    backgroundColor: '#FF7700',
+  },
+  saveButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.white,
+  },
 }); 

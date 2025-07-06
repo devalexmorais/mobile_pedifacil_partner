@@ -292,11 +292,11 @@ export default function Pedidos() {
               <View style={styles.detailsSection}>
                 <Text style={styles.sectionTitle}>Endereço de Entrega</Text>
                 <View style={styles.addressContainer}>
-                  <Text style={styles.addressText}>{endereco.linha1}</Text>
+                  <Text style={styles.addressText}>Rua: {endereco.linha1}</Text>
                   {endereco.linha2 ? (
-                    <Text style={styles.addressText}>{endereco.linha2}</Text>
+                    <Text style={styles.addressText}>Complemento: {endereco.linha2}</Text>
                   ) : null}
-                  <Text style={styles.addressText}>{endereco.linha3}</Text>
+                  <Text style={styles.addressText}>Bairro: {endereco.linha3}</Text>
                 </View>
               </View>
             )}

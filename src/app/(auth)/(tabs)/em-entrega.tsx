@@ -142,17 +142,7 @@ export default function EmEntrega() {
           </Text>
         </TouchableOpacity>
 
-        {/* Status Badge */}
-        <View style={[styles.statusBadge, isPickup && styles.statusBadgePickup]}>
-          <Ionicons 
-            name={isPickup ? "storefront" : "bicycle"} 
-            size={16} 
-            color={isPickup ? "#8E44AD" : "#FF9800"} 
-          />
-          <Text style={[styles.statusText, isPickup && styles.statusTextPickup]}>
-            {isPickup ? 'Disponível para Retirada' : 'Em Entrega'}
-          </Text>
-        </View>
+
       </View>
     );
   };
@@ -259,28 +249,7 @@ const styles = StyleSheet.create({
     color: '#666',
     flex: 1,
   },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF3E0',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-    marginTop: 8,
-    gap: 4,
-  },
-  statusBadgePickup: {
-    backgroundColor: '#F5EEF8',
-  },
-  statusText: {
-    fontSize: 12,
-    color: '#FF9800',
-    fontWeight: '500',
-  },
-  statusTextPickup: {
-    color: '#8E44AD',
-  },
+
   deliveredButton: {
     flexDirection: 'row',
     alignItems: 'center',

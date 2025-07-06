@@ -29,6 +29,7 @@ export function FloatingButton() {
   const [pickupModal, setPickupModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [settings, setSettings] = useState<any>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
   const animation = useRef(new Animated.Value(0)).current;
 
   // Carregar configurações quando o componente é montado
@@ -111,12 +112,20 @@ export function FloatingButton() {
   ];
 
   const toggleMenu = () => {
+    if (isAnimating) return;
+    
     const toValue = isExpanded ? 0 : 1;
+    setIsAnimating(true);
+    
     Animated.spring(animation, {
       toValue,
-      friction: 5,
+      friction: 8,
+      tension: 100,
       useNativeDriver: true,
-    }).start();
+    }).start(() => {
+      setIsAnimating(false);
+    });
+    
     setIsExpanded(!isExpanded);
   };
 
@@ -131,7 +140,7 @@ export function FloatingButton() {
             });
 
             const opacity = animation.interpolate({
-              inputRange: [0, 0.5, 1],
+              inputRange: [0, 0.7, 1],
               outputRange: [0, 0, 1],
             });
 
@@ -154,18 +163,29 @@ export function FloatingButton() {
                     position: 'absolute',
                     bottom: 0,
                     right: 0,
+                    zIndex: 1000 + index,
                   }
                 ]}
+                pointerEvents={isExpanded && !isAnimating ? 'auto' : 'none'}
               >
                 <View style={styles.labelContainer}>
-                  <Text style={styles.menuLabel}>{option.label}</Text>
+                  <Text 
+                    style={styles.menuLabel}
+                    numberOfLines={2}
+                    adjustsFontSizeToFit={true}
+                    minimumFontScale={0.8}
+                  >
+                    {option.label}
+                  </Text>
                 </View>
                 <TouchableOpacity
                   style={styles.menuButton}
                   onPress={() => {
+                    if (isAnimating) return;
                     option.onPress();
                     toggleMenu();
                   }}
+                  disabled={!isExpanded || isAnimating}
                 >
                   <Ionicons name={option.icon as any} size={20} color="#FFF" />
                 </TouchableOpacity>
@@ -177,6 +197,7 @@ export function FloatingButton() {
         <TouchableOpacity
           style={[styles.fab, isExpanded && styles.fabActive]}
           onPress={toggleMenu}
+          disabled={isAnimating}
         >
           <Ionicons
             name={isExpanded ? 'close' : 'add'}
@@ -255,23 +276,30 @@ const styles = StyleSheet.create({
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
+    borderRadius: 28,
   },
   labelContainer: {
     position: 'absolute',
     right: 70,
     backgroundColor: colors.white,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
     elevation: 5,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
+    minWidth: 120,
+    maxWidth: Math.min(width * 0.6, 200),
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   menuLabel: {
     color: colors.gray[800],
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
+    textAlign: 'center',
+    flexWrap: 'wrap',
   },
 }); 

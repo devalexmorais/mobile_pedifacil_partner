@@ -8,7 +8,6 @@ import { EmptyState } from '@/components/EmptyState';
 import { notificationService } from '@/services/notificationService';
 
 export default function Preparando() {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const { pedidosCozinha, marcarComoPronto, cancelarPedido } = usePedidos();
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -91,8 +90,6 @@ export default function Preparando() {
   };
 
   const renderPedido = ({ item }: { item: Pedido }) => {
-    const isExpanded = expandedId === item.id;
-    
     // Converter o timestamp do Firestore para uma data JavaScript
     const createdAtDate = new Date(
       item.createdAt.seconds * 1000 + item.createdAt.nanoseconds / 1000000
@@ -100,21 +97,10 @@ export default function Preparando() {
 
     return (
       <View style={styles.pedidoCard}>
-        <TouchableOpacity 
-          style={[
-            styles.pedidoHeader, 
-            isExpanded && {backgroundColor: '#f0ead6', borderBottomWidth: 1, borderBottomColor: '#e8d5b5'}
-          ]}
-          onPress={() => setExpandedId(isExpanded ? null : item.id)}
-          activeOpacity={0.7}
-        >
+        <View style={styles.pedidoHeader}>
           <View style={styles.headerLeft}>
             <Text style={styles.orderTime}>
               Pedido #{item.id.slice(-4)} • {createdAtDate.toLocaleTimeString('pt-BR')}
-            </Text>
-            <Text style={styles.touchHint}>
-              <Ionicons name={isExpanded ? "eye-off-outline" : "eye-outline"} size={12} color="#666" style={{marginRight: 4}} /> 
-              {isExpanded ? "Toque para ocultar detalhes" : "Toque para ver detalhes do pedido"}
             </Text>
           </View>
           <View style={styles.headerRight}>
@@ -125,73 +111,65 @@ export default function Preparando() {
                 color={item.deliveryMode === 'pickup' ? "#8e44ad" : "#e67e22"}
               />
             </View>
-            <Ionicons 
-              name={isExpanded ? "chevron-up" : "chevron-down"} 
-              size={20} 
-              color="#666"
-              style={[styles.expandIcon, {backgroundColor: isExpanded ? "#f0f0f0" : "#4CAF5033", padding: 4, borderRadius: 12}]}
-            />
           </View>
-        </TouchableOpacity>
+        </View>
 
-        {/* Detalhes expandidos */}
-        {isExpanded && (
-          <View style={styles.expandedContent}>
-            {item.items.map((itemPedido: OrderItem, index: number) => (
-              <View key={index} style={styles.expandedItemContainer}>
-                <View style={styles.itemRow}>
-                  <Text style={styles.itemQuantity}>{itemPedido.quantity}x</Text>
-                  <View style={styles.itemDetails}>
-                    <Text style={styles.itemName}>
-                      {itemPedido.name}
-                    </Text>
-                  </View>
+        {/* Detalhes sempre visíveis */}
+        <View style={styles.expandedContent}>
+          {item.items.map((itemPedido: OrderItem, index: number) => (
+            <View key={index} style={styles.expandedItemContainer}>
+              <View style={styles.itemRow}>
+                <Text style={styles.itemQuantity}>{itemPedido.quantity}x</Text>
+                <View style={styles.itemDetails}>
+                  <Text style={styles.itemName}>
+                    {itemPedido.name}
+                  </Text>
                 </View>
-                
-                {/* Seleções Obrigatórias */}
-                {itemPedido.requiredSelections && itemPedido.requiredSelections.length > 0 && (
-                  <View style={styles.selectionsContainer}>
-                    {itemPedido.requiredSelections.map((selection, selIndex: number) => (
-                      <View key={selIndex} style={styles.selectionGroup}>
-                        <Text style={styles.selectionName}>{selection.name}:</Text>
-                        <View style={styles.selectionOptions}>
-                          {selection.options.map((option: string, optIndex: number) => (
-                            <Text key={optIndex} style={styles.selectionOption}>
-                              {option}
-                            </Text>
-                          ))}
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                )}
-
-                {/* Adicionais */}
-                {itemPedido.options && itemPedido.options.length > 0 && (
-                  <View style={styles.additionalsContainer}>
-                    <Text style={styles.additionalsTitle}>Adicionais:</Text>
-                    {itemPedido.options.map((option, optIndex: number) => (
-                      <Text key={optIndex} style={styles.additionalText}>
-                        • {(option as any).quantity ? `${(option as any).quantity}x` : ""} <Text style={styles.additionalHighlight}>{option.name}</Text>
-                      </Text>
-                    ))}
-                  </View>
-                )}
-
-                {/* Observações */}
-                {item.observations && (
-                  <View style={styles.infoSection}>
-                    <Text style={styles.sectionTitle}>Observações:</Text>
-                    <Text style={styles.infoText}>{item.observations}</Text>
-                  </View>
-                )}
-
-                {/* Linha divisória entre itens */}
-                {index < item.items.length - 1 && <View style={styles.itemDivider} />}
               </View>
-            ))}
-          </View>
-        )}
+              
+              {/* Seleções Obrigatórias */}
+              {itemPedido.requiredSelections && itemPedido.requiredSelections.length > 0 && (
+                <View style={styles.selectionsContainer}>
+                  {itemPedido.requiredSelections.map((selection, selIndex: number) => (
+                    <View key={selIndex} style={styles.selectionGroup}>
+                      <Text style={styles.selectionName}>{selection.name}:</Text>
+                      <View style={styles.selectionOptions}>
+                        {selection.options.map((option: string, optIndex: number) => (
+                          <Text key={optIndex} style={styles.selectionOption}>
+                            {option}
+                          </Text>
+                        ))}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Adicionais */}
+              {itemPedido.options && itemPedido.options.length > 0 && (
+                <View style={styles.additionalsContainer}>
+                  <Text style={styles.additionalsTitle}>Adicionais:</Text>
+                  {itemPedido.options.map((option, optIndex: number) => (
+                    <Text key={optIndex} style={styles.additionalText}>
+                      • {(option as any).quantity ? `${(option as any).quantity}x` : ""} <Text style={styles.additionalHighlight}>{option.name}</Text>
+                    </Text>
+                  ))}
+                </View>
+              )}
+
+              {/* Observações */}
+              {item.observations && (
+                <View style={styles.infoSection}>
+                  <Text style={styles.sectionTitle}>Observações:</Text>
+                  <Text style={styles.infoText}>{item.observations}</Text>
+                </View>
+              )}
+
+              {/* Linha divisória entre itens */}
+              {index < item.items.length - 1 && <View style={styles.itemDivider} />}
+            </View>
+          ))}
+        </View>
 
         <View style={styles.buttonContainer}>
           <TouchableOpacity 
@@ -231,32 +209,29 @@ export default function Preparando() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#f8f9fa',
   },
   listContainer: {
-    padding: 16,
+    padding: 12,
   },
   pedidoCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e9ecef',
   },
   pedidoHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 0,
-    backgroundColor: '#fbf5e9',
-    borderRadius: 8,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#e8d5b5',
+    marginBottom: 12,
+    backgroundColor: '#fff',
+    borderRadius: 6,
+    padding: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f3f4',
   },
   headerLeft: {
     flex: 1,
@@ -268,26 +243,11 @@ const styles = StyleSheet.create({
   },
   orderTime: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '600',
     color: '#333',
-    marginBottom: 4,
-  },
-  touchHint: {
-    fontSize: 12,
-    color: '#666',
-    fontStyle: 'italic',
-    marginTop: 2,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  expandIcon: {
-    marginLeft: 8,
-    padding: 6,
-    borderRadius: 12,
   },
   expandedContent: {
-    paddingTop: 16,
-    marginTop: 12,
+    paddingTop: 8,
   },
   itemRow: {
     flexDirection: 'row',
@@ -309,99 +269,106 @@ const styles = StyleSheet.create({
     color: '#222',
   },
   expandedItemContainer: {
-    backgroundColor: '#f0f8ff',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-    borderLeftWidth: 3,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 6,
+    padding: 10,
+    marginBottom: 6,
+    borderLeftWidth: 2,
     borderLeftColor: '#4CAF50',
   },
   selectionsContainer: {
-    marginTop: 12,
+    marginTop: 8,
     backgroundColor: '#fff',
-    borderRadius: 6,
-    padding: 8,
+    borderRadius: 4,
+    padding: 6,
+    borderWidth: 1,
+    borderColor: '#f1f3f4',
   },
   selectionGroup: {
-    marginBottom: 8,
+    marginBottom: 6,
   },
   selectionName: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 4,
+    marginBottom: 3,
   },
   selectionOptions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 4,
   },
   selectionOption: {
-    fontSize: 14,
-    color: '#444',
-    backgroundColor: '#f0f0f0',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
+    fontSize: 13,
+    color: '#555',
+    backgroundColor: '#f8f9fa',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 3,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
   },
   additionalsContainer: {
-    marginTop: 12,
+    marginTop: 8,
     backgroundColor: '#fff',
-    borderRadius: 6,
-    padding: 8,
+    borderRadius: 4,
+    padding: 6,
+    borderWidth: 1,
+    borderColor: '#f1f3f4',
   },
   additionalsTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 4,
+    marginBottom: 3,
   },
   additionalText: {
-    fontSize: 14,
-    color: '#444',
-    marginBottom: 2,
+    fontSize: 13,
+    color: '#555',
+    marginBottom: 1,
   },
   additionalHighlight: {
-    fontWeight: 'bold',
+    fontWeight: '600',
     color: '#222',
-    fontSize: 15,
   },
   itemDivider: {
     height: 1,
-    backgroundColor: '#e0e0e0',
-    marginVertical: 12,
+    backgroundColor: '#f1f3f4',
+    marginVertical: 8,
   },
   infoSection: {
-    marginTop: 12,
+    marginTop: 8,
     backgroundColor: '#fff',
-    borderRadius: 6,
-    padding: 8,
+    borderRadius: 4,
+    padding: 6,
+    borderWidth: 1,
+    borderColor: '#f1f3f4',
   },
   sectionTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 4,
+    marginBottom: 3,
   },
   infoText: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#666',
   },
   buttonContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 16,
-    gap: 12,
+    marginTop: 12,
+    gap: 8,
   },
   button: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    gap: 6,
   },
   readyButton: {
     backgroundColor: '#4CAF50',
@@ -411,21 +378,20 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
   disabledButton: {
     opacity: 0.6,
   },
   deliveryIndicator: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#f9f3e8',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#f8f9fa',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 6,
     borderWidth: 1,
-    borderColor: '#e8d5b5',
+    borderColor: '#e9ecef',
   },
 }); 

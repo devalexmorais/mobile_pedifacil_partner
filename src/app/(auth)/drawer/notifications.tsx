@@ -147,16 +147,39 @@ export default function NotificationsScreen() {
     }
   };
 
-  // Função para marcar todas como lidas
-  const handleMarkAllAsRead = async () => {
+  // Função para excluir todas as notificações
+  const handleDeleteAllNotifications = async () => {
     try {
-      await notificationService.markAllAsRead();
-      // Não precisamos atualizar o estado local, pois o listener fará isso
-      
-      Alert.alert('Sucesso', 'Todas as notificações foram marcadas como lidas');
+      // Mostrar confirmação antes de excluir
+      Alert.alert(
+        'Excluir todas as notificações',
+        'Tem certeza que deseja excluir todas as notificações? Esta ação não pode ser desfeita.',
+        [
+          {
+            text: 'Cancelar',
+            style: 'cancel',
+          },
+          {
+            text: 'Excluir',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await notificationService.deleteAllNotifications();
+                // Não precisamos atualizar o estado local, pois o listener fará isso
+                
+                Alert.alert('Sucesso', 'Todas as notificações foram excluídas');
+              } catch (error) {
+                console.error('Erro ao excluir todas as notificações:', error);
+                Alert.alert('Erro', 'Não foi possível excluir todas as notificações');
+              }
+            },
+          },
+        ],
+        { cancelable: true }
+      );
     } catch (error) {
-      console.error('Erro ao marcar todas como lidas:', error);
-      Alert.alert('Erro', 'Não foi possível marcar todas as notificações como lidas');
+      console.error('Erro ao excluir todas as notificações:', error);
+      Alert.alert('Erro', 'Não foi possível excluir todas as notificações');
     }
   };
 
@@ -175,8 +198,8 @@ export default function NotificationsScreen() {
         <>
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Notificações</Text>
-            <TouchableOpacity onPress={handleMarkAllAsRead} style={styles.markAllButton}>
-              <Text style={styles.markAllText}>Marcar todas como lidas</Text>
+            <TouchableOpacity onPress={handleDeleteAllNotifications} style={styles.deleteAllButton}>
+              <Text style={styles.deleteAllText}>Excluir todas</Text>
             </TouchableOpacity>
           </View>
           
@@ -224,13 +247,13 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
+        color: '#333',
   },
-  markAllButton: {
+  deleteAllButton: {
     padding: 8,
   },
-  markAllText: {
-    color: '#FFA500',
+  deleteAllText: {
+    color: '#FF4444',
     fontSize: 14,
     fontWeight: '500',
   },
