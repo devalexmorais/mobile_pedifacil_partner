@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, Modal, ScrollView, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Modal, ScrollView, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import OptimizedImage from '../OptimizedImage';
 
 interface ProductOption {
   name: string;
@@ -86,10 +87,12 @@ export function ProductDetailsModal({
 
           <ScrollView style={styles.scrollContent}>
             {/* Imagem do Produto */}
-            <Image 
-              source={product.image ? { uri: product.image } : require('@/assets/product-placeholder.png')} 
+            <OptimizedImage 
+              uri={product.image}
+              defaultImage={defaultImage}
               style={styles.productImage} 
-              resizeMode="cover"
+              borderRadius={0}
+              lazy={false}
             />
 
             {/* Informações Básicas */}

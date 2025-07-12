@@ -39,6 +39,7 @@ export const CustomInput = ({
       secureTextEntry={secureTextEntry}
       keyboardType={keyboardType}
       autoCapitalize={autoCapitalize}
+      autoCorrect={false}
       error={error}
       mode="flat"
       disabled={disabled}

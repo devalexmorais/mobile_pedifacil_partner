@@ -59,6 +59,8 @@ export function ProductVariations({
               onUpdate(newVariations);
             }}
             placeholder="Nome da variação"
+            autoCapitalize="none"
+            autoCorrect={false}
           />
           <TextInput
             style={styles.input}
@@ -70,6 +72,8 @@ export function ProductVariations({
             }}
             placeholder="Preço"
             keyboardType="numeric"
+            autoCapitalize="none"
+            autoCorrect={false}
           />
         </View>
       ))}

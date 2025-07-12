@@ -50,7 +50,9 @@ export function ProductRequiredSelections({
               newSelections[selectionIndex].name = text;
               onUpdate(newSelections);
             }}
-            placeholder="Nome da seleção"
+            placeholder="Nome da seleção obrigatória"
+            autoCapitalize="none"
+            autoCorrect={false}
           />
 
           <View style={styles.optionControlRow}>
@@ -157,6 +159,8 @@ export function ProductRequiredSelections({
                 }}
                 placeholder="Nome da opção"
                 editable={option.isActive !== false}
+                autoCapitalize="none"
+                autoCorrect={false}
               />
               
               <View style={styles.priceInputContainer}>
@@ -174,6 +178,8 @@ export function ProductRequiredSelections({
                     placeholder="0,00"
                     keyboardType="numeric"
                     editable={option.isActive !== false}
+                    autoCapitalize="none"
+                    autoCorrect={false}
                   />
                 </View>
               </View>

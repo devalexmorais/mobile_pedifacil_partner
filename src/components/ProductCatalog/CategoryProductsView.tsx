@@ -1,6 +1,6 @@
-import React from 'react';
-import { View, StyleSheet, ScrollView, Text } from 'react-native';
-import { ProductCard } from './ProductCard';
+import React, { memo } from 'react';
+import { View, StyleSheet, FlatList, Text } from 'react-native';
+import { ProductCardMemo } from './ProductCard';
 import { Product } from '@/types/product';
 
 interface CategoryProductsViewProps {
@@ -12,9 +12,10 @@ interface CategoryProductsViewProps {
   onTogglePromotion?: (product: Product) => void;
   isPremium?: boolean;
   defaultImage: string;
+  shouldLoadImages?: boolean;
 }
 
-export function CategoryProductsView({
+const CategoryProductsView = memo(function CategoryProductsView({
   products,
   onProductPress,
   onEditProduct,
@@ -22,7 +23,8 @@ export function CategoryProductsView({
   onDeleteProduct,
   onTogglePromotion,
   isPremium = false,
-  defaultImage
+  defaultImage,
+  shouldLoadImages = true
 }: CategoryProductsViewProps) {
   if (products.length === 0) {
     return (
@@ -32,28 +34,42 @@ export function CategoryProductsView({
     );
   }
 
+  const renderProduct = ({ item: product }: { item: Product }) => (
+    <ProductCardMemo
+      product={product}
+      onPress={() => onProductPress(product)}
+      onEdit={() => onEditProduct(product)}
+      onToggleAvailability={() => onToggleAvailability(product)}
+      onDelete={() => onDeleteProduct(product)}
+      onTogglePromotion={onTogglePromotion ? () => onTogglePromotion(product) : undefined}
+      isPremium={isPremium}
+      defaultImage={defaultImage}
+      shouldLoadImage={shouldLoadImages}
+    />
+  );
+
+  const getItemLayout = (_: any, index: number) => ({
+    length: 120, // Altura estimada do ProductCard
+    offset: 120 * index,
+    index,
+  });
+
   return (
-    <ScrollView 
+    <FlatList
+      data={products}
+      renderItem={renderProduct}
+      keyExtractor={(item) => item.id}
       style={styles.container}
       contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
-    >
-      {products.map(product => (
-        <ProductCard
-          key={product.id}
-          product={product}
-          onPress={() => onProductPress(product)}
-          onEdit={() => onEditProduct(product)}
-          onToggleAvailability={() => onToggleAvailability(product)}
-          onDelete={() => onDeleteProduct(product)}
-          onTogglePromotion={onTogglePromotion ? () => onTogglePromotion(product) : undefined}
-          isPremium={isPremium}
-          defaultImage={defaultImage}
-        />
-      ))}
-    </ScrollView>
+      removeClippedSubviews={true}
+      maxToRenderPerBatch={10}
+      windowSize={10}
+      initialNumToRender={8}
+      getItemLayout={getItemLayout}
+    />
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -78,4 +94,6 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
   }
-}); 
+});
+
+export { CategoryProductsView };

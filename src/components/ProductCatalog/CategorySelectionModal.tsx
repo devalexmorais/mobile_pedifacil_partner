@@ -150,6 +150,8 @@ export function CategorySelectionModal({
               placeholder="Buscar categoria..."
               value={searchText}
               onChangeText={setSearchText}
+              autoCapitalize="none"
+              autoCorrect={false}
             />
           </View>
 
@@ -162,6 +164,8 @@ export function CategorySelectionModal({
                 const formattedText = text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
                 setNewCategoryName(formattedText);
               }}
+              autoCapitalize="none"
+              autoCorrect={false}
             />
             <TouchableOpacity
               style={[styles.createButton, !newCategoryName.trim() && styles.createButtonDisabled]}

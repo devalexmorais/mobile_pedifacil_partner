@@ -101,6 +101,10 @@ export default function Pronto() {
     // Calcula o valor do troco se necessário
     const calcularTroco = () => {
       if (item.payment.method === 'money' && item.payment.changeFor) {
+        // Verifica se é "sem troco"
+        if (item.payment.changeFor === 'sem_troco') {
+          return 'sem_troco';
+        }
         const valorPagamento = parseFloat(item.payment.changeFor);
         const trocoValue = valorPagamento - item.finalPrice;
         return trocoValue > 0 ? trocoValue.toFixed(2) : '0.00';
@@ -219,14 +223,23 @@ export default function Pronto() {
                 </View>
                 {item.payment.method === 'money' && item.payment.changeFor && (
                   <>
-                    <View style={styles.infoRow}>
-                      <Ionicons name="wallet-outline" size={16} color="#666" />
-                      <Text style={styles.infoText}>Pago com: R$ {item.payment.changeFor}</Text>
-                    </View>
-                    <View style={styles.infoRow}>
-                      <Ionicons name="return-down-back-outline" size={16} color="#666" />
-                      <Text style={[styles.infoText, styles.trocoText]}>Troco: R$ {troco}</Text>
-                    </View>
+                    {item.payment.changeFor === 'sem_troco' ? (
+                      <View style={styles.infoRow}>
+                        <Ionicons name="close-circle-outline" size={16} color="#666" />
+                        <Text style={styles.infoText}>Pagamento: Sem troco</Text>
+                      </View>
+                    ) : (
+                      <>
+                        <View style={styles.infoRow}>
+                          <Ionicons name="wallet-outline" size={16} color="#666" />
+                          <Text style={styles.infoText}>Pago com: R$ {item.payment.changeFor}</Text>
+                        </View>
+                        <View style={styles.infoRow}>
+                          <Ionicons name="return-down-back-outline" size={16} color="#666" />
+                          <Text style={[styles.infoText, styles.trocoText]}>Troco: R$ {troco}</Text>
+                        </View>
+                      </>
+                    )}
                   </>
                 )}
               </View>

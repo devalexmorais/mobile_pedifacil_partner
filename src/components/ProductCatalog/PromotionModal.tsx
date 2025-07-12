@@ -187,6 +187,8 @@ export function PromotionModal({ visible, onClose, onSave, product }: PromotionM
             value={discountValue}
             onChangeText={handleDiscountChange}
             placeholder={discountType === 'percentage' ? "Ex: 10" : "R$ 0,00"}
+            autoCapitalize="none"
+            autoCorrect={false}
           />
 
           <View style={styles.previewContainer}>

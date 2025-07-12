@@ -270,8 +270,10 @@ export default function Pedidos() {
                   <Text style={styles.infoText}>
                     Pagamento: {item.payment.method === 'money' ? 'DINHEIRO' : item.payment.method.toUpperCase()}
                     {item.payment.cardFee?.flagName && ` - ${item.payment.cardFee.flagName}`}
-                    {item.payment.method === 'money' && item.payment.troco && (
-                      ` - Troco para R$ ${Number(item.payment.troco).toFixed(2)} (R$ ${(Number(item.payment.troco) - item.finalPrice).toFixed(2)})`
+                    {item.payment.method === 'money' && item.payment.changeFor && (
+                      item.payment.changeFor === 'sem_troco' 
+                        ? ' - Sem troco'
+                        : ` - Troco para R$ ${Number(item.payment.changeFor).toFixed(2)} (R$ ${(Number(item.payment.changeFor) - item.finalPrice).toFixed(2)})`
                     )}
                   </Text>
                 </View>

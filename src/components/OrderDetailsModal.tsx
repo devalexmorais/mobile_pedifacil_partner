@@ -189,6 +189,22 @@ const OrderSummary = ({ order }: { order: Order }) => (
           R$ {Number(order.finalPrice || order.total || 0).toFixed(2)}
         </Text>
       </View>
+
+      {/* Informações de Pagamento */}
+      {order.paymentMethod && (
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Forma de Pagamento</Text>
+          <Text style={styles.summaryValue}>
+            {order.paymentMethod === 'cash' ? 'DINHEIRO' : order.paymentMethod.toUpperCase()}
+            {order.paymentData?.flagName && ` - ${order.paymentData.flagName}`}
+            {order.paymentMethod === 'cash' && order.paymentData?.changeFor && (
+              order.paymentData.changeFor === 'sem_troco' 
+                ? ' - Sem troco'
+                : ` - Troco para R$ ${Number(order.paymentData.changeFor).toFixed(2)}`
+            )}
+          </Text>
+        </View>
+      )}
     </View>
   </View>
 );

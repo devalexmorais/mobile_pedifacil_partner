@@ -45,6 +45,8 @@ export function ProductExtras({
             onChangeText={(text) => {
               onUpdateExtra(index, { ...extra, name: text });
             }}
+            autoCapitalize="none"
+            autoCorrect={false}
           />
 
           <TextInput
@@ -55,6 +57,8 @@ export function ProductExtras({
             onChangeText={(text) => {
               onUpdateExtra(index, { ...extra, extraPrice: Number(text) || 0 });
             }}
+            autoCapitalize="none"
+            autoCorrect={false}
           />
 
           <View style={styles.optionControlRow}>

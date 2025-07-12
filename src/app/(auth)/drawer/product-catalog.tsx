@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -26,6 +26,7 @@ import { Product, Promotion } from '@/types/product';
 import { ProductCatalogSkeleton } from '@/components/skeleton';
 import { CategoryTabView } from '@/components/ProductCatalog/CategoryTabView';
 import { CategoryProductsView } from '@/components/ProductCatalog/CategoryProductsView';
+
 
 interface ProductOption {
   name: string;
@@ -127,11 +128,20 @@ export default function ProductCatalog() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isPromotionModalVisible, setIsPromotionModalVisible] = useState(false);
   const [selectedProductForPromotion, setSelectedProductForPromotion] = useState<Product | null>(null);
+  const [activeCategory, setActiveCategory] = useState<string>('promotions');
+  
+  // Cache para evitar recálculos desnecessários
+  const productsCacheRef = useRef<Map<string, Product[]>>(new Map());
   
   // Adiciona a categoria de promoções
   const promotionCategory: CategoryOption = {
     id: 'promotions',
     name: 'Promoções'
+  };
+
+  // Simplificado - sempre carrega imagens da categoria ativa
+  const shouldLoadImagesForCategory = (categoryId: string) => {
+    return categoryId === activeCategory;
   };
 
   useEffect(() => {
@@ -154,6 +164,13 @@ export default function ProductCatalog() {
       checkPlanDowngrade();
     }
   }, [isPremium, categories]);
+
+  // Limpa o cache quando os dados mudam
+  useEffect(() => {
+    productsCacheRef.current.clear();
+  }, [categories, searchText]);
+
+
 
   const loadProducts = async () => {
     try {
@@ -643,7 +660,7 @@ export default function ProductCatalog() {
         const newProductData: Product = {
           ...productData,
           id: productId,
-          image: imageUrl
+          ...(imageUrl && { image: imageUrl })
         };
 
         // Salva o novo produto no Firestore
@@ -750,35 +767,47 @@ export default function ProductCatalog() {
     }
   };
 
-  const getFilteredProducts = (categoryId: string | null) => {
-    let filtered = [];
-    
-    // Se for a categoria de promoções, filtra apenas produtos em promoção
-    if (categoryId === 'promotions') {
-      filtered = categories
-        .flatMap(category => category.products)
-        .filter(product => product.isPromotion === true);
-    } 
-    // Senão, filtra pela categoria selecionada
-    else if (categoryId) {
-      const category = categories.find(cat => cat.id === categoryId);
-      filtered = category ? [...category.products] : [];
-    } 
-    // Se não tiver categoria selecionada, mostra todos
-    else {
-      filtered = categories.flatMap(category => [...category.products]);
-    }
-    
-    // Aplica o filtro de pesquisa de texto se houver
-    if (searchText.trim()) {
-      filtered = filtered.filter(product => 
-        safeStringCompare(product.name, searchText) || 
-        safeStringCompare(product.description, searchText)
-      );
-    }
-    
-    return filtered;
-  };
+  const getFilteredProducts = useMemo(() => {
+    return (categoryId: string | null) => {
+      const cacheKey = `${categoryId || 'all'}_${searchText}`;
+      
+      // Verifica se já existe no cache
+      if (productsCacheRef.current.has(cacheKey)) {
+        return productsCacheRef.current.get(cacheKey)!;
+      }
+      
+      let filtered = [];
+      
+      // Se for a categoria de promoções, filtra apenas produtos em promoção
+      if (categoryId === 'promotions') {
+        filtered = categories
+          .flatMap(category => category.products)
+          .filter(product => product.isPromotion === true);
+      } 
+      // Senão, filtra pela categoria selecionada
+      else if (categoryId) {
+        const category = categories.find(cat => cat.id === categoryId);
+        filtered = category ? [...category.products] : [];
+      } 
+      // Se não tiver categoria selecionada, mostra todos
+      else {
+        filtered = categories.flatMap(category => [...category.products]);
+      }
+      
+      // Aplica o filtro de pesquisa de texto se houver
+      if (searchText.trim()) {
+        filtered = filtered.filter(product => 
+          safeStringCompare(product.name, searchText) || 
+          safeStringCompare(product.description, searchText)
+        );
+      }
+      
+      // Armazena no cache
+      productsCacheRef.current.set(cacheKey, filtered);
+      
+      return filtered;
+    };
+  }, [categories, searchText]);
 
   const filteredCategories = categories.map(category => ({
     ...category,
@@ -1133,15 +1162,13 @@ export default function ProductCatalog() {
 
   // Prepara as categorias para o TabView, incluindo a categoria de promoções
   const allCategories = [
-    { id: 'all', name: 'Todos' },
     { id: 'promotions', name: 'Promoção' },
     ...categories
   ];
 
   // Renderiza o conteúdo de cada aba
-  const renderTabContent = (categoryId: string) => {
-    // Força a atualização dos produtos filtrados a cada renderização
-    const filteredProducts = getFilteredProducts(categoryId === 'all' ? null : categoryId);
+  const renderTabContent = useCallback((categoryId: string) => {
+    const filteredProducts = getFilteredProducts(categoryId);
     
     return (
       <CategoryProductsView
@@ -1155,13 +1182,17 @@ export default function ProductCatalog() {
           : handleTogglePromotion}
         isPremium={isPremium}
         defaultImage={defaultProductImage}
+        shouldLoadImages={shouldLoadImagesForCategory(categoryId)}
       />
     );
-  };
+  }, [getFilteredProducts, handleProductPress, handleEditProduct, toggleProductAvailability, handleDeleteProduct, handleRemovePromotion, handleTogglePromotion, isPremium, defaultProductImage, shouldLoadImagesForCategory]);
 
   // Manipula a mudança de categoria
   const handleCategoryChange = (index: number) => {
-    // A lógica adicional pode ser adicionada aqui, se necessário
+    const categoryId = allCategories[index]?.id;
+    if (categoryId) {
+      setActiveCategory(categoryId);
+    }
   };
 
   if (loading) {

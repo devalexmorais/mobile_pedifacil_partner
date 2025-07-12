@@ -121,6 +121,19 @@ export default function EmEntrega() {
               <Text style={styles.sectionTitle}>Tipo de Pedido:</Text>
               <Text style={styles.infoText}>{isPickup ? 'Retirada no local' : 'Entrega'}</Text>
             </View>
+
+            <View style={styles.infoSection}>
+              <Text style={styles.sectionTitle}>Pagamento:</Text>
+              <Text style={styles.infoText}>
+                {item.payment.method === 'money' ? 'DINHEIRO' : item.payment.method.toUpperCase()}
+                {item.payment.cardFee?.flagName && ` - ${item.payment.cardFee.flagName}`}
+                {item.payment.method === 'money' && item.payment.changeFor && (
+                  item.payment.changeFor === 'sem_troco' 
+                    ? ' - Sem troco'
+                    : ` - Troco para R$ ${Number(item.payment.changeFor).toFixed(2)}`
+                )}
+              </Text>
+            </View>
             
             {!isPickup && (
               <View style={styles.infoSection}>

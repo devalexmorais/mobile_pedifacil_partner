@@ -81,6 +81,8 @@ export function ProductBasicInfo({
           onUpdate({ name: formatted });
         }}
         placeholder="Nome do produto *"
+        autoCapitalize="none"
+        autoCorrect={false}
       />
 
       <TextInput
@@ -93,6 +95,8 @@ export function ProductBasicInfo({
         placeholder="Descrição"
         multiline
         numberOfLines={4}
+        autoCapitalize="none"
+        autoCorrect={false}
       />
 
       <TextInput
@@ -104,6 +108,8 @@ export function ProductBasicInfo({
         }}
         placeholder="Preço *"
         keyboardType="numeric"
+        autoCapitalize="none"
+        autoCorrect={false}
       />
 
       <TouchableOpacity 

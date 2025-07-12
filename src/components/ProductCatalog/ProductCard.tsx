@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, TouchableWithoutFeedback } from 'react-native';
+import React, { useState, useEffect, memo } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, TouchableWithoutFeedback } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { Product } from '@/types/product';
+import OptimizedImage from '../OptimizedImage';
 
 interface ProductCardProps {
   product: Product;
@@ -13,6 +14,7 @@ interface ProductCardProps {
   isPremium?: boolean;
   isExceedingLimit?: boolean;
   defaultImage: string;
+  shouldLoadImage?: boolean;
 }
 
 export function ProductCard({
@@ -24,7 +26,8 @@ export function ProductCard({
   onTogglePromotion,
   isPremium = false,
   isExceedingLimit = false,
-  defaultImage
+  defaultImage,
+  shouldLoadImage = true
 }: ProductCardProps) {
   const [menuVisible, setMenuVisible] = useState(false);
 
@@ -58,10 +61,13 @@ export function ProductCard({
             onPress={onPress}
             activeOpacity={0.7}
           >
-            <Image
-              source={product.image ? { uri: product.image } : require('@/assets/product-placeholder.png')}
+            <OptimizedImage
+              uri={product.image}
+              defaultImage={defaultImage}
               style={styles.productImage}
-              resizeMode="cover"
+              borderRadius={8}
+              lazy={true}
+              shouldLoad={shouldLoadImage}
             />
             
             <View style={styles.productInfo}>
@@ -174,6 +180,22 @@ export function ProductCard({
     </View>
   );
 }
+
+// Memoização para evitar renderizações desnecessárias
+const ProductCardMemo = memo(ProductCard, (prevProps, nextProps) => {
+  return (
+    prevProps.product.id === nextProps.product.id &&
+    prevProps.product.name === nextProps.product.name &&
+    prevProps.product.price === nextProps.product.price &&
+    prevProps.product.isActive === nextProps.product.isActive &&
+    prevProps.product.isPromotion === nextProps.product.isPromotion &&
+    prevProps.product.image === nextProps.product.image &&
+    prevProps.isPremium === nextProps.isPremium &&
+    prevProps.shouldLoadImage === nextProps.shouldLoadImage
+  );
+});
+
+export { ProductCardMemo };
 
 const styles = StyleSheet.create({
   container: {
