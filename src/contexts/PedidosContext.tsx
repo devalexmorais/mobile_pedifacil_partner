@@ -487,50 +487,70 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
     if (!user?.uid) return;
 
     try {
+      console.log('🚀 INICIANDO PROCESSO DE ENTREGA E CÁLCULO DE TAXA');
+      console.log(`📦 Pedido ID: ${pedidoId}`);
+      console.log(`🏪 Parceiro ID: ${user.uid}`);
+      
       // Referência para o pedido original
       const pedidoRef = doc(db, 'partners', user.uid, 'orders', pedidoId);
+      console.log(`📄 Buscando dados do pedido em: ${pedidoRef.path}`);
       
       // Buscar dados do pedido
       const pedidoDoc = await getDoc(pedidoRef);
       if (!pedidoDoc.exists()) {
-        console.error('Pedido não encontrado');
+        console.error('❌ Pedido não encontrado');
         return;
       }
       const pedidoData = pedidoDoc.data();
+      console.log('✅ Dados do pedido obtidos:', {
+        totalPrice: pedidoData.totalPrice,
+        deliveryFee: pedidoData.deliveryFee,
+        paymentMethod: pedidoData.payment?.method,
+        hasCoupon: pedidoData.hasCoupon,
+        couponApplied: pedidoData.couponApplied
+      });
       
       // Buscar informações do estabelecimento para verificar se é premium
       const partnerRef = doc(db, 'partners', user.uid);
+      console.log(`🏢 Buscando dados do parceiro em: ${partnerRef.path}`);
       const partnerDoc = await getDoc(partnerRef);
       
       if (!partnerDoc.exists()) {
-        console.error('Parceiro não encontrado');
+        console.error('❌ Parceiro não encontrado');
         return;
       }
       
       const partnerData = partnerDoc.data();
       const isPremium = partnerData.store?.isPremium || false;
+      console.log('✅ Dados do parceiro obtidos:', {
+        isPremium: isPremium,
+        storeName: partnerData.name,
+        email: partnerData.email
+      });
       
       // Calcular a taxa com base no status premium
       // Taxa menor para estabelecimentos premium (5%) e maior para não premium (8%)
       const appFeePercentage = isPremium ? 0.05 : 0.08;
+      console.log(`💰 TAXA APLICADA: ${(appFeePercentage * 100)}% (${isPremium ? 'PREMIUM' : 'NORMAL'})`);
       
-      // Calcular o valor base para aplicação da taxa (totalPrice - deliveryFee - cardFee)
+      // Calcular o valor base para aplicação da taxa
+      // O totalPrice já é o valor sem a taxa de entrega
       const totalPrice = Number(pedidoData.totalPrice || 0);
       const deliveryFee = Number(pedidoData.deliveryFee || 0);
       
-      // Extrair a taxa de cartão se existir
-      const cardFeeValue = pedidoData.payment?.cardFee?.value 
-        ? Number(pedidoData.payment.cardFee.value) 
-        : 0;
+      console.log('📊 VALORES DO PEDIDO:');
+      console.log(`   💵 Total do pedido (sem entrega): R$ ${totalPrice.toFixed(2)}`);
+      console.log(`   🚚 Taxa de entrega: R$ ${deliveryFee.toFixed(2)}`);
       
-      // Calcular o valor base para a taxa (excluindo taxas de entrega e cartão)
-      const baseValue = Number((totalPrice - deliveryFee - cardFeeValue).toFixed(2));
+      // Calcular o valor base para a taxa (usar o totalPrice diretamente)
+      const baseValue = Number(totalPrice.toFixed(2));
+      console.log(`📈 VALOR BASE PARA TAXA: R$ ${baseValue.toFixed(2)}`);
+      console.log(`   (Total do pedido = ${totalPrice})`);
       
       // Aplicar a porcentagem da taxa sobre o valor base e arredondar para 2 casas decimais
       const appFeeValue = Number((baseValue * appFeePercentage).toFixed(2));
-      
-      console.log(`Cálculo da taxa: ${baseValue} * ${appFeePercentage} = ${appFeeValue}`);
-      console.log(`Total: ${totalPrice}, Entrega: ${deliveryFee}, Taxa Cartão: ${cardFeeValue}`);
+      console.log(`💸 TAXA CALCULADA: R$ ${appFeeValue.toFixed(2)}`);
+      console.log(`   (Base ${baseValue} × ${(appFeePercentage * 100)}% = ${appFeeValue})`);
       
       // Preparar os dados de taxas
       const now = Timestamp.now();
@@ -548,6 +568,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
+      console.log('📋 PREPARANDO DADOS DA TAXA PARA SALVAMENTO');
       const appFeeData = {
         orderId: pedidoId,
         orderDate: orderDate,
@@ -558,7 +579,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         orderBaseValue: baseValue,
         orderTotalPrice: Number(totalPrice.toFixed(2)),
         orderDeliveryFee: Number(deliveryFee.toFixed(2)),
-        orderCardFee: Number(cardFeeValue.toFixed(2)),
+        orderCardFee: 0, // Não utilizado mais
         appFee: {
           percentage: appFeePercentage,
           value: appFeeValue,
@@ -567,6 +588,19 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         settled: false,
         invoiceId: null
       };
+      
+      console.log('💾 DADOS DA TAXA PREPARADOS:', {
+        orderId: appFeeData.orderId,
+        storeId: appFeeData.storeId,
+        customerId: appFeeData.customerId,
+        paymentMethod: appFeeData.paymentMethod,
+        orderBaseValue: appFeeData.orderBaseValue,
+        orderTotalPrice: appFeeData.orderTotalPrice,
+        orderDeliveryFee: appFeeData.orderDeliveryFee,
+        appFee: appFeeData.appFee,
+        settled: appFeeData.settled,
+        invoiceId: appFeeData.invoiceId
+      });
       
       // Atualizar o pedido original para marcar como entregue
       await updateDoc(pedidoRef, {
@@ -579,7 +613,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
       
       // Se o pedido tiver um cupom, adicionar à lista de cupons usados pelo usuário
       if (pedidoData.hasCoupon && pedidoData.couponCode && pedidoData.userId) {
-        console.log('Dados do cupom encontrados:', {
+        console.log('🎫 Dados do cupom encontrados:', {
           hasCoupon: pedidoData.hasCoupon,
           couponCode: pedidoData.couponCode,
           userId: pedidoData.userId,
@@ -587,7 +621,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         });
 
         const userRef = doc(db, 'users', pedidoData.userId);
-        console.log('Referência do usuário criada:', userRef.path);
+        console.log('👤 Referência do usuário criada:', userRef.path);
         
         // Criar referência para a subcoleção usedCoupons
         const usedCouponsRef = collection(userRef, 'usedCoupons');
@@ -615,35 +649,65 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
               validUntilTime: couponData.validUntilTime,
               value: couponData.value
             });
-            console.log('Cupom adicionado à subcoleção usedCoupons com sucesso:', {
+            console.log('✅ Cupom adicionado à subcoleção usedCoupons com sucesso:', {
               code: pedidoData.couponCode,
               validUntil: couponData.validUntil,
               validUntilTime: couponData.validUntilTime,
               value: couponData.value
             });
           } catch (error) {
-            console.error('Erro ao adicionar cupom à subcoleção:', error);
+            console.error('❌ Erro ao adicionar cupom à subcoleção:', error);
           }
         } else {
-          console.log('Cupom já existe na subcoleção usedCoupons');
+          console.log('ℹ️ Cupom já existe na subcoleção usedCoupons');
         }
       } else {
-        console.log('Pedido não possui cupom ou dados necessários:', {
+        console.log('ℹ️ Pedido não possui cupom ou dados necessários:', {
           hasCoupon: pedidoData.hasCoupon,
           couponCode: pedidoData.couponCode,
           userId: pedidoData.userId
         });
       }
       
+      // Se o cupom for global (isGlobal: true), salvar na subcoleção credits do parceiro
+      if (pedidoData.hasCoupon && pedidoData.couponApplied?.isGlobal === true) {
+        console.log('🌍 Cupom global detectado, salvando na subcoleção credits do parceiro');
+        
+        try {
+          const creditsRef = collection(db, 'partners', user.uid, 'credits');
+          const creditData = {
+            orderId: pedidoId,
+            partnerId: user.uid,
+            storeId: pedidoData.storeId || user.uid,
+            couponCode: pedidoData.couponCode,
+            couponIsGlobal: true,
+            value: Number(pedidoData.couponApplied.discountValue || 0), // valor que a plataforma cobriu
+            status: 'pending',
+            createdAt: now
+          };
+          
+          console.log('💳 Dados do crédito para salvar:', creditData);
+          
+          const creditDoc = await addDoc(creditsRef, creditData);
+          console.log(`✅ Crédito global registrado com ID: ${creditDoc.id}`);
+          console.log(`💰 Valor do crédito: R$ ${creditData.value.toFixed(2)}`);
+        } catch (error) {
+          console.error('❌ Erro ao salvar crédito global:', error);
+        }
+      } else if (pedidoData.hasCoupon) {
+        console.log('🏪 Cupom não é global, não será salvo na subcoleção credits');
+      }
+      
       // Salvar na coleção app_fees
       const appFeesRef = collection(db, 'partners', user.uid, 'app_fees');
+      console.log('📝 Salvando taxa na coleção app_fees:', appFeesRef.path);
       const appFeeDoc = await addDoc(appFeesRef, appFeeData);
-      console.log(`Taxa registrada com ID: ${appFeeDoc.id}`);
+      console.log(`✅ Taxa registrada com ID: ${appFeeDoc.id}`);
       
-      console.log(`Pedido ${pedidoId} marcado como entregue com sucesso`);
-      console.log(`Taxa aplicada: ${(appFeePercentage * 100)}% (${isPremium ? 'Premium' : 'Normal'}) - Valor: ${appFeeValue}`);
+      console.log(`🎉 Pedido ${pedidoId} marcado como entregue com sucesso`);
+      console.log(`💸 Taxa aplicada: ${(appFeePercentage * 100)}% (${isPremium ? 'Premium' : 'Normal'}) - Valor: R$ ${appFeeValue.toFixed(2)}`);
     } catch (error) {
-      console.error('Erro ao marcar pedido como entregue:', error);
+      console.error('❌ Erro ao marcar pedido como entregue:', error);
     }
   };
 

@@ -66,6 +66,13 @@ service cloud.firestore {
         allow create: if isAuthenticated();
         allow update, delete: if isOwner(userId);
       }
+
+      // ✅ ADICIONAR ESTA REGRA: Permitir que parceiros autenticados criem notificações para usuários
+      match /notifications/{notificationId} {
+        allow read: if true;
+        allow create: if isAuthenticated();
+        allow update, delete: if isOwner(userId);
+      }
     }
     
     // Regras específicas para parceiros
@@ -143,6 +150,22 @@ service cloud.firestore {
         allow create, update: if isOwner(partnerId) || isAdmin();
         allow delete: if isAdmin();
       }
+      
+      // Regras para a subcoleção credits (cupons globais)
+      match /credits/{creditId} {
+        allow read: if isAuthenticated() && isOwner(partnerId);
+        allow create: if isAuthenticated() && isOwner(partnerId);
+        allow update: if isAuthenticated() && isOwner(partnerId);
+        allow delete: if isAdmin();
+      }
+      
+      // Regras para notificações do parceiro
+      match /notifications/{notificationId} {
+        allow read: if isAuthenticated() && isOwner(partnerId);
+        allow create: if isAuthenticated() && isOwner(partnerId);
+        allow update: if isAuthenticated() && isOwner(partnerId);
+        allow delete: if isAuthenticated() && isOwner(partnerId);
+      }
     }
     
     // Regras para avaliações globais
@@ -187,10 +210,31 @@ service cloud.firestore {
       allow read: if true;
       allow write: if request.auth != null;
     }
+    
+    // Regras para notificações globais
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
 
     match /billing_control/{billingId} {
       allow read: if isAuthenticated();
       allow create, update, delete: if isAdmin();
     }
+
+    // Permite que o parceiro autenticado leia e escreva seus próprios pedidos
+    match /partners/{partnerId}/orders/{orderId} {
+      allow read, write: if request.auth != null && request.auth.uid == partnerId;
+    }
+
+    // Permite que o parceiro autenticado leia e escreva suas próprias taxas
+    match /partners/{partnerId}/app_fees/{feeId} {
+      allow read: if true;
+      allow create, update, delete: if request.auth.uid == partnerId;
+    }
+    
+
   }
 } 

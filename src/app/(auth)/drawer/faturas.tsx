@@ -70,6 +70,14 @@ interface Invoice {
   endDate: Timestamp;
   createdAt: Timestamp;
   totalAmount: number;
+  originalAmount?: number;
+  appliedCreditsAmount?: number;
+  appliedCredits?: Array<{
+    creditId: string;
+    couponCode: string;
+    originalValue: number;
+    appliedValue: number;
+  }>;
   status: 'pending' | 'paid' | 'overdue';
   details: InvoiceDetail[];
   paymentId?: string;
@@ -818,6 +826,21 @@ export default function Faturas() {
             <Text style={styles.totalValue}>
               {formatCurrency(currentInvoice.totalAmount)}
             </Text>
+            
+            {/* Mostra créditos aplicados se houver */}
+            {currentInvoice.appliedCreditsAmount && currentInvoice.appliedCreditsAmount > 0 && (
+              <View style={styles.creditsAppliedContainer}>
+                <Text style={styles.creditsAppliedText}>
+                  💳 Créditos aplicados: {formatCurrency(currentInvoice.appliedCreditsAmount)}
+                </Text>
+                {currentInvoice.originalAmount && (
+                  <Text style={styles.originalAmountText}>
+                    Valor original: {formatCurrency(currentInvoice.originalAmount)}
+                  </Text>
+                )}
+              </View>
+            )}
+            
             <Text style={styles.currentInvoiceDueDate}>
               Vencimento: {formatDate(currentInvoice.endDate)}
               {isOverdue && (
@@ -2014,6 +2037,28 @@ const styles = StyleSheet.create({
      color: colors.gray[600],
      textAlign: 'center',
      lineHeight: 24,
+   },
+   
+   // Estilos para créditos aplicados
+   creditsAppliedContainer: {
+     backgroundColor: 'rgba(255, 255, 255, 0.15)',
+     borderRadius: 8,
+     padding: 8,
+     marginVertical: 8,
+     alignItems: 'center',
+   },
+   creditsAppliedText: {
+     fontSize: 14,
+     color: colors.white,
+     fontWeight: '600',
+     textAlign: 'center',
+   },
+   originalAmountText: {
+     fontSize: 12,
+     color: colors.white,
+     opacity: 0.8,
+     textAlign: 'center',
+     marginTop: 2,
    },
 
 }); 

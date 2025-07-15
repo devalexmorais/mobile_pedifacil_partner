@@ -30,6 +30,14 @@ export interface Invoice {
   endDate: Timestamp;
   createdAt: Timestamp;
   totalAmount: number;
+  originalAmount?: number;
+  appliedCreditsAmount?: number;
+  appliedCredits?: Array<{
+    creditId: string;
+    couponCode: string;
+    originalValue: number;
+    appliedValue: number;
+  }>;
   status: 'pending' | 'paid' | 'overdue';
   paymentId?: string;
   paymentMethod?: 'pix' | 'boleto';

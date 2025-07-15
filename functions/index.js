@@ -1251,8 +1251,8 @@ exports.sendNotificationOnCreate = functions.firestore
     }
   });
 
-// Função agendada para gerar faturas automaticamente (executa todo dia às 20:25)
-exports.generateInvoicesScheduled = functions.pubsub.schedule('25 20 * * *')
+// Função agendada para gerar faturas automaticamente (executa todo dia às 00:00)
+exports.generateInvoicesScheduled = functions.pubsub.schedule('0 0 * * *')
   .timeZone('America/Sao_Paulo')
   .onRun(async (context) => {
     try {
@@ -1378,6 +1378,77 @@ exports.generateInvoicesScheduled = functions.pubsub.schedule('25 20 * * *')
             continue;
           }
 
+          // Busca créditos disponíveis do parceiro
+          console.log(`🔍 Buscando créditos disponíveis para o parceiro ${partnerDoc.id}`);
+          const creditsQuery = await partnersRef
+            .doc(partnerDoc.id)
+            .collection('credits')
+            .where('status', '==', 'pending')
+            .orderBy('createdAt', 'asc')
+            .get();
+
+          let availableCredits = [];
+          if (!creditsQuery.empty) {
+            availableCredits = creditsQuery.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            }));
+            console.log(`💰 Créditos disponíveis encontrados: ${availableCredits.length}`);
+            console.log(`💳 Valor total dos créditos: R$ ${availableCredits.reduce((sum, credit) => sum + (credit.value || 0), 0).toFixed(2)}`);
+          }
+
+          // Aplica créditos à fatura
+          let finalAmount = totalFeeAmount;
+          let appliedCredits = [];
+          let appliedCreditsAmount = 0;
+
+          if (availableCredits.length > 0) {
+            console.log(`🔄 Aplicando créditos à fatura...`);
+            
+            for (const credit of availableCredits) {
+              if (finalAmount <= 0) break;
+
+              const creditValue = credit.value || 0;
+              const creditToApply = Math.min(creditValue, finalAmount);
+              
+              appliedCredits.push({
+                creditId: credit.id,
+                couponCode: credit.couponCode,
+                originalValue: creditValue,
+                appliedValue: creditToApply
+              });
+
+              appliedCreditsAmount += creditToApply;
+              finalAmount -= creditToApply;
+
+              console.log(`💳 Crédito ${credit.couponCode}: R$ ${creditToApply.toFixed(2)} aplicado`);
+            }
+
+            console.log(`✅ Total de créditos aplicados: R$ ${appliedCreditsAmount.toFixed(2)}`);
+            console.log(`💸 Valor final da fatura após créditos: R$ ${finalAmount.toFixed(2)}`);
+          }
+
+          // Se o valor final for 0 ou negativo, não cria fatura
+          if (finalAmount <= 0) {
+            console.log(`🎉 Fatura totalmente coberta por créditos! Não será criada fatura.`);
+            
+            // Marca as taxas como liquidadas
+            const updatePromises = validFees.map(({ doc: feeDoc }) => {
+              console.log(`Marcando taxa ${feeDoc.id} como liquidada`);
+              return partnersRef
+                .doc(partnerDoc.id)
+                .collection('app_fees')
+                .doc(feeDoc.id)
+                .update({
+                  settled: true,
+                  updatedAt: admin.firestore.Timestamp.now()
+                });
+            });
+
+            await Promise.all(updatePromises);
+            continue;
+          }
+
           // Cria a nova fatura na subcoleção correta
           const invoiceRef = partnersRef
             .doc(partnerDoc.id)
@@ -1395,7 +1466,10 @@ exports.generateInvoicesScheduled = functions.pubsub.schedule('25 20 * * *')
             status: 'pending',
             endDate: endDate,
             createdAt: today,
-            totalAmount: totalFeeAmount,
+            totalAmount: finalAmount,
+            originalAmount: totalFeeAmount,
+            appliedCreditsAmount: appliedCreditsAmount,
+            appliedCredits: appliedCredits,
             details: simplifiedDetails,
             partnerInfo: {
               name: partnerData.name || '',
@@ -1426,6 +1500,63 @@ exports.generateInvoicesScheduled = functions.pubsub.schedule('25 20 * * *')
                 updatedAt: admin.firestore.Timestamp.now()
               });
           });
+
+          // Atualiza os créditos aplicados
+          if (appliedCredits.length > 0) {
+            console.log(`🔄 Atualizando status dos créditos aplicados...`);
+            
+            for (const appliedCredit of appliedCredits) {
+              const creditRef = partnersRef
+                .doc(partnerDoc.id)
+                .collection('credits')
+                .doc(appliedCredit.creditId);
+              
+              const creditDoc = await creditRef.get();
+              if (creditDoc.exists) {
+                const creditData = creditDoc.data();
+                const originalValue = creditData.value || 0;
+                const appliedValue = appliedCredit.appliedValue;
+                
+                if (appliedValue >= originalValue) {
+                  // Crédito totalmente usado
+                  await creditRef.update({
+                    status: 'applied',
+                    appliedAt: admin.firestore.Timestamp.now(),
+                    invoiceId: invoiceRef.id
+                  });
+                  console.log(`✅ Crédito ${appliedCredit.couponCode} totalmente aplicado`);
+                } else {
+                  // Crédito parcialmente usado
+                  const remainingValue = originalValue - appliedValue;
+                  
+                  // Atualiza o crédito atual
+                  await creditRef.update({
+                    value: appliedValue,
+                    status: 'applied',
+                    appliedAt: admin.firestore.Timestamp.now(),
+                    invoiceId: invoiceRef.id
+                  });
+                  
+                  // Cria um novo crédito com o valor restante
+                  await partnersRef
+                    .doc(partnerDoc.id)
+                    .collection('credits')
+                    .add({
+                      orderId: creditData.orderId,
+                      partnerId: creditData.partnerId,
+                      storeId: creditData.storeId,
+                      couponCode: creditData.couponCode,
+                      couponIsGlobal: creditData.couponIsGlobal,
+                      value: remainingValue,
+                      status: 'pending',
+                      createdAt: creditData.createdAt
+                    });
+                  
+                  console.log(`✅ Crédito ${appliedCredit.couponCode} parcialmente aplicado (R$ ${appliedValue.toFixed(2)} de R$ ${originalValue.toFixed(2)})`);
+                }
+              }
+            }
+          }
 
           await Promise.all(updatePromises);
           

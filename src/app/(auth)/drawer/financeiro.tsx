@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,6 +7,7 @@ import { usePremium } from '../../../hooks/usePremium';
 import { useFinancialData } from '../../../hooks/useFinancialData';
 import { usePremiumAnalytics } from '../../../hooks/usePremiumAnalytics';
 import PremiumCharts from '../../../components/PremiumCharts';
+import { useCredits } from '../../../hooks/useCredits';
 
 
 export default function Financeiro() {
@@ -14,6 +15,7 @@ export default function Financeiro() {
   const { isPremium, loading: premiumLoading } = usePremium();
   const { financialData, loading: financialLoading, error: financialError } = useFinancialData();
   const { analytics, loading: analyticsLoading, error: analyticsError } = usePremiumAnalytics();
+  const { creditSummary, loading: creditsLoading, error: creditsError } = useCredits();
 
   const handlePremiumFeature = (featureName: string) => {
     if (!isPremium) {
@@ -44,7 +46,9 @@ export default function Financeiro() {
     return `${value.toFixed(1)}%`;
   };
 
-  if (financialLoading || premiumLoading) {
+
+
+  if (financialLoading || premiumLoading || creditsLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.purple[500]} />
@@ -154,6 +158,56 @@ export default function Financeiro() {
           </View>
         </View>
 
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Créditos Disponíveis</Text>
+          <View style={styles.creditsCard}>
+            <View style={styles.creditsHeader}>
+              <Ionicons name="card" size={24} color={colors.green[500]} />
+              <Text style={styles.creditsTitle}>Seus Créditos</Text>
+            </View>
+            
+            <View style={styles.creditsInfo}>
+              <View style={styles.creditRow}>
+                <Text style={styles.creditLabel}>Disponíveis:</Text>
+                <Text style={[styles.creditValue, styles.availableCredit]}>
+                  {formatCurrency(creditSummary?.availableCredits || 0)}
+                </Text>
+              </View>
+              
+              <View style={styles.creditRow}>
+                <Text style={styles.creditLabel}>Total Acumulado:</Text>
+                <Text style={styles.creditValue}>
+                  {formatCurrency(creditSummary?.totalCredits || 0)}
+                </Text>
+              </View>
+              
+              <View style={styles.creditRow}>
+                <Text style={styles.creditLabel}>Já Utilizados:</Text>
+                <Text style={styles.creditValue}>
+                  {formatCurrency(creditSummary?.appliedCredits || 0)}
+                </Text>
+              </View>
+            </View>
+
+            {creditSummary?.pendingCredits && creditSummary.pendingCredits.length > 0 && (
+              <View style={styles.creditsList}>
+                <Text style={styles.creditsListTitle}>Créditos Pendentes:</Text>
+                {creditSummary.pendingCredits.slice(0, 3).map((credit, index) => (
+                  <View key={index} style={styles.creditItem}>
+                    <Text style={styles.creditCode}>{credit.couponCode}</Text>
+                    <Text style={styles.creditAmount}>{formatCurrency(credit.value)}</Text>
+                  </View>
+                ))}
+                {creditSummary.pendingCredits.length > 3 && (
+                  <Text style={styles.creditsMore}>
+                    +{creditSummary.pendingCredits.length - 3} mais
+                  </Text>
+                )}
+              </View>
+            )}
+          </View>
+        </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Métricas do Mês</Text>
@@ -630,5 +684,85 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
     color: colors.red[600],
+  },
+  
+  // Estilos para créditos
+  creditsCard: {
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  creditsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  creditsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.gray[800],
+    marginLeft: 8,
+  },
+  creditsInfo: {
+    marginBottom: 16,
+  },
+  creditRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  creditLabel: {
+    fontSize: 14,
+    color: colors.gray[600],
+  },
+  creditValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.gray[800],
+  },
+  availableCredit: {
+    color: colors.green[600],
+    fontSize: 18,
+  },
+  creditsList: {
+    borderTopWidth: 1,
+    borderTopColor: colors.gray[200],
+    paddingTop: 12,
+  },
+  creditsListTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.gray[700],
+    marginBottom: 8,
+  },
+  creditItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  creditCode: {
+    fontSize: 13,
+    color: colors.gray[600],
+    fontFamily: 'monospace',
+  },
+  creditAmount: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.green[600],
+  },
+  creditsMore: {
+    fontSize: 12,
+    color: colors.gray[500],
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: 4,
   },
 }); 
