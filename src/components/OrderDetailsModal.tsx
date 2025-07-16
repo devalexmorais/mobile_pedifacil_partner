@@ -54,6 +54,12 @@ ${Array.isArray(order.items) ? order.items.map(item =>
   `${item.quantity}x ${item.name} - R$ ${(Number(item.price) * Number(item.quantity)).toFixed(2)}`
 ).join('\n') : 'Nenhum item'}
 
+${order.hasCoupon && order.couponApplied ? `
+CUPOM APLICADO
+Código: ${order.couponCode}
+Desconto: - R$ ${Number(order.couponApplied.discountValue || order.couponApplied.value || 0).toFixed(2)}
+` : ''}
+
 TOTAL: R$ ${Number(order.finalPrice || order.total || 0).toFixed(2)}
 `;
 
@@ -90,7 +96,7 @@ const OrderBasicInfo = ({ order }: { order: Order }) => (
     
     <View style={styles.orderMeta}>
       <Text style={styles.orderType}>
-        Tipo de venda: {order.deliveryMode === 'delivery' || order.deliveryFee > 0 ? 'Entrega' : 'Retirada'}
+        Tipo de venda: {order.deliveryMode === 'delivery' || (order.deliveryFee && order.deliveryFee > 0) ? 'Entrega' : 'Retirada'}
       </Text>
     </View>
   </View>
@@ -174,7 +180,19 @@ const OrderSummary = ({ order }: { order: Order }) => (
         </View>
       )}
 
-      {order.discountTotal && Number(order.discountTotal) > 0 && (
+      {order.hasCoupon && order.couponApplied && order.couponCode && (
+        <View style={styles.summaryRow}>
+          <Text style={[styles.summaryLabel, { color: colors.green[600] }]}>
+            Cupom {order.couponCode}
+            {order.couponApplied.discountPercentage !== undefined && order.couponApplied.discountPercentage > 0 && ` (${order.couponApplied.discountPercentage}%)`}
+          </Text>
+          <Text style={[styles.summaryValue, { color: colors.green[600] }]}>
+            - R$ {Number(order.couponApplied.discountValue || order.couponApplied.value || order.discountTotal || 0).toFixed(2)}
+          </Text>
+        </View>
+      )}
+
+      {order.discountTotal !== undefined && Number(order.discountTotal) > 0 && !order.hasCoupon && (
         <View style={styles.summaryRow}>
           <Text style={[styles.summaryLabel, { color: colors.green[600] }]}>Desconto</Text>
           <Text style={[styles.summaryValue, { color: colors.green[600] }]}>
@@ -196,8 +214,8 @@ const OrderSummary = ({ order }: { order: Order }) => (
           <Text style={styles.summaryLabel}>Forma de Pagamento</Text>
           <Text style={styles.summaryValue}>
             {order.paymentMethod === 'cash' ? 'DINHEIRO' : order.paymentMethod.toUpperCase()}
-            {order.paymentData?.flagName && ` - ${order.paymentData.flagName}`}
-            {order.paymentMethod === 'cash' && order.paymentData?.changeFor && (
+            {order.paymentData?.flagName && order.paymentData.flagName.trim() !== '' && ` - ${order.paymentData.flagName}`}
+            {order.paymentMethod === 'cash' && order.paymentData?.changeFor && order.paymentData.changeFor.trim() !== '' && (
               order.paymentData.changeFor === 'sem_troco' 
                 ? ' - Sem troco'
                 : ` - Troco para R$ ${Number(order.paymentData.changeFor).toFixed(2)}`
@@ -236,8 +254,8 @@ export default function OrderDetailsModal({ visible, order, onClose }: OrderDeta
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
           <OrderBasicInfo order={order} />
           <CustomerInfo order={order} />
-          <OrderItems order={order} />
           <OrderSummary order={order} />
+          <OrderItems order={order} />
         </ScrollView>
       </View>
     </Modal>
@@ -342,8 +360,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     padding: 16,
     borderRadius: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.orange,
   },
   customerName: {
     fontSize: 16,

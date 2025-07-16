@@ -22,6 +22,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles/theme/colors';
 import { establishmentSettingsService, Schedule } from '../services/establishmentSettingsService';
+import { formatCurrency } from '../utils/format';
 
 type PaymentMethod = {
   type: string;
@@ -49,10 +50,12 @@ interface SettingsModalsProps {
   deliveryTimeModal: boolean;
   cardFlagsModal: boolean;
   pickupModal: boolean;
+  minimumOrderModal: boolean;
   setScheduleModal: (value: boolean) => void;
   setDeliveryTimeModal: (value: boolean) => void;
   setCardFlagsModal: (value: boolean) => void;
   setPickupModal: (value: boolean) => void;
+  setMinimumOrderModal: (value: boolean) => void;
   settings: {
     schedule: Schedule;
     delivery: {
@@ -74,16 +77,51 @@ export function SettingsModals({
   deliveryTimeModal,
   cardFlagsModal,
   pickupModal,
+  minimumOrderModal,
   setScheduleModal,
   setDeliveryTimeModal,
   setCardFlagsModal,
   setPickupModal,
+  setMinimumOrderModal,
   settings,
   onSettingsChange
 }: SettingsModalsProps) {
   // Estados para tempo de entrega
   const [minDeliveryTime, setMinDeliveryTime] = useState(settings?.delivery?.minTime || '20');
   const [maxDeliveryTime, setMaxDeliveryTime] = useState(settings?.delivery?.maxTime || '45');
+  
+  // Estado para valor mínimo do pedido
+  const [minimumOrderAmount, setMinimumOrderAmount] = useState(settings?.delivery?.minimumOrderAmount || '20');
+  
+  // Função para formatar o valor do input
+  const formatInputValue = (value: string): string => {
+    // Remove tudo que não é número
+    const numbers = value.replace(/\D/g, '');
+    
+    if (numbers === '') return '';
+    
+    // Converte para número e divide por 100 para considerar centavos
+    const numericValue = parseFloat(numbers) / 100;
+    
+    // Formata usando a função existente
+    return formatCurrency(numericValue);
+  };
+
+  // Função para extrair apenas números do valor formatado
+  const extractNumericValue = (formattedValue: string): string => {
+    const numbers = formattedValue.replace(/\D/g, '');
+    if (numbers === '') return '';
+    
+    // Converte para número e divide por 100
+    const numericValue = parseFloat(numbers) / 100;
+    return numericValue.toString();
+  };
+
+  // Função para lidar com mudanças no input
+  const handleMinimumOrderChange = (value: string) => {
+    const formatted = formatInputValue(value);
+    setMinimumOrderAmount(formatted);
+  };
   
   // Estado para retirada
   const [allowPickup, setAllowPickup] = useState(settings?.pickup?.enabled || false);
@@ -128,6 +166,7 @@ export function SettingsModals({
     if (settings) {
       setMinDeliveryTime(settings.delivery.minTime);
       setMaxDeliveryTime(settings.delivery.maxTime);
+      setMinimumOrderAmount(formatCurrency(parseFloat(settings.delivery.minimumOrderAmount) || 0));
       setAllowPickup(settings.pickup.enabled);
       setPickupTime(settings.pickup.estimatedTime);
       setPaymentOptions(settings.paymentOptions);
@@ -145,6 +184,26 @@ export function SettingsModals({
     } catch (error) {
       console.error('Erro ao salvar tempo de entrega:', error);
       Alert.alert('Erro', 'Não foi possível salvar o tempo de entrega. Tente novamente.');
+    }
+  };
+
+  // Função para salvar valor mínimo do pedido
+  const handleSaveMinimumOrderAmount = async () => {
+    try {
+      const numericValue = extractNumericValue(minimumOrderAmount);
+      
+      if (!numericValue || parseFloat(numericValue) <= 0) {
+        Alert.alert('Erro', 'O valor mínimo deve ser maior que zero.');
+        return;
+      }
+      
+      await establishmentSettingsService.saveMinimumOrderAmount(numericValue);
+      await onSettingsChange();
+      Alert.alert('Sucesso', 'Valor mínimo do pedido atualizado com sucesso!');
+      setMinimumOrderModal(false);
+    } catch (error) {
+      console.error('Erro ao salvar valor mínimo do pedido:', error);
+      Alert.alert('Erro', 'Não foi possível salvar o valor mínimo do pedido. Tente novamente.');
     }
   };
 
@@ -513,6 +572,45 @@ export function SettingsModals({
           </View>
         </View>
       </Modal>
+
+      {/* Modal de Valor Mínimo do Pedido */}
+      <Modal
+        visible={minimumOrderModal}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        transparent={false}
+        onRequestClose={() => setMinimumOrderModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Valor Mínimo do Pedido</Text>
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Valor mínimo para entrega:</Text>
+              <TextInput
+                style={styles.input}
+                value={minimumOrderAmount}
+                onChangeText={handleMinimumOrderChange}
+                keyboardType="numeric"
+                placeholder="R$ 0,00"
+              />
+            </View>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.button, styles.cancelButton]}
+                onPress={() => setMinimumOrderModal(false)}
+              >
+                <Text style={styles.buttonText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, styles.saveButton]}
+                onPress={handleSaveMinimumOrderAmount}
+              >
+                <Text style={styles.buttonText}>Salvar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -642,5 +740,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 20,
+  },
+  formattedValue: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 8,
+    fontStyle: 'italic',
   },
 });

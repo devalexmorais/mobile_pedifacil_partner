@@ -83,6 +83,18 @@ export interface Order {
   totalPrice?: number;
   originalPrice?: number;
   discountTotal?: number;
+  
+  // Campos de cupom
+  hasCoupon?: boolean;
+  couponCode?: string;
+  couponApplied?: {
+    validUntil: string;
+    validUntilTime: string;
+    value: number;
+    discountType?: 'percentage' | 'fixed';
+    discountValue?: number;
+    discountPercentage?: number;
+  };
 }
 
 export interface DaySummary {
@@ -188,7 +200,12 @@ const firebaseSalesService = {
                 storeCNPJ: data.storeCNPJ ? String(data.storeCNPJ) : undefined,
                 deliveryFee: Number(data.deliveryFee) || 0,
                 cardFeeValue: Number(data.cardFeeValue) || 0,
-                finalPrice: Number(data.finalPrice) || Number(data.total) || 0
+                finalPrice: Number(data.finalPrice) || Number(data.total) || 0,
+                // Campos de cupom
+                hasCoupon: Boolean(data.hasCoupon) || false,
+                couponCode: data.couponCode ? String(data.couponCode) : undefined,
+                couponApplied: data.couponApplied || undefined,
+                discountTotal: Number(data.discountTotal) || 0
               };
               
               // Se não tiver total calculado, calcular a partir dos itens
@@ -206,12 +223,13 @@ const firebaseSalesService = {
               
               // Só adicionar aos totais se não for um pedido cancelado
               if (orderStatus !== 'cancelled') {
-                total += orderData.total;
+                const finalValue = orderData.finalPrice || orderData.total;
+                total += finalValue;
                 
                 // Atualização das somas por método de pagamento
-                if (orderData.paymentMethod === 'cash') cash += orderData.total;
-                else if (orderData.paymentMethod === 'card') card += orderData.total;
-                else if (orderData.paymentMethod === 'pix') pix += orderData.total;
+                if (orderData.paymentMethod === 'cash') cash += finalValue;
+                else if (orderData.paymentMethod === 'card') card += finalValue;
+                else if (orderData.paymentMethod === 'pix') pix += finalValue;
               }
             }
           }
@@ -336,7 +354,12 @@ const firebaseSalesService = {
         storeCNPJ: data.storeCNPJ ? String(data.storeCNPJ) : undefined,
         deliveryFee: Number(data.deliveryFee) || 0,
         cardFeeValue: Number(data.cardFeeValue) || 0,
-        finalPrice: Number(data.finalPrice) || Number(data.total) || 0
+        finalPrice: Number(data.finalPrice) || Number(data.total) || 0,
+        // Campos de cupom
+        hasCoupon: Boolean(data.hasCoupon) || false,
+        couponCode: data.couponCode ? String(data.couponCode) : undefined,
+        couponApplied: data.couponApplied || undefined,
+        discountTotal: Number(data.discountTotal) || 0
       };
       
       // Se não tiver total calculado, calcular a partir dos itens

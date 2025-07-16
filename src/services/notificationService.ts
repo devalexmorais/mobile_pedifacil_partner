@@ -15,6 +15,14 @@ export interface NotificationData {
     orderId?: string;
     status?: string;
     userId?: string;
+    type?: string;
+    action?: string;
+    couponCode?: string;
+    discountType?: 'percentage' | 'fixed';
+    discountValue?: number;
+    storeId?: string;
+    storeName?: string;
+    [key: string]: any; // Permitir outras propriedades
   };
   read: boolean;
   title: string;

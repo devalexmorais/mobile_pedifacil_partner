@@ -588,9 +588,6 @@ export default function Coupons() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Cupons de desconto</Text>
-        <TouchableOpacity style={styles.helpButton}>
-          <Ionicons name="help-circle-outline" size={24} color={colors.orange} />
-        </TouchableOpacity>
       </View>
       
       <Text style={styles.subtitle}>
@@ -754,9 +751,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: colors.text.primary,
-  },
-  helpButton: {
-    padding: 4,
   },
   subtitle: {
     fontSize: 16,

@@ -28,7 +28,7 @@ Este sistema permite que quando um cupom for criado ou ativado por um parceiro, 
 ```typescript
 {
   id: string;
-  title: string; // "🎉 Novo Cupom Disponível!" ou "🎯 Cupom Reativado!"
+  title: string; // "🎉 Novo Cupom Disponível!"
   body: string; // Descrição detalhada do cupom
   createdAt: Date;
   read: boolean;
@@ -47,6 +47,8 @@ Este sistema permite que quando um cupom for criado ou ativado por um parceiro, 
 ### Exemplo de Mensagem
 - **Título**: "🎉 Novo Cupom Disponível!"
 - **Corpo**: "Dindin Delicia criou um novo cupom: PEDIFACIL10 - 15% de desconto"
+
+**Nota**: Tanto para criação quanto para ativação de cupons, a mesma mensagem é utilizada para manter consistência na experiência do usuário.
 
 ## Arquivos Modificados
 

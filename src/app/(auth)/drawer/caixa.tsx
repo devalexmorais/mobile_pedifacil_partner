@@ -310,7 +310,7 @@ export default function Caixa() {
                           </Text>
                         </Text>
                         <Text style={styles.orderValue}>
-                          R$ {Number(order.total || 0).toFixed(2)}
+                          R$ {Number(order.finalPrice || order.total || 0).toFixed(2)}
                         </Text>
                       </View>
                     </TouchableOpacity>

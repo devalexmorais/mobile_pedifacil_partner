@@ -54,13 +54,9 @@ const sendCouponNotificationToUsers = async (
       ? `${coupon.value}% de desconto`
       : `R$ ${coupon.value.toFixed(2)} de desconto`;
 
-    const title = action === 'created' 
-      ? '🎉 Novo Cupom Disponível!'
-      : '🎯 Cupom Reativado!';
+    const title = '🎉 Novo Cupom Disponível!';
 
-    const body = action === 'created'
-      ? `${storeName || 'Estabelecimento'} criou um novo cupom: ${coupon.code} - ${discountText}`
-      : `${storeName || 'Estabelecimento'} reativou o cupom: ${coupon.code} - ${discountText}`;
+    const body = `${storeName || 'Estabelecimento'} criou um novo cupom: ${coupon.code} - ${discountText}`;
 
     // Limitar o número de usuários para evitar sobrecarga (máximo 100)
     const limitedUsers = users.slice(0, 100);

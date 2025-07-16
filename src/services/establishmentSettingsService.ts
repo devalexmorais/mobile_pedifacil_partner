@@ -322,6 +322,47 @@ export const establishmentSettingsService = {
     }
   },
 
+  async saveMinimumOrderAmount(minimumOrderAmount: string): Promise<boolean> {
+    try {
+      const currentUser = auth.currentUser || getAuth().currentUser;
+      
+      if (!currentUser) {
+        throw new Error('Usuário não autenticado');
+      }
+      
+      const uid = currentUser.uid;
+      const partnerRef = doc(db, 'partners', uid);
+      
+      // Obter configurações atuais de entrega
+      let minTime = '20';
+      let maxTime = '45';
+      try {
+        const settings = await this.getDeliveryTime();
+        minTime = settings.minTime || '20';
+        maxTime = settings.maxTime || '45';
+      } catch (e) {
+        console.log('Erro ao obter configurações atuais, usando padrão:', e);
+      }
+      
+      await setDoc(partnerRef, {
+        settings: {
+          delivery: {
+            minTime,
+            maxTime,
+            minimumOrderAmount,
+            enabled: true
+          }
+        }
+      }, { merge: true });
+      
+      console.log('Valor mínimo do pedido salvo com sucesso');
+      return true;
+    } catch (error) {
+      console.error('Erro ao salvar valor mínimo do pedido:', error);
+      throw error;
+    }
+  },
+
   async savePaymentOptions(paymentOptions: PaymentOptions): Promise<boolean> {
     try {
       const currentUser = auth.currentUser || getAuth().currentUser;

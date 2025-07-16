@@ -170,6 +170,20 @@ export default function ProductCatalog() {
     productsCacheRef.current.clear();
   }, [categories, searchText]);
 
+  // Ajusta a categoria ativa se não houver promoções
+  useEffect(() => {
+    const productsInPromotion = categories.flatMap(category => 
+      category.products.filter(product => product.isPromotion === true)
+    );
+    
+    if (activeCategory === 'promotions' && productsInPromotion.length === 0) {
+      // Se não há promoções e a categoria ativa é 'promotions', muda para a primeira categoria disponível
+      if (categories.length > 0) {
+        setActiveCategory(categories[0].id);
+      }
+    }
+  }, [categories, activeCategory]);
+
 
 
   const loadProducts = async () => {
@@ -1160,9 +1174,13 @@ export default function ProductCatalog() {
     }
   };
 
-  // Prepara as categorias para o TabView, incluindo a categoria de promoções
+  // Prepara as categorias para o TabView, incluindo a categoria de promoções apenas se houver produtos em promoção
+  const productsInPromotion = categories.flatMap(category => 
+    category.products.filter(product => product.isPromotion === true)
+  );
+  
   const allCategories = [
-    { id: 'promotions', name: 'Promoção' },
+    ...(productsInPromotion.length > 0 ? [{ id: 'promotions', name: 'Promoção' }] : []),
     ...categories
   ];
 

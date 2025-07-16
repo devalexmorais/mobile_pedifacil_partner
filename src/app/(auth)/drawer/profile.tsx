@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Image, TouchableOpacity, Alert, ImageBackground } from 'react-native';
-import { doc, getDoc, collection, getDocs, updateDoc } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Image, TouchableOpacity, Alert, ImageBackground, Modal, TextInput } from 'react-native';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../../config/firebase';
 import { Ionicons } from '@expo/vector-icons';
 import { Auth, getAuth } from 'firebase/auth';
-import { EditableField } from '../../../components/EditableField';
+import { PhoneEditModal } from '../../../components/PhoneEditModal';
 import * as ImagePicker from 'expo-image-picker';
 import { ProfileSkeleton } from '../../../components/skeleton';
 
@@ -51,6 +51,15 @@ interface CategoryData {
   subcategory: string;
 }
 
+interface EditModalData {
+  isVisible: boolean;
+  label: string;
+  value: string;
+  onSave: (value: string) => Promise<void>;
+  fieldType: 'partner' | 'store' | 'address';
+  fieldName: string;
+}
+
 export default function Profile() {
   const [loading, setLoading] = useState(true);
   const [partnerData, setPartnerData] = useState<PartnerData | null>(null);
@@ -58,6 +67,31 @@ export default function Profile() {
   const [categoryData, setCategoryData] = useState<CategoryData | null>(null);
   const [uploadingProfile, setUploadingProfile] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
+  const [editModal, setEditModal] = useState<EditModalData>({
+    isVisible: false,
+    label: '',
+    value: '',
+    onSave: async () => {},
+    fieldType: 'partner',
+    fieldName: ''
+  });
+  const [tempEditValue, setTempEditValue] = useState('');
+  const [phoneEditModalVisible, setPhoneEditModalVisible] = useState(false);
+
+  // Função para mascarar CPF/CNPJ por segurança
+  const maskDocument = (document: string): string => {
+    if (!document) return '';
+    
+    const digits = document.replace(/\D/g, '');
+    
+    if (digits.length === 11) { // CPF
+      return `${digits.substring(0, 3)}.***.***-${digits.substring(9)}`;
+    } else if (digits.length === 14) { // CNPJ
+      return `${digits.substring(0, 2)}.***.***/****-${digits.substring(12)}`;
+    }
+    
+    return document; // Retorna original se não for CPF ou CNPJ
+  };
 
   const loadLocationData = async (address: any) => {
     try {
@@ -282,6 +316,64 @@ export default function Profile() {
     }
   };
 
+  const handleEditField = (label: string, value: string, fieldType: 'partner' | 'store' | 'address', fieldName: string) => {
+    // Se for telefone, usar o modal específico
+    if (fieldName === 'phone') {
+      setPhoneEditModalVisible(true);
+      return;
+    }
+
+    setTempEditValue(value);
+    setEditModal({
+      isVisible: true,
+      label,
+      value,
+      onSave: async (newValue: string) => {
+        try {
+          switch (fieldType) {
+            case 'partner':
+              await updatePartnerField(fieldName, newValue);
+              break;
+            case 'store':
+              await updateStoreField(fieldName, newValue);
+              break;
+            case 'address':
+              await updateAddressField(fieldName, newValue);
+              break;
+          }
+        } catch (error) {
+          console.error('Erro ao salvar:', error);
+          Alert.alert('Erro', 'Não foi possível salvar as alterações');
+        }
+      },
+      fieldType,
+      fieldName
+    });
+  };
+
+  const handlePhoneSave = async (newPhone: string) => {
+    try {
+      await updatePartnerField('phone', newPhone);
+    } catch (error) {
+      console.error('Erro ao salvar telefone:', error);
+      throw error;
+    }
+  };
+
+  const handleSaveModal = async () => {
+    try {
+      await editModal.onSave(tempEditValue);
+      setEditModal(prev => ({ ...prev, isVisible: false }));
+    } catch (error) {
+      console.error('Erro ao salvar:', error);
+    }
+  };
+
+  const handleCancelModal = () => {
+    setEditModal(prev => ({ ...prev, isVisible: false }));
+    setTempEditValue('');
+  };
+
   useEffect(() => {
     loadPartnerData();
   }, []);
@@ -350,26 +442,38 @@ export default function Profile() {
             <Text style={styles.cardTitle}>Informações Pessoais</Text>
           </View>
           <View style={styles.cardContent}>
-            <EditableField
-              label="Nome"
-              value={partnerData.name}
-              onSave={(value) => updatePartnerField('name', value)}
-            />
-            <EditableField
-              label="Email"
-              value={partnerData.email}
-              editable={false}
-            />
-            <EditableField
-              label="Telefone"
-              value={partnerData.phone}
-              onSave={(value) => updatePartnerField('phone', value)}
-            />
-            <EditableField
-              label="Documento"
-              value={partnerData.store.document}
-              editable={false}
-            />
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Nome:</Text>
+              <View style={styles.valueContainer}>
+                <Text style={styles.infoValue}>{partnerData.name}</Text>
+                <TouchableOpacity 
+                  onPress={() => handleEditField('Nome', partnerData.name, 'partner', 'name')}
+                  style={styles.editButton}
+                >
+                  <Ionicons name="ellipsis-vertical" size={18} color="#777777" />
+                </TouchableOpacity>
+              </View>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Email:</Text>
+              <Text style={styles.infoValue}>{partnerData.email}</Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Telefone:</Text>
+              <View style={styles.valueContainer}>
+                <Text style={styles.infoValue}>{partnerData.phone}</Text>
+                <TouchableOpacity 
+                  onPress={() => handleEditField('Telefone', partnerData.phone, 'partner', 'phone')}
+                  style={styles.editButton}
+                >
+                  <Ionicons name="ellipsis-vertical" size={18} color="#777777" />
+                </TouchableOpacity>
+              </View>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Documento:</Text>
+              <Text style={styles.infoValue}>{maskDocument(partnerData.store.document)}</Text>
+            </View>
           </View>
         </View>
 
@@ -380,21 +484,42 @@ export default function Profile() {
             <Text style={styles.cardTitle}>Endereço</Text>
           </View>
           <View style={styles.cardContent}>
-            <EditableField
-              label="Rua"
-              value={partnerData.address.street}
-              onSave={(value) => updateAddressField('street', value)}
-            />
-            <EditableField
-              label="Número"
-              value={partnerData.address.number}
-              onSave={(value) => updateAddressField('number', value)}
-            />
-            <EditableField
-              label="Complemento"
-              value={partnerData.address.complement}
-              onSave={(value) => updateAddressField('complement', value)}
-            />
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Rua:</Text>
+              <View style={styles.valueContainer}>
+                <Text style={styles.infoValue}>{partnerData.address.street}</Text>
+                <TouchableOpacity 
+                  onPress={() => handleEditField('Rua', partnerData.address.street, 'address', 'street')}
+                  style={styles.editButton}
+                >
+                  <Ionicons name="ellipsis-vertical" size={18} color="#777777" />
+                </TouchableOpacity>
+              </View>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Número:</Text>
+              <View style={styles.valueContainer}>
+                <Text style={styles.infoValue}>{partnerData.address.number}</Text>
+                <TouchableOpacity 
+                  onPress={() => handleEditField('Número', partnerData.address.number, 'address', 'number')}
+                  style={styles.editButton}
+                >
+                  <Ionicons name="ellipsis-vertical" size={18} color="#777777" />
+                </TouchableOpacity>
+              </View>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Complemento:</Text>
+              <View style={styles.valueContainer}>
+                <Text style={styles.infoValue}>{partnerData.address.complement}</Text>
+                <TouchableOpacity 
+                  onPress={() => handleEditField('Complemento', partnerData.address.complement, 'address', 'complement')}
+                  style={styles.editButton}
+                >
+                  <Ionicons name="ellipsis-vertical" size={18} color="#777777" />
+                </TouchableOpacity>
+              </View>
+            </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Bairro:</Text>
               <Text style={styles.infoValue}>{locationData?.neighborhood || 'Carregando...'}</Text>
@@ -415,11 +540,18 @@ export default function Profile() {
             <Text style={styles.cardTitle}>Estabelecimento</Text>
           </View>
           <View style={styles.cardContent}>
-            <EditableField
-              label="Nome"
-              value={partnerData.store.name}
-              onSave={(value) => updateStoreField('name', value)}
-            />
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Nome:</Text>
+              <View style={styles.valueContainer}>
+                <Text style={styles.infoValue}>{partnerData.store.name}</Text>
+                <TouchableOpacity 
+                  onPress={() => handleEditField('Nome do Estabelecimento', partnerData.store.name, 'store', 'name')}
+                  style={styles.editButton}
+                >
+                  <Ionicons name="ellipsis-vertical" size={18} color="#777777" />
+                </TouchableOpacity>
+              </View>
+            </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Categoria:</Text>
               <Text style={styles.infoValue}>{categoryData?.category || 'Carregando...'}</Text>
@@ -431,6 +563,53 @@ export default function Profile() {
           </View>
         </View>
       </View>
+
+      {/* Modal de Edição */}
+      <Modal
+        visible={editModal.isVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={handleCancelModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Editar {editModal.label}</Text>
+              <TouchableOpacity onPress={handleCancelModal} style={styles.closeButton}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.modalBody}>
+              <Text style={styles.modalLabel}>{editModal.label}:</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={tempEditValue}
+                onChangeText={setTempEditValue}
+                autoFocus
+                placeholder={`Digite o ${editModal.label.toLowerCase()}`}
+              />
+            </View>
+            
+            <View style={styles.modalFooter}>
+              <TouchableOpacity onPress={handleCancelModal} style={[styles.modalButton, styles.cancelButton]}>
+                <Text style={styles.cancelButtonText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleSaveModal} style={[styles.modalButton, styles.saveButton]}>
+                <Text style={styles.saveButtonText}>Salvar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de Edição de Telefone */}
+      <PhoneEditModal
+        isVisible={phoneEditModalVisible}
+        currentPhone={partnerData?.phone || ''}
+        onSave={handlePhoneSave}
+        onCancel={() => setPhoneEditModalVisible(false)}
+      />
     </ScrollView>
   );
 }
@@ -550,6 +729,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#333',
   },
+  valueContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  editButton: {
+    padding: 4,
+    marginLeft: 8,
+  },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -559,5 +748,87 @@ const styles = StyleSheet.create({
   errorText: {
     color: '#FF3B30',
     fontSize: 16,
+  },
+  // Estilos do Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#FFF',
+    borderRadius: 15,
+    width: '90%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  closeButton: {
+    padding: 4,
+  },
+  modalBody: {
+    padding: 20,
+  },
+  modalLabel: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 10,
+    fontWeight: '500',
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#333',
+    backgroundColor: '#f9f9f9',
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginHorizontal: 5,
+  },
+  cancelButton: {
+    backgroundColor: '#f0f0f0',
+  },
+  saveButton: {
+    backgroundColor: '#FFA500',
+  },
+  cancelButtonText: {
+    color: '#666',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  saveButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '500',
   },
 }); 
