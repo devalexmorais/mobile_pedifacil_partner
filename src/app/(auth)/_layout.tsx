@@ -87,7 +87,7 @@ function CustomDrawerContent(props: any) {
     <SafeAreaView style={styles.drawerContainer}>
       <StatusBar barStyle="light-content" backgroundColor="#FFA500" />
       <MainEstablishmentButton/>
-      <DrawerContentScrollView {...props}>
+      <DrawerContentScrollView {...props} contentContainerStyle={styles.drawerScrollContent}>
         <View style={styles.drawerContent}>
           {/* Mantém os itens de navegação padrão */}
           <DrawerItemList {...props} />
@@ -328,6 +328,9 @@ const styles = StyleSheet.create({
   },
   drawerContent: {
     flex: 1,
+  },
+  drawerScrollContent: {
+    paddingTop: 0,
   },
   logoutButton: {
     flexDirection: 'row',

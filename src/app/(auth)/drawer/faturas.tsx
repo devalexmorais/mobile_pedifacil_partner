@@ -9,11 +9,10 @@ import {
   Modal,
   Alert,
   Linking,
-  Dimensions,
   Image,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/theme/colors';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -198,6 +197,7 @@ export default function Faturas() {
   const navigation = useNavigation();
   const { user } = useAuth();
   const functions = getFunctions();
+  const insets = useSafeAreaInsets();
   
   // Hook para monitoramento em tempo real do status de pagamento
   const paymentStatus = usePaymentStatus();
@@ -880,7 +880,7 @@ export default function Faturas() {
                           <>
                             <QRCode
                               value={currentInvoice.paymentData?.qr_code || currentInvoice.paymentInfo?.paymentUrl || ''}
-                              size={200}
+                              size={Platform.OS === 'ios' ? 180 : 200}
                               backgroundColor="white"
                               color={colors.gray[800]}
                             />
@@ -1244,15 +1244,21 @@ export default function Faturas() {
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.orange} />
-      </View>
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+        <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
+          <ActivityIndicator size="large" color={colors.orange} />
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <ScrollView 
+        style={[styles.content, { paddingTop: insets.top > 0 ? 0 : 16 }]} 
+        contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
+        showsVerticalScrollIndicator={false}
+      >
         {currentInvoice ? (
           renderCurrentInvoiceCard()
         ) : (
@@ -1326,7 +1332,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 16,
+    paddingHorizontal: 16,
   },
   loadingContainer: {
     flex: 1,
@@ -1342,8 +1348,8 @@ const styles = StyleSheet.create({
   },
   currentInvoiceCard: {
     borderRadius: 20,
-    padding: 24,
-    marginBottom: 24,
+    padding: Platform.OS === 'ios' ? 20 : 24,
+    marginBottom: 8,
     elevation: 8,
     shadowColor: colors.orange,
     shadowOffset: { width: 0, height: 6 },
@@ -1362,7 +1368,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   currentInvoiceTitle: {
-    fontSize: 22,
+    fontSize: Platform.OS === 'ios' ? 20 : 22,
     fontWeight: 'bold',
     color: colors.white,
   },
@@ -1370,7 +1376,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   currentInvoiceMonth: {
-    fontSize: 26,
+    fontSize: Platform.OS === 'ios' ? 24 : 26,
     fontWeight: 'bold',
     color: colors.white,
     marginBottom: 20,
@@ -1393,7 +1399,7 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   totalValue: {
-    fontSize: 32,
+    fontSize: Platform.OS === 'ios' ? 28 : 32,
     fontWeight: 'bold',
     color: colors.white,
     marginBottom: 12,
@@ -1421,7 +1427,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: Platform.OS === 'ios' ? 18 : 20,
     fontWeight: 'bold',
     color: colors.gray[800],
     marginBottom: 16,
@@ -1432,7 +1438,7 @@ const styles = StyleSheet.create({
   invoiceItem: {
     backgroundColor: colors.white,
     borderRadius: 12,
-    padding: 16,
+    padding: Platform.OS === 'ios' ? 14 : 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -1449,18 +1455,18 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   invoiceMonth: {
-    fontSize: 16,
+    fontSize: Platform.OS === 'ios' ? 15 : 16,
     fontWeight: 'bold',
     color: colors.gray[800],
     textTransform: 'capitalize',
   },
   invoiceDueDate: {
-    fontSize: 14,
+    fontSize: Platform.OS === 'ios' ? 13 : 14,
     color: colors.gray[600],
     marginTop: 4,
   },
   invoiceAmount: {
-    fontSize: 16,
+    fontSize: Platform.OS === 'ios' ? 15 : 16,
     fontWeight: 'bold',
     color: colors.gray[800],
     marginBottom: 4,
@@ -1490,7 +1496,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    padding: 24,
+    padding: Platform.OS === 'ios' ? 20 : 24,
     minHeight: '50%',
   },
   paymentModalHeader: {
@@ -1556,7 +1562,7 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     alignItems: 'center',
-    padding: 24,
+    padding: Platform.OS === 'ios' ? 20 : 24,
     backgroundColor: colors.white,
     borderRadius: 16,
     elevation: 2,
@@ -1575,23 +1581,23 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   emptyTitle: {
-    fontSize: 18,
+    fontSize: Platform.OS === 'ios' ? 16 : 18,
     fontWeight: 'bold',
     color: colors.gray[800],
     marginBottom: 8,
     textAlign: 'center',
   },
   emptyDescription: {
-    fontSize: 14,
+    fontSize: Platform.OS === 'ios' ? 13 : 14,
     color: colors.gray[600],
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: Platform.OS === 'ios' ? 18 : 20,
   },
   detailsModalContent: {
     backgroundColor: colors.white,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    padding: 24,
+    padding: Platform.OS === 'ios' ? 20 : 24,
     minHeight: '60%',
     maxHeight: '95%',
   },
@@ -1618,7 +1624,7 @@ const styles = StyleSheet.create({
   detailsCard: {
     backgroundColor: colors.white,
     borderRadius: 16,
-    padding: 20,
+    padding: Platform.OS === 'ios' ? 16 : 20,
     marginBottom: 24,
     borderWidth: 1,
     borderColor: colors.gray[200],
@@ -1632,16 +1638,16 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.gray[100],
   },
   detailsLabel: {
-    fontSize: 16,
+    fontSize: Platform.OS === 'ios' ? 15 : 16,
     color: colors.gray[600],
   },
   detailsValue: {
-    fontSize: 16,
+    fontSize: Platform.OS === 'ios' ? 15 : 16,
     color: colors.gray[800],
     fontWeight: '500',
   },
   detailsValueHighlight: {
-    fontSize: 18,
+    fontSize: Platform.OS === 'ios' ? 16 : 18,
     fontWeight: 'bold',
     color: colors.orange,
   },
@@ -1663,7 +1669,7 @@ const styles = StyleSheet.create({
   qrCodeContainer: {
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderRadius: 16,
-    padding: 24,
+    padding: Platform.OS === 'ios' ? 20 : 24,
     marginTop: 16,
     shadowColor: colors.gray[800],
     shadowOffset: { width: 0, height: 4 },
@@ -1672,7 +1678,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   qrCodeWrapper: {
-    padding: 20,
+    padding: Platform.OS === 'ios' ? 16 : 20,
     backgroundColor: colors.white,
     borderRadius: 12,
     shadowColor: colors.gray[400],
@@ -1685,12 +1691,12 @@ const styles = StyleSheet.create({
     marginVertical: 16,
   },
   qrCodeImage: {
-    width: 240,
-    height: 240,
+    width: Platform.OS === 'ios' ? 220 : 240,
+    height: Platform.OS === 'ios' ? 220 : 240,
     backgroundColor: colors.white,
   },
   qrCodeTitle: {
-    fontSize: 18,
+    fontSize: Platform.OS === 'ios' ? 16 : 18,
     fontWeight: 'bold',
     color: colors.gray[800],
     marginBottom: 8,
@@ -1730,7 +1736,7 @@ const styles = StyleSheet.create({
   qrCodeStatus: {
     color: colors.green[500],
     marginTop: 8,
-    fontSize: 12,
+    fontSize: Platform.OS === 'ios' ? 11 : 12,
     fontWeight: '500',
   },
   copyPixButton: {
@@ -1745,7 +1751,7 @@ const styles = StyleSheet.create({
   copyPixButtonText: {
     color: colors.white,
     marginLeft: 8,
-    fontSize: 16,
+    fontSize: Platform.OS === 'ios' ? 15 : 16,
     fontWeight: '500',
   },
   boletoButton: {
@@ -1763,7 +1769,7 @@ const styles = StyleSheet.create({
   boletoButtonText: {
     color: colors.orange,
     marginLeft: 8,
-    fontSize: 16,
+    fontSize: Platform.OS === 'ios' ? 15 : 16,
     fontWeight: '500',
   },
   paymentContainer: {
@@ -1816,7 +1822,7 @@ const styles = StyleSheet.create({
   copyBoletoButtonText: {
     color: colors.orange,
     marginLeft: 8,
-    fontSize: 14,
+    fontSize: Platform.OS === 'ios' ? 13 : 14,
     fontWeight: '500',
   },
   boletoInfoContainer: {
@@ -1845,7 +1851,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   boletoInstructions: {
-    fontSize: 14,
+    fontSize: Platform.OS === 'ios' ? 13 : 14,
     color: colors.gray[600],
     marginTop: 8,
   },
@@ -1963,20 +1969,20 @@ const styles = StyleSheet.create({
      borderWidth: 2,
      borderColor: 'rgba(255, 255, 255, 0.3)',
    },
-   criticalWarningText: {
-     fontSize: 18,
-     fontWeight: 'bold',
-     color: colors.white,
-     marginLeft: 8,
-     textAlign: 'center',
-   },
-   criticalWarningSubtext: {
-     fontSize: 14,
-     color: colors.white,
-     marginTop: 4,
-     textAlign: 'center',
-     opacity: 0.9,
-   },
+     criticalWarningText: {
+    fontSize: Platform.OS === 'ios' ? 16 : 18,
+    fontWeight: 'bold',
+    color: colors.white,
+    marginLeft: 8,
+    textAlign: 'center',
+  },
+  criticalWarningSubtext: {
+    fontSize: Platform.OS === 'ios' ? 13 : 14,
+    color: colors.white,
+    marginTop: 4,
+    textAlign: 'center',
+    opacity: 0.9,
+  },
    overdueWarningContainer: {
      backgroundColor: 'rgba(0, 0, 0, 0.15)',
      borderRadius: 12,
@@ -1987,19 +1993,19 @@ const styles = StyleSheet.create({
      borderWidth: 1,
      borderColor: 'rgba(255, 255, 255, 0.3)',
    },
-   overdueWarningText: {
-     fontSize: 16,
-     fontWeight: 'bold',
-     color: colors.white,
-     marginLeft: 8,
-     flex: 1,
-   },
-   overdueWarningSubtext: {
-     fontSize: 12,
-     color: colors.white,
-     marginTop: 4,
-     opacity: 0.9,
-   },
+     overdueWarningText: {
+    fontSize: Platform.OS === 'ios' ? 15 : 16,
+    fontWeight: 'bold',
+    color: colors.white,
+    marginLeft: 8,
+    flex: 1,
+  },
+  overdueWarningSubtext: {
+    fontSize: Platform.OS === 'ios' ? 11 : 12,
+    color: colors.white,
+    marginTop: 4,
+    opacity: 0.9,
+  },
    overdueText: {
      fontSize: 14,
      color: colors.white,
@@ -2007,37 +2013,37 @@ const styles = StyleSheet.create({
      opacity: 0.8,
    },
    // Estilos para quando não há fatura atual
-   noCurrentInvoiceContainer: {
-     backgroundColor: colors.white,
-     borderRadius: 20,
-     padding: 32,
-     marginBottom: 24,
-     alignItems: 'center',
-     elevation: 4,
-     shadowColor: colors.gray[400],
-     shadowOffset: { width: 0, height: 2 },
-     shadowOpacity: 0.1,
-     shadowRadius: 8,
-   },
+     noCurrentInvoiceContainer: {
+    backgroundColor: colors.white,
+    borderRadius: 20,
+    padding: Platform.OS === 'ios' ? 24 : 32,
+    marginBottom: 24,
+    alignItems: 'center',
+    elevation: 4,
+    shadowColor: colors.gray[400],
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
    noCurrentInvoiceIconContainer: {
      backgroundColor: colors.green[100],
      borderRadius: 50,
      padding: 20,
      marginBottom: 16,
    },
-   noCurrentInvoiceTitle: {
-     fontSize: 20,
-     fontWeight: 'bold',
-     color: colors.gray[800],
-     marginBottom: 8,
-     textAlign: 'center',
-   },
-   noCurrentInvoiceDescription: {
-     fontSize: 16,
-     color: colors.gray[600],
-     textAlign: 'center',
-     lineHeight: 24,
-   },
+     noCurrentInvoiceTitle: {
+    fontSize: Platform.OS === 'ios' ? 18 : 20,
+    fontWeight: 'bold',
+    color: colors.gray[800],
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  noCurrentInvoiceDescription: {
+    fontSize: Platform.OS === 'ios' ? 14 : 16,
+    color: colors.gray[600],
+    textAlign: 'center',
+    lineHeight: Platform.OS === 'ios' ? 20 : 24,
+  },
    
    // Estilos para créditos aplicados
    creditsAppliedContainer: {
@@ -2047,18 +2053,18 @@ const styles = StyleSheet.create({
      marginVertical: 8,
      alignItems: 'center',
    },
-   creditsAppliedText: {
-     fontSize: 14,
-     color: colors.white,
-     fontWeight: '600',
-     textAlign: 'center',
-   },
-   originalAmountText: {
-     fontSize: 12,
-     color: colors.white,
-     opacity: 0.8,
-     textAlign: 'center',
-     marginTop: 2,
-   },
+     creditsAppliedText: {
+    fontSize: Platform.OS === 'ios' ? 13 : 14,
+    color: colors.white,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  originalAmountText: {
+    fontSize: Platform.OS === 'ios' ? 11 : 12,
+    color: colors.white,
+    opacity: 0.8,
+    textAlign: 'center',
+    marginTop: 2,
+  },
 
 }); 

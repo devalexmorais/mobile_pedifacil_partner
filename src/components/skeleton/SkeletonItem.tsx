@@ -41,9 +41,11 @@ export const SkeletonItem = ({
   }, [shimmerEnabled]);
 
   // Criamos a animação de forma otimizada
+  // Convertemos width para número se for string, ou usamos um valor padrão
+  const numericWidth = typeof width === 'number' ? width : 100;
   const translateX = animatedValue.interpolate({
     inputRange: [0, 1],
-    outputRange: [-width * 2, width * 2],
+    outputRange: [-numericWidth * 2, numericWidth * 2],
   });
 
   return (

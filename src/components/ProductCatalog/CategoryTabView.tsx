@@ -28,12 +28,19 @@ export function CategoryTabView({
   const [index, setIndex] = React.useState(initialIndex);
   const layout = useWindowDimensions();
   
+  // Atualiza o índice quando as rotas mudarem
+  React.useEffect(() => {
+    if (initialIndex >= 0 && initialIndex < categories.length) {
+      setIndex(initialIndex);
+    }
+  }, [categories, initialIndex]);
+  
   // Criando as rotas baseadas nas categorias
-  const [routes] = React.useState<Route[]>(
+  const routes = React.useMemo<Route[]>(() => 
     categories.map(category => ({ 
       key: category.id, 
       title: category.name 
-    }))
+    })), [categories]
   );
 
   // Manipula a mudança de índice e chama o callback

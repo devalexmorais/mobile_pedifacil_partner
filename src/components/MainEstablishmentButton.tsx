@@ -246,10 +246,10 @@ export function MainEstablishmentButton() {
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    marginVertical: 20,
+    marginVertical: 8,
   },
   button: {
-    padding: 15,
+    padding: 12,
     borderRadius: 10,
     width: '90%',
     alignItems: 'center',
@@ -278,9 +278,9 @@ const styles = StyleSheet.create({
   },
   warningContainer: {
     backgroundColor: colors.yellow[500],
-    padding: 15,
+    padding: 12,
     borderRadius: 10,
-    marginBottom: 10,
+    marginBottom: 8,
     alignItems: 'center',
   },
   warningTitle: {

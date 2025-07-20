@@ -115,7 +115,8 @@ async function verificarEAplicarBloqueio(partnerId) {
       }
     });
     
-    const isBlocked = maxDaysPastDue > 7;
+    // Regra de bloqueio: agora bloqueia após 1 dia de atraso
+    const isBlocked = maxDaysPastDue > 0;
     const blockingReason = isBlocked 
       ? `Fatura vencida há ${maxDaysPastDue} dias. Pagamento necessário para continuar operando.`
       : null;

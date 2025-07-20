@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import ImageViewer from '@/components/ImageViewer';
 import { Ionicons } from '@expo/vector-icons';
 import { CategorySelectionModal } from '../CategorySelectionModal';
@@ -144,8 +144,8 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   imagePickerButton: {
-    width: 150,
-    height: 150,
+    width: Platform.OS === 'ios' ? 120 : 150,
+    height: Platform.OS === 'ios' ? 120 : 150,
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: '#f5f5f5',
@@ -157,13 +157,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ddd',
     borderRadius: 8,
-    padding: 12,
+    padding: Platform.OS === 'ios' ? 16 : 12,
     marginBottom: 16,
     fontSize: 16,
+    minHeight: Platform.OS === 'ios' ? 48 : 44,
   },
   textArea: {
     height: 100,
     textAlignVertical: 'top',
+    paddingTop: Platform.OS === 'ios' ? 16 : 12,
   },
   categoryButton: {
     marginBottom: 16,
@@ -180,8 +182,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ddd',
     borderRadius: 8,
-    padding: 12,
+    padding: Platform.OS === 'ios' ? 16 : 12,
     backgroundColor: '#fff',
+    minHeight: Platform.OS === 'ios' ? 48 : 44,
   },
   categoryValue: {
     fontSize: 16,

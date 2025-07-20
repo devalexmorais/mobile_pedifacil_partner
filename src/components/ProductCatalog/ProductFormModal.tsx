@@ -1,10 +1,51 @@
 import React, { useEffect } from 'react';
-import { View, ScrollView, TouchableOpacity, Text, Modal, StyleSheet } from 'react-native';
+import { View, ScrollView, TouchableOpacity, Text, Modal, StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ProductBasicInfo } from './ProductFormSections/ProductBasicInfo';
 import { ProductVariations } from './ProductFormSections/ProductVariations';
 import { ProductRequiredSelections } from './ProductFormSections/ProductRequiredSelections';
 import { ProductExtras } from './ProductFormSections/ProductExtras';
+import { Product } from '@/types/product';
+
+interface NewProduct {
+  name: string;
+  description: string;
+  price: string;
+  category: string;
+  categoryId: string;
+  isActive: boolean;
+  isPromotion: boolean;
+  promotionalPrice: string | null;
+  variations: FormVariation[];
+  requiredSelections: RequiredSelection[];
+  extras: Extra[];
+  image: string | null;
+}
+
+interface FormVariation {
+  name: string;
+  price: string;
+  isAvailable: boolean;
+  minRequired?: number;
+}
+
+interface RequiredSelection {
+  name: string;
+  minRequired: number;
+  maxRequired: number;
+  options: {
+    name: string;
+    price?: string;
+    isActive?: boolean;
+  }[];
+}
+
+interface Extra {
+  name: string;
+  extraPrice: number;
+  minRequired: number;
+  maxRequired: number;
+}
 
 interface ProductFormModalProps {
   visible: boolean;
@@ -92,10 +133,14 @@ export function ProductFormModal({
       transparent={false}
       onRequestClose={onClose}
     >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
+      <SafeAreaView style={styles.modalOverlay}>
+        <KeyboardAvoidingView 
+          style={styles.modalContent}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
           <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={onClose}>
+            <TouchableOpacity onPress={onClose} style={styles.backButton}>
               <Ionicons name="arrow-back" size={24} color="#666" />
             </TouchableOpacity>
             <Text style={styles.modalTitle}>
@@ -104,7 +149,12 @@ export function ProductFormModal({
             <View style={styles.headerSpacer} />
           </View>
 
-          <ScrollView style={styles.modalForm}>
+          <ScrollView 
+            style={styles.modalForm}
+            contentContainerStyle={styles.modalFormContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
             <ProductBasicInfo 
               product={newProduct}
               onUpdate={onUpdateProduct}
@@ -155,8 +205,8 @@ export function ProductFormModal({
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
-      </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
     </Modal>
   );
 }
@@ -168,47 +218,62 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     flex: 1,
-    width: '100%',
-    height: '100%',
     backgroundColor: '#fff',
-    padding: 0,
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    padding: Platform.OS === 'ios' ? 20 : 16,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
     elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  backButton: {
+    padding: Platform.OS === 'ios' ? 8 : 4,
+    marginRight: Platform.OS === 'ios' ? 12 : 8,
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: Platform.OS === 'ios' ? 18 : 20,
     fontWeight: 'bold',
     color: '#333',
     flex: 1,
     textAlign: 'center',
   },
   headerSpacer: {
-    width: 40, // Para manter o título centralizado
+    width: Platform.OS === 'ios' ? 44 : 40, // Para manter o título centralizado
   },
   modalForm: {
     flex: 1,
-    padding: 16,
+    padding: Platform.OS === 'ios' ? 20 : 16,
+  },
+  modalFormContent: {
+    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
   },
   modalFooter: {
     flexDirection: 'row',
-    padding: 16,
+    padding: Platform.OS === 'ios' ? 20 : 16,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 16, // Adiciona padding extra para iPhone
     backgroundColor: '#fff',
     borderTopWidth: 1,
     borderTopColor: '#e0e0e0',
-    gap: 12,
+    gap: Platform.OS === 'ios' ? 16 : 12,
   },
   footerButton: {
     flex: 1,
-    padding: 14,
+    padding: Platform.OS === 'ios' ? 16 : 14,
     borderRadius: 8,
     alignItems: 'center',
+    minHeight: Platform.OS === 'ios' ? 50 : 44,
+    justifyContent: 'center',
   },
   cancelButton: {
     backgroundColor: '#f5f5f5',
@@ -217,7 +282,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFA500',
   },
   footerButtonText: {
-    fontSize: 16,
+    fontSize: Platform.OS === 'ios' ? 17 : 16,
     fontWeight: '600',
     color: '#666',
   },

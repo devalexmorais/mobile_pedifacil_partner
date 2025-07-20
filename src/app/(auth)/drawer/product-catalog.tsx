@@ -128,7 +128,7 @@ export default function ProductCatalog() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isPromotionModalVisible, setIsPromotionModalVisible] = useState(false);
   const [selectedProductForPromotion, setSelectedProductForPromotion] = useState<Product | null>(null);
-  const [activeCategory, setActiveCategory] = useState<string>('promotions');
+  const [activeCategory, setActiveCategory] = useState<string>('');
   
   // Cache para evitar recálculos desnecessários
   const productsCacheRef = useRef<Map<string, Product[]>>(new Map());
@@ -170,19 +170,30 @@ export default function ProductCatalog() {
     productsCacheRef.current.clear();
   }, [categories, searchText]);
 
-  // Ajusta a categoria ativa se não houver promoções
+  // Define a categoria ativa inicial
   useEffect(() => {
-    const productsInPromotion = categories.flatMap(category => 
-      category.products.filter(product => product.isPromotion === true)
-    );
-    
-    if (activeCategory === 'promotions' && productsInPromotion.length === 0) {
-      // Se não há promoções e a categoria ativa é 'promotions', muda para a primeira categoria disponível
-      if (categories.length > 0) {
+    if (categories.length > 0 && !activeCategory) {
+      const productsInPromotion = categories.flatMap(category => 
+        category.products.filter(product => product.isPromotion === true)
+      );
+      
+      // Se há produtos em promoção, começa com a categoria de promoções
+      if (productsInPromotion.length > 0) {
+        setActiveCategory('promotions');
+      } else {
+        // Senão, começa com a primeira categoria disponível
         setActiveCategory(categories[0].id);
       }
     }
   }, [categories, activeCategory]);
+
+  // Força a re-renderização quando as categorias mudarem
+  useEffect(() => {
+    if (categories.length > 0) {
+      // Limpa o cache para forçar re-renderização
+      productsCacheRef.current.clear();
+    }
+  }, [categories]);
 
 
 
@@ -206,10 +217,7 @@ export default function ProductCatalog() {
       const filteredProducts = !isPremium 
         ? productsData.map(product => ({
             ...product,
-            isActive: product.isActive && categories
-              .flatMap(cat => cat.products)
-              .filter(p => p.isActive)
-              .indexOf(product) < limits.maxProducts
+            isActive: product.isActive
           }))
         : productsData;
 
@@ -1188,6 +1196,17 @@ export default function ProductCatalog() {
   const renderTabContent = useCallback((categoryId: string) => {
     const filteredProducts = getFilteredProducts(categoryId);
     
+    // Verifica se há produtos para renderizar
+    if (!filteredProducts || filteredProducts.length === 0) {
+      return (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <Text style={{ fontSize: 16, color: '#666', textAlign: 'center' }}>
+            Nenhum produto encontrado nesta categoria
+          </Text>
+        </View>
+      );
+    }
+    
     return (
       <CategoryProductsView
         products={filteredProducts}
@@ -1213,13 +1232,13 @@ export default function ProductCatalog() {
     }
   };
 
-  if (loading) {
+  if (loading || categories.length === 0) {
     return <ProductCatalogSkeleton />;
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      {categories.length === 0 ? (
+      {allCategories.length === 0 ? (
         <View style={styles.emptyState}>
           <Text style={styles.emptyStateText}>
             Nenhum produto cadastrado
@@ -1234,9 +1253,11 @@ export default function ProductCatalog() {
       ) : (
         <View style={styles.tabContainer}>
           <CategoryTabView 
+            key={`tabview-${allCategories.length}-${activeCategory}`}
             categories={allCategories}
             renderScene={renderTabContent}
             onIndexChange={handleCategoryChange}
+            initialIndex={Math.max(0, allCategories.findIndex(cat => cat.id === activeCategory))}
           />
           
           <TouchableOpacity 
