@@ -120,6 +120,25 @@ export function MainEstablishmentButton() {
       return;
     }
 
+    // Verifica se há fatura vencida (mesmo que não esteja bloqueado ainda)
+    if (paymentStatus.hasOverdueInvoice) {
+      Alert.alert(
+        'Fatura em Atraso',
+        `Você tem uma fatura vencida há ${paymentStatus.daysPastDue} dia${paymentStatus.daysPastDue !== 1 ? 's' : ''}. Efetue o pagamento antes de abrir o estabelecimento.`,
+        [
+          {
+            text: 'Ver Faturas',
+            onPress: () => {
+              // Aqui você pode navegar para a tela de faturas
+              // navigation.navigate('faturas');
+            }
+          },
+          { text: 'OK' }
+        ]
+      );
+      return;
+    }
+
     try {
       setLoading(true);
       const newStatus = !status?.isOpen;
@@ -128,8 +147,8 @@ export function MainEstablishmentButton() {
     } catch (error) {
       console.error('Erro ao alterar status:', error);
       Alert.alert(
-        'Não é possível fechar a loja',
-        error instanceof Error ? error.message : 'Existem pedidos pendentes que precisam ser processados antes de fechar a loja.',
+        'Erro ao alterar status',
+        error instanceof Error ? error.message : 'Ocorreu um erro ao alterar o status do estabelecimento.',
         [{ text: 'OK' }]
       );
     } finally {

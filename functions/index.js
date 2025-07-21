@@ -3,11 +3,8 @@ const admin = require('firebase-admin');
 const { MercadoPagoConfig, Payment } = require('mercadopago');
 const axios = require('axios');
 
-let serviceAccount = require('./serviceAccountKey.json');
-
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
+// Inicializar Firebase Admin com configuração padrão
+admin.initializeApp();
 
 const db = admin.firestore();
 
@@ -169,22 +166,26 @@ async function forcarFechamentoSeNecessario(partnerId, bloqueioInfo) {
     const partnerData = partnerDoc.data();
     
     // Se o estabelecimento está aberto, força o fechamento
-    if (partnerData.establishmentStatus?.isOpen) {
+    if (partnerData.isOpen) {
       console.log('🔒 FECHANDO estabelecimento automaticamente por bloqueio');
       
       await partnerRef.update({
-        'establishmentStatus.isOpen': false,
-        'establishmentStatus.lastStatusChange': admin.firestore.Timestamp.now(),
-        'establishmentStatus.statusChangeReason': `Fechado automaticamente - ${bloqueioInfo.blockingReason}`,
-        'establishmentStatus.operationMode': 'blocked',
-        'establishmentStatus.blockedSince': admin.firestore.Timestamp.now(),
-        'establishmentStatus.blockingReason': bloqueioInfo.blockingReason,
+        isOpen: false,
+        lastStatusChange: admin.firestore.Timestamp.now(),
+        statusChangeReason: `Fechado automaticamente - ${bloqueioInfo.blockingReason}`,
+        operationMode: 'blocked',
+        blockedSince: admin.firestore.Timestamp.now(),
+        blockingReason: bloqueioInfo.blockingReason,
         updatedAt: admin.firestore.Timestamp.now()
       });
       
       console.log('🔒 ✅ Estabelecimento fechado automaticamente por bloqueio');
     } else {
-      console.log('🔒 Estabelecimento já estava fechado');
+      console.log('🔒 Estabelecimento já estava fechado - status atual:', {
+        isOpen: partnerData.isOpen,
+        operationMode: partnerData.operationMode,
+        statusChangeReason: partnerData.statusChangeReason
+      });
     }
     
   } catch (error) {

@@ -546,16 +546,26 @@ export const establishmentService = {
       const user = auth.currentUser;
       if (!user) throw new Error('Usuário não autenticado');
 
+      // Força renovação do token antes de chamar Cloud Functions
+      console.log('🔄 Renovando token de autenticação...');
+      await user.getIdToken(true); // true = force refresh
+      console.log('✅ Token renovado com sucesso');
+
       console.log('🔒 Tentando alterar status do estabelecimento:', isOpen ? 'ABRIR' : 'FECHAR');
 
       // Se estiver tentando abrir, primeiro verifica se pode via Cloud Function
       if (isOpen) {
         const functions = getFunctions();
-        const verificarPermissao = httpsCallable(functions, 'verificarPermissaoAbertura');
+        const verificarPermissao = httpsCallable(functions, 'verificarPermissaoAbertura', {
+          timeout: 10000 // 10 segundos de timeout
+        });
         
         try {
+          console.log('🔒 Testando Cloud Function com nova configuração...');
           const result = await verificarPermissao();
           const data = result.data as any;
+          
+          console.log('🔒 Resposta da Cloud Function:', data);
           
           if (!data.canOpen) {
             console.log('🔒 ❌ ABERTURA NEGADA pelo backend:', data.reason);
@@ -565,14 +575,48 @@ export const establishmentService = {
           console.log('🔒 ✅ ABERTURA PERMITIDA pelo backend');
         } catch (cloudError: any) {
           console.error('🔒 ❌ ERRO na verificação de permissão:', cloudError);
+          console.error('🔒 Detalhes do erro:', {
+            code: cloudError.code,
+            message: cloudError.message,
+            details: cloudError.details
+          });
           
           // Se é erro de permissão, repassa a mensagem
           if (cloudError.code === 'functions/permission-denied') {
             throw new Error(cloudError.message);
           }
           
-          // Para outros erros, permite continuar (fail-safe)
-          console.warn('🔒 ⚠️ Erro na Cloud Function, continuando com verificação local...');
+          // Para outros erros, faz verificação local de segurança
+          console.warn('🔒 ⚠️ Erro na Cloud Function, fazendo verificação local de segurança...');
+          
+          // Verificação local de faturas vencidas como fallback
+          const invoicesRef = collection(db, 'partners', user.uid, 'invoices');
+          const overdueQuery = query(
+            invoicesRef,
+            where('status', 'in', ['pending', 'overdue'])
+          );
+          
+          const invoicesSnapshot = await getDocs(overdueQuery);
+          if (!invoicesSnapshot.empty) {
+            const today = new Date();
+            let maxDaysPastDue = 0;
+            
+            invoicesSnapshot.docs.forEach(doc => {
+              const invoice = doc.data();
+              const dueDate = invoice.endDate.toDate();
+              
+              if (dueDate < today) {
+                const daysPastDue = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+                if (daysPastDue > maxDaysPastDue) {
+                  maxDaysPastDue = daysPastDue;
+                }
+              }
+            });
+            
+            if (maxDaysPastDue > 0) {
+              throw new Error(`Estabelecimento não pode ser aberto devido a fatura vencida há ${maxDaysPastDue} dia${maxDaysPastDue !== 1 ? 's' : ''}. Efetue o pagamento para continuar.`);
+            }
+          }
         }
       }
 
@@ -592,9 +636,12 @@ export const establishmentService = {
 
       // Usa a Cloud Function segura para atualizar o status
       const functions = getFunctions();
-      const atualizarStatus = httpsCallable(functions, 'atualizarStatusEstabelecimento');
+      const atualizarStatus = httpsCallable(functions, 'atualizarStatusEstabelecimento', {
+        timeout: 10000 // 10 segundos de timeout
+      });
       
       try {
+        console.log('🔒 Testando atualização via Cloud Function...');
         const result = await atualizarStatus({
           isOpen,
           reason: isOpen 
@@ -607,6 +654,11 @@ export const establishmentService = {
         
       } catch (cloudError: any) {
         console.error('🔒 ❌ ERRO na Cloud Function de atualização:', cloudError);
+        console.error('🔒 Detalhes do erro de atualização:', {
+          code: cloudError.code,
+          message: cloudError.message,
+          details: cloudError.details
+        });
         
         // Se é erro de permissão, repassa a mensagem
         if (cloudError.code === 'functions/permission-denied') {
@@ -992,7 +1044,6 @@ export const establishmentService = {
   
   // Variáveis para armazenar listeners e timers
   _autoStatusInterval: null as NodeJS.Timeout | null,
-  _inactivityTimer: null as NodeJS.Timeout | null,
   _newOrdersUnsubscribe: null as (() => void) | null,
   
   // Para todos os timers e listeners (usar ao fazer logout)

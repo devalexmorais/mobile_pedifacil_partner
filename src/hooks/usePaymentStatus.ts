@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs, orderBy, Timestamp, onSnapshot } from 'firebase/firestore';
-import { db } from '@/config/firebase';
+import { db, auth } from '@/config/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 
@@ -33,9 +33,19 @@ export function usePaymentStatus() {
       setLoading(true);
       console.log('🔍 Verificando status de pagamento para usuário:', user.uid);
       
+      // Força renovação do token antes de chamar Cloud Functions
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        console.log('🔄 Renovando token de autenticação...');
+        await currentUser.getIdToken(true); // true = force refresh
+        console.log('✅ Token renovado com sucesso');
+      }
+      
       // Primeiro tenta usar a Cloud Function segura
       const functions = getFunctions();
-      const verificarBloqueio = httpsCallable(functions, 'verificarStatusBloqueio');
+      const verificarBloqueio = httpsCallable(functions, 'verificarStatusBloqueio', {
+        timeout: 10000 // 10 segundos de timeout
+      });
       
       try {
         const result = await verificarBloqueio();
@@ -91,25 +101,35 @@ export function usePaymentStatus() {
       }
 
       const today = new Date();
-      let overdueInvoice = null;
+      let overdueInvoice: any = null;
       let maxDaysPastDue = 0;
 
       // Verifica se alguma fatura não paga está vencida
       snapshot.docs.forEach(doc => {
         const invoice = doc.data();
         
+        console.log(`🔍 DEBUG - Verificando fatura ${doc.id}: status=${invoice.status}, endDate=${invoice.endDate?.toDate?.()?.toLocaleDateString?.()}`);
+        
         // Só considera faturas não pagas
-        if (invoice.status === 'paid') return;
+        if (invoice.status === 'paid') {
+          console.log(`  ✅ Fatura ${doc.id} já paga - ignorando`);
+          return;
+        }
         
         const dueDate = invoice.endDate.toDate();
         
         if (dueDate < today) {
           const daysPastDue = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
           
+          console.log(`  ⚠️ Fatura ${doc.id} vencida há ${daysPastDue} dias`);
+          
           if (daysPastDue > maxDaysPastDue) {
             maxDaysPastDue = daysPastDue;
             overdueInvoice = { id: doc.id, ...invoice };
+            console.log(`  🔒 Nova fatura mais vencida: ${doc.id} (${daysPastDue} dias)`);
           }
+        } else {
+          console.log(`  ✅ Fatura ${doc.id} ainda não venceu`);
         }
       });
 
@@ -122,7 +142,7 @@ export function usePaymentStatus() {
             : `Você tem 1 fatura vencida há ${maxDaysPastDue} dias. Efetue o pagamento o quanto antes.`;
 
         console.log('⚠️ Fatura vencida encontrada (local):', {
-          invoiceId: overdueInvoice.id,
+          invoiceId: overdueInvoice?.id || 'unknown',
           daysPastDue: maxDaysPastDue,
           isBlocked,
           blockingMessage
@@ -232,25 +252,35 @@ export function usePaymentStatus() {
           }
 
           const today = new Date();
-          let overdueInvoice = null;
+          let overdueInvoice: any = null;
           let maxDaysPastDue = 0;
 
           // Verifica se alguma fatura não paga está vencida
           snapshot.docs.forEach(doc => {
             const invoice = doc.data();
             
+            console.log(`🔍 DEBUG (instantâneo) - Verificando fatura ${doc.id}: status=${invoice.status}`);
+            
             // Só considera faturas não pagas
-            if (invoice.status === 'paid') return;
+            if (invoice.status === 'paid') {
+              console.log(`  ✅ Fatura ${doc.id} já paga - ignorando (instantâneo)`);
+              return;
+            }
             
             const dueDate = invoice.endDate.toDate();
             
             if (dueDate < today) {
               const daysPastDue = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
               
+              console.log(`  ⚠️ Fatura ${doc.id} vencida há ${daysPastDue} dias (instantâneo)`);
+              
               if (daysPastDue > maxDaysPastDue) {
                 maxDaysPastDue = daysPastDue;
                 overdueInvoice = { id: doc.id, ...invoice };
+                console.log(`  🔒 Nova fatura mais vencida (instantâneo): ${doc.id} (${daysPastDue} dias)`);
               }
+            } else {
+              console.log(`  ✅ Fatura ${doc.id} ainda não venceu (instantâneo)`);
             }
           });
 

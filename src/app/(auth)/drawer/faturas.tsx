@@ -237,18 +237,22 @@ export default function Faturas() {
       
       // Atualiza a fatura atual se necessário
       const currentInvoiceData = loadedInvoices.find(inv => 
-        inv.status === 'pending' || 
-        (currentInvoice && inv.id === currentInvoice.id)
+        inv.status === 'pending' || inv.status === 'overdue'
       );
+      
+      console.log('🔍 DEBUG - Fatura atual encontrada:', currentInvoiceData ? {
+        id: currentInvoiceData.id,
+        status: currentInvoiceData.status,
+        totalAmount: currentInvoiceData.totalAmount
+      } : 'Nenhuma fatura pendente/vencida');
       
       if (currentInvoiceData) {
         console.log('Atualizando fatura atual:', currentInvoiceData);
         setCurrentInvoice(currentInvoiceData);
-        
-        // Se a fatura foi paga, mostra mensagem de sucesso
-        if (currentInvoice?.status === 'pending' && currentInvoiceData.status === 'paid') {
-          Alert.alert('Pagamento Confirmado', 'Seu pagamento foi processado com sucesso!');
-        }
+      } else {
+        // Se não há fatura pendente/vencida, limpa a fatura atual
+        console.log('✅ Nenhuma fatura pendente/vencida - limpando fatura atual');
+        setCurrentInvoice(null);
       }
     }, (error) => {
       console.error('Erro ao monitorar faturas:', error);
@@ -298,20 +302,29 @@ export default function Faturas() {
       const data = snapshot.data();
       console.log('Atualização em tempo real recebida:', data);
 
-      // Atualiza a fatura atual com os novos dados
-      setCurrentInvoice(prev => ({
-        ...prev!,
-        ...data,
-        id: snapshot.id,
-        status: data.status || 'pending',
-        paymentInfo: data.paymentInfo,
-        paymentData: data.paymentData || {},
-        paidAt: data.paidAt
-      }));
-
-      // Se o pagamento foi confirmado, mostra mensagem
+      // Se a fatura foi paga, remove da lista de faturas atuais
       if (data.status === 'paid') {
+        console.log('✅ Fatura paga detectada - removendo da lista de faturas atuais');
+        setCurrentInvoice(null);
         Alert.alert('Pagamento Confirmado', 'Seu pagamento foi processado com sucesso!');
+        return;
+      }
+
+      // Atualiza a fatura atual apenas se ainda for pendente ou vencida
+      if (data.status === 'pending' || data.status === 'overdue') {
+        setCurrentInvoice(prev => ({
+          ...prev!,
+          ...data,
+          id: snapshot.id,
+          status: data.status || 'pending',
+          paymentInfo: data.paymentInfo,
+          paymentData: data.paymentData || {},
+          paidAt: data.paidAt
+        }));
+      } else {
+        // Se não é mais pendente/vencida, remove da lista
+        console.log('❌ Fatura não é mais atual - removendo da lista');
+        setCurrentInvoice(null);
       }
     }, (error) => {
       console.error('Erro no listener em tempo real:', error);
@@ -381,6 +394,12 @@ export default function Faturas() {
       const currentInvoiceCandidate = loadedInvoices.find(inv => 
         inv.status === 'pending' || inv.status === 'overdue'
       );
+      
+      // Debug: mostra todas as faturas e suas condições
+      console.log('🔍 DEBUG - Verificando faturas para fatura atual:');
+      loadedInvoices.forEach(inv => {
+        console.log(`  - Fatura ${inv.id}: status=${inv.status}, endDate=${inv.endDate?.toDate?.()?.toLocaleDateString?.()}`);
+      });
       
       if (currentInvoiceCandidate) {
         console.log('✅ Fatura atual encontrada:', {
