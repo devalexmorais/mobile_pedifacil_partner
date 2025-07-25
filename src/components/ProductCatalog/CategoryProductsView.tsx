@@ -49,8 +49,8 @@ const CategoryProductsView = memo(function CategoryProductsView({
   );
 
   const getItemLayout = (_: any, index: number) => ({
-    length: 120, // Altura estimada do ProductCard
-    offset: 120 * index,
+    length: 110, // Altura real do ProductCard (85px imagem + 12px padding + 13px espaçamento)
+    offset: 110 * index,
     index,
   });
 
@@ -63,10 +63,16 @@ const CategoryProductsView = memo(function CategoryProductsView({
       contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
       removeClippedSubviews={true}
-      maxToRenderPerBatch={10}
-      windowSize={10}
-      initialNumToRender={8}
+      maxToRenderPerBatch={5}
+      windowSize={5}
+      initialNumToRender={6}
       getItemLayout={getItemLayout}
+      updateCellsBatchingPeriod={50}
+      disableVirtualization={false}
+      maintainVisibleContentPosition={{
+        minIndexForVisible: 0,
+        autoscrollToTopThreshold: 10,
+      }}
     />
   );
 });

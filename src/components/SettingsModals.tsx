@@ -322,7 +322,7 @@ export function SettingsModals({
         transparent={false}
         onRequestClose={() => setScheduleModal(false)}
       >
-        <View style={styles.modalContainer}>
+        <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Horários de Funcionamento</Text>
             <ScrollView style={styles.scrollView}>
@@ -372,7 +372,7 @@ export function SettingsModals({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
 
       {/* Modal de Tempo de Entrega */}
@@ -383,7 +383,7 @@ export function SettingsModals({
         transparent={false}
         onRequestClose={() => setDeliveryTimeModal(false)}
       >
-        <View style={styles.modalContainer}>
+        <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Tempo de Entrega</Text>
             <View style={styles.inputContainer}>
@@ -421,7 +421,7 @@ export function SettingsModals({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
 
       {/* Modal de Métodos de Pagamento */}
@@ -432,7 +432,7 @@ export function SettingsModals({
         transparent={false}
         onRequestClose={() => setCardFlagsModal(false)}
       >
-        <View style={styles.modalContainer}>
+        <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Métodos de Pagamento</Text>
             <ScrollView style={styles.scrollView}>
@@ -522,7 +522,7 @@ export function SettingsModals({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
 
       {/* Modal de Retirada */}
@@ -533,7 +533,7 @@ export function SettingsModals({
         transparent={false}
         onRequestClose={() => setPickupModal(false)}
       >
-        <View style={styles.modalContainer}>
+        <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Configurações de Retirada</Text>
             <View style={styles.pickupContainer}>
@@ -570,7 +570,7 @@ export function SettingsModals({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
 
       {/* Modal de Valor Mínimo do Pedido */}
@@ -581,7 +581,7 @@ export function SettingsModals({
         transparent={false}
         onRequestClose={() => setMinimumOrderModal(false)}
       >
-        <View style={styles.modalContainer}>
+        <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Valor Mínimo do Pedido</Text>
             <View style={styles.inputContainer}>
@@ -609,7 +609,7 @@ export function SettingsModals({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
     </>
   );

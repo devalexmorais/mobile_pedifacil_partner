@@ -56,7 +56,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Monitorar mudanças no estado de autenticação
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      console.log('Estado de autenticação alterado:', !!user);
       
       if (user) {
         try {

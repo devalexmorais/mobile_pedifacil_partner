@@ -5,7 +5,7 @@ import {
   signInWithCredential,
 } from 'firebase/auth';
 import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
-import { app } from '../config/firebase';
+import { auth } from '../config/firebase';
 
 let recaptchaVerifier: FirebaseRecaptchaVerifierModal | null = null;
 

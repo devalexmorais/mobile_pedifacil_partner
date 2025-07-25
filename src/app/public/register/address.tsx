@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert, Dimensions, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Picker } from '@react-native-picker/picker';
@@ -39,6 +39,9 @@ interface AddressFormData {
 // Função para capitalizar a primeira letra de cada palavra
 const capitalizeWords = (s: string): string => s.replace(/\b\w/g, c => c.toUpperCase());
 
+// Dimensões da tela para responsividade
+const { width: screenWidth } = Dimensions.get('window');
+
 export default function RegisterAddress() {
   const router = useRouter();
   const rawParams = useLocalSearchParams();
@@ -69,6 +72,11 @@ export default function RegisterAddress() {
     city: '',
     state: '',
   });
+
+  // Estados para controlar os modais dos pickers
+  const [showStatePicker, setShowStatePicker] = useState(false);
+  const [showCityPicker, setShowCityPicker] = useState(false);
+  const [showNeighborhoodPicker, setShowNeighborhoodPicker] = useState(false);
 
   useEffect(() => {
     loadStates();
@@ -200,21 +208,36 @@ export default function RegisterAddress() {
     router.back();
   };
 
-  const handleRetry = () => {
-    loadStates();
+  const getSelectedStateName = () => {
+    const selectedState = states.find(state => state.id === formData.state);
+    return selectedState?.name || 'Selecione um estado';
+  };
+
+  const getSelectedCityName = () => {
+    const selectedCity = cities.find(city => city.id === formData.city);
+    return selectedCity?.name || 'Selecione uma cidade';
+  };
+
+  const getSelectedNeighborhoodName = () => {
+    const selectedNeighborhood = neighborhoods.find(n => n.id === formData.neighborhood);
+    return selectedNeighborhood?.name || 'Selecione um bairro';
   };
 
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007aff" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView 
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         <Text style={styles.title}>Seu Endereço</Text>
         <Text style={styles.subtitle}>Informe o endereço do seu estabelecimento</Text>
 
@@ -222,85 +245,64 @@ export default function RegisterAddress() {
           {/* Estado */}
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Estado</Text>
-            <View style={[styles.pickerContainer, errors.state && styles.pickerError]}>
-              <Picker
-                selectedValue={formData.state}
-                onValueChange={(itemValue) => {
-                  const selectedState = states.find(state => state.id === itemValue);
-                  updateFormData({ 
-                    state: itemValue, 
-                    stateName: selectedState?.name || '', 
-                    city: '', 
-                    cityName: '',
-                    zip_code: '',
-                    neighborhood: '', 
-                    neighborhoodName: '' 
-                  });
-                }}
-                style={styles.picker}
-                itemStyle={styles.pickerItem}
-              >
-                <Picker.Item label="Selecione um estado" value="" />
-                {states.map((state) => (
-                  <Picker.Item key={state.id} label={state.name} value={state.id} />
-                ))}
-              </Picker>
-            </View>
+            <TouchableOpacity
+              style={[styles.pickerButton, errors.state && styles.pickerError]}
+              onPress={() => setShowStatePicker(true)}
+              activeOpacity={0.7}
+            >
+              <Text style={[
+                styles.pickerButtonText,
+                !formData.state && styles.pickerButtonPlaceholder
+              ]}>
+                {getSelectedStateName()}
+              </Text>
+            </TouchableOpacity>
             {errors.state && <Text style={styles.errorText}>{errors.state}</Text>}
           </View>
 
           {/* Cidade */}
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Cidade</Text>
-            <View style={[styles.pickerContainer, errors.city && styles.pickerError]}>
-              <Picker
-                selectedValue={formData.city}
-                onValueChange={(itemValue) => {
-                  const selectedCity = cities.find(city => city.id === itemValue);
-                  updateFormData({ 
-                    city: itemValue, 
-                    cityName: selectedCity?.name || '',
-                    zip_code: selectedCity?.zip_code || '',
-                    neighborhood: '', 
-                    neighborhoodName: '' 
-                  });
-                }}
-                style={styles.picker}
-                enabled={!!formData.state}
-                itemStyle={styles.pickerItem}
-              >
-                <Picker.Item label="Selecione uma cidade" value="" />
-                {cities.map((city) => (
-                  <Picker.Item key={city.id} label={city.name} value={city.id} />
-                ))}
-              </Picker>
-            </View>
+            <TouchableOpacity
+              style={[
+                styles.pickerButton, 
+                errors.city && styles.pickerError,
+                !formData.state && styles.pickerButtonDisabled
+              ]}
+              onPress={() => formData.state && setShowCityPicker(true)}
+              activeOpacity={0.7}
+              disabled={!formData.state}
+            >
+              <Text style={[
+                styles.pickerButtonText,
+                !formData.city && styles.pickerButtonPlaceholder
+              ]}>
+                {getSelectedCityName()}
+              </Text>
+            </TouchableOpacity>
             {errors.city && <Text style={styles.errorText}>{errors.city}</Text>}
           </View>
 
           {/* Bairro */}
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Bairro</Text>
-            <View style={[styles.pickerContainer, errors.neighborhood && styles.pickerError]}>
-              <Picker
-                selectedValue={formData.neighborhood}
-                onValueChange={(itemValue) => {
-                  const selectedNeighborhood = neighborhoods.find(n => n.id === itemValue);
-                  updateFormData({ 
-                    neighborhood: itemValue,
-                    neighborhoodName: selectedNeighborhood?.name || '' 
-                  });
-                }}
-                style={styles.picker}
-                enabled={!!formData.city}
-                itemStyle={styles.pickerItem}
-              >
-                <Picker.Item label="Selecione um bairro" value="" />
-                {neighborhoods.map((neighborhood) => (
-                  <Picker.Item key={neighborhood.id} label={neighborhood.name} value={neighborhood.id} />
-                ))}
-              </Picker>
-            </View>
+            <TouchableOpacity
+              style={[
+                styles.pickerButton, 
+                errors.neighborhood && styles.pickerError,
+                !formData.city && styles.pickerButtonDisabled
+              ]}
+              onPress={() => formData.city && setShowNeighborhoodPicker(true)}
+              activeOpacity={0.7}
+              disabled={!formData.city}
+            >
+              <Text style={[
+                styles.pickerButtonText,
+                !formData.neighborhood && styles.pickerButtonPlaceholder
+              ]}>
+                {getSelectedNeighborhoodName()}
+              </Text>
+            </TouchableOpacity>
             {errors.neighborhood && <Text style={styles.errorText}>{errors.neighborhood}</Text>}
           </View>
 
@@ -344,9 +346,10 @@ export default function RegisterAddress() {
             }
           }}
           disabled={loading}
+          activeOpacity={0.8}
         >
           {loading ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={colors.white} />
           ) : (
             <Text style={styles.buttonText}>Continuar</Text>
           )}
@@ -355,10 +358,127 @@ export default function RegisterAddress() {
         <TouchableOpacity 
           style={styles.backButton}
           onPress={handleBack}
+          activeOpacity={0.8}
         >
           <Text style={styles.backButtonText}>Voltar</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Modal do Estado */}
+      <Modal
+        visible={showStatePicker}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowStatePicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Selecione o Estado</Text>
+              <TouchableOpacity onPress={() => setShowStatePicker(false)}>
+                <Text style={styles.modalCloseButton}>Fechar</Text>
+              </TouchableOpacity>
+            </View>
+            <Picker
+              selectedValue={formData.state}
+              onValueChange={(itemValue) => {
+                const selectedState = states.find(state => state.id === itemValue);
+                updateFormData({ 
+                  state: itemValue, 
+                  stateName: selectedState?.name || '', 
+                  city: '', 
+                  cityName: '',
+                  zip_code: '',
+                  neighborhood: '', 
+                  neighborhoodName: '' 
+                });
+                setShowStatePicker(false);
+              }}
+              style={styles.modalPicker}
+            >
+              <Picker.Item label="Selecione um estado" value="" />
+              {states.map((state) => (
+                <Picker.Item key={state.id} label={state.name} value={state.id} />
+              ))}
+            </Picker>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal da Cidade */}
+      <Modal
+        visible={showCityPicker}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowCityPicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Selecione a Cidade</Text>
+              <TouchableOpacity onPress={() => setShowCityPicker(false)}>
+                <Text style={styles.modalCloseButton}>Fechar</Text>
+              </TouchableOpacity>
+            </View>
+            <Picker
+              selectedValue={formData.city}
+              onValueChange={(itemValue) => {
+                const selectedCity = cities.find(city => city.id === itemValue);
+                updateFormData({ 
+                  city: itemValue, 
+                  cityName: selectedCity?.name || '',
+                  zip_code: selectedCity?.zip_code || '',
+                  neighborhood: '', 
+                  neighborhoodName: '' 
+                });
+                setShowCityPicker(false);
+              }}
+              style={styles.modalPicker}
+            >
+              <Picker.Item label="Selecione uma cidade" value="" />
+              {cities.map((city) => (
+                <Picker.Item key={city.id} label={city.name} value={city.id} />
+              ))}
+            </Picker>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal do Bairro */}
+      <Modal
+        visible={showNeighborhoodPicker}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowNeighborhoodPicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Selecione o Bairro</Text>
+              <TouchableOpacity onPress={() => setShowNeighborhoodPicker(false)}>
+                <Text style={styles.modalCloseButton}>Fechar</Text>
+              </TouchableOpacity>
+            </View>
+            <Picker
+              selectedValue={formData.neighborhood}
+              onValueChange={(itemValue) => {
+                const selectedNeighborhood = neighborhoods.find(n => n.id === itemValue);
+                updateFormData({ 
+                  neighborhood: itemValue,
+                  neighborhoodName: selectedNeighborhood?.name || '' 
+                });
+                setShowNeighborhoodPicker(false);
+              }}
+              style={styles.modalPicker}
+            >
+              <Picker.Item label="Selecione um bairro" value="" />
+              {neighborhoods.map((neighborhood) => (
+                <Picker.Item key={neighborhood.id} label={neighborhood.name} value={neighborhood.id} />
+              ))}
+            </Picker>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -370,18 +490,19 @@ const styles = StyleSheet.create({
   },
   content: {
     flexGrow: 1,
-    padding: 30,
+    paddingHorizontal: Math.min(30, screenWidth * 0.08),
     paddingTop: 20,
+    paddingBottom: 40,
   },
   title: {
-    fontSize: 28,
+    fontSize: Math.min(28, screenWidth * 0.07),
     fontWeight: '600',
     color: colors.text.primary,
     marginBottom: 8,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: Math.min(16, screenWidth * 0.04),
     color: colors.text.secondary,
     marginBottom: 30,
     textAlign: 'center',
@@ -396,38 +517,38 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text.secondary,
     marginBottom: 8,
+    fontWeight: '500',
   },
-  pickerContainer: {
+  pickerButton: {
     borderWidth: 1,
     borderColor: colors.border.default,
     borderRadius: 8,
     backgroundColor: colors.inputBackground,
-    height: 65,
+    minHeight: 56,
     justifyContent: 'center',
-    paddingHorizontal: 8,
-    overflow: 'hidden',
-    paddingVertical: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  pickerButtonDisabled: {
+    opacity: 0.5,
+    backgroundColor: colors.gray[100],
   },
   pickerError: {
     borderColor: colors.text.error,
+    borderWidth: 2,
   },
-  picker: {
-    height: 55,
+  pickerButtonText: {
+    fontSize: 16,
     color: colors.text.primary,
-    marginLeft: -8,
-    width: '100%',
-    fontSize: 16,
   },
-  pickerItem: {
-    fontSize: 16,
-    height: 120,
-    paddingVertical: 8,
+  pickerButtonPlaceholder: {
+    color: colors.text.secondary,
   },
   errorText: {
     color: colors.text.error,
     fontSize: 12,
-    marginTop: -12,
-    marginBottom: 12,
+    marginTop: 4,
+    marginBottom: 8,
     marginLeft: 4,
   },
   button: {
@@ -474,6 +595,40 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: colors.background,
+  },
+  // Estilos dos modais
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 40,
+    maxHeight: '70%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.default,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text.primary,
+  },
+  modalCloseButton: {
+    fontSize: 16,
+    color: colors.primary,
+    fontWeight: '500',
+  },
+  modalPicker: {
+    height: 200,
   },
 });

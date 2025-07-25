@@ -24,29 +24,23 @@ export default function Avaliacao() {
     const fetchReviews = async () => {
       try {
         const user = auth.currentUser;
-        console.log('Usuário autenticado:', user?.uid);
         if (!user) {
           setError('Usuário não autenticado');
           setLoading(false);
           return;
         }
 
-        console.log('Iniciando busca de orders para o parceiro:', user.uid);
         const ordersRef = collection(db, 'partners', user.uid, 'orders');
         const ordersSnapshot = await getDocs(ordersRef);
-        console.log('Total de pedidos encontrados:', ordersSnapshot.size);
 
         const reviewsData: Review[] = [];
 
         for (const orderDoc of ordersSnapshot.docs) {
-          console.log('Processando pedido:', orderDoc.id);
           const reviewRef = collection(db, 'partners', user.uid, 'orders', orderDoc.id, 'review');
           const reviewSnapshot = await getDocs(reviewRef);
-          console.log('Total de reviews encontrados para o pedido', orderDoc.id, ':', reviewSnapshot.size);
 
           reviewSnapshot.forEach((reviewDoc) => {
             const data = reviewDoc.data();
-            console.log('Dados do review:', data);
             reviewsData.push({
               id: reviewDoc.id,
               comment: data.comment || '',
@@ -58,9 +52,7 @@ export default function Avaliacao() {
           });
         }
 
-        console.log('Reviews processados:', reviewsData);
         setReviews(reviewsData);
-        console.log('Estado reviews atualizado com sucesso');
       } catch (error: unknown) {
         console.error('Erro detalhado ao buscar avaliações:', error);
         if (error instanceof Error) {
@@ -70,7 +62,6 @@ export default function Avaliacao() {
         }
       } finally {
         setLoading(false);
-        console.log('Busca concluída, loading setado para false');
       }
     };
 

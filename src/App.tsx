@@ -1,4 +1,3 @@
-import { PlanProvider } from './contexts/PlanContext';
 import { useEffect, useState, useRef } from 'react';
 import { notificationService } from './services/notificationService';
 import { pushNotificationService } from './services/pushNotificationService';
@@ -18,8 +17,6 @@ Notifications.setNotificationHandler({
 
 // Configurar handler para mensagens em segundo plano (fora do componente)
 messaging().setBackgroundMessageHandler(async remoteMessage => {
-  console.log('Mensagem recebida em segundo plano do App!', remoteMessage);
-  
   // Mostrar notificação local mesmo quando o app estiver fechado
   await Notifications.scheduleNotificationAsync({
     content: {
@@ -35,8 +32,6 @@ messaging().setBackgroundMessageHandler(async remoteMessage => {
 });
 
 function App() {
-  // Aqui você pode pegar o isPremium do seu backend ou estado global
-  const isPremium = false;
   const [notificationsInitialized, setNotificationsInitialized] = useState(false);
   const responseListener = useRef<any>();
 
@@ -58,8 +53,6 @@ function App() {
         
         // Configurar listener global para notificações clicadas
         responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-          console.log('Notificação global clicada:', response);
-          
           // Usar setTimeout para evitar problemas de navegação
           setTimeout(() => {
             router.push('/(auth)/(tabs)/pedidos');
@@ -71,8 +64,6 @@ function App() {
           .getInitialNotification()
           .then(remoteMessage => {
             if (remoteMessage) {
-              console.log('App aberto por notificação:', remoteMessage);
-              
               // Navegar para tela de pedidos
               setTimeout(() => {
                 router.push('/(auth)/(tabs)/pedidos');
@@ -97,11 +88,7 @@ function App() {
     initNotifications();
   }, []);
 
-  return (
-    <PlanProvider isPremium={isPremium}>
-      {/* Resto da sua aplicação */}
-    </PlanProvider>
-  );
+  return null; // App.tsx não renderiza nada, apenas configura notificações
 }
 export default App;
 

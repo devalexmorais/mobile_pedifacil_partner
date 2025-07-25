@@ -246,231 +246,241 @@ export default function Settings() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Configurações do Estabelecimento</Text>
+      <View style={styles.content}>
+        <Text style={styles.title}>Configurações</Text>
         <Text style={styles.subtitle}>Configure como seu estabelecimento vai funcionar</Text>
 
-        {/* Seção de Entrega */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Entrega</Text>
-          
-          <CustomInput
-            label="Tempo mínimo de entrega (minutos)"
-            value={formData.delivery.minTime}
-            onChangeText={(text) => updateDeliveryData('minTime', onlyDigits(text))}
-            keyboardType="numeric"
-            error={!!errors.minTime}
-          />
-          {errors.minTime && <Text style={styles.errorText}>{errors.minTime}</Text>}
-
-          <CustomInput
-            label="Tempo máximo de entrega (minutos)"
-            value={formData.delivery.maxTime}
-            onChangeText={(text) => updateDeliveryData('maxTime', onlyDigits(text))}
-            keyboardType="numeric"
-            error={!!errors.maxTime}
-          />
-          {errors.maxTime && <Text style={styles.errorText}>{errors.maxTime}</Text>}
-
-          <CustomInput
-            label="Valor mínimo do pedido (R$)"
-            value={formData.delivery.minimumOrderAmount}
-            onChangeText={(text) => updateDeliveryData('minimumOrderAmount', onlyDigits(text))}
-            keyboardType="numeric"
-            error={!!errors.minimumOrderAmount}
-          />
-          {errors.minimumOrderAmount && <Text style={styles.errorText}>{errors.minimumOrderAmount}</Text>}
-        </View>
-
-        {/* Seção de Retirada */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Retirada no Local</Text>
-          
-          <View style={styles.switchRow}>
-            <Text style={styles.switchLabel}>Permitir retirada no local</Text>
-            <Switch
-              value={formData.pickup.enabled}
-              onValueChange={(value) => updatePickupData('enabled', value)}
-              trackColor={{ false: '#d9d9d9', true: colors.primary }}
+        <ScrollView 
+          style={styles.scrollView}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {/* Seção de Entrega */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Entrega</Text>
+            
+            <CustomInput
+              label="Tempo mínimo de entrega (minutos)"
+              value={formData.delivery.minTime}
+              onChangeText={(text) => updateDeliveryData('minTime', onlyDigits(text))}
+              keyboardType="numeric"
+              error={!!errors.minTime}
             />
+            {errors.minTime && <Text style={styles.errorText}>{errors.minTime}</Text>}
+
+            <CustomInput
+              label="Tempo máximo de entrega (minutos)"
+              value={formData.delivery.maxTime}
+              onChangeText={(text) => updateDeliveryData('maxTime', onlyDigits(text))}
+              keyboardType="numeric"
+              error={!!errors.maxTime}
+            />
+            {errors.maxTime && <Text style={styles.errorText}>{errors.maxTime}</Text>}
+
+            <CustomInput
+              label="Valor mínimo do pedido (R$)"
+              value={formData.delivery.minimumOrderAmount}
+              onChangeText={(text) => updateDeliveryData('minimumOrderAmount', onlyDigits(text))}
+              keyboardType="numeric"
+              error={!!errors.minimumOrderAmount}
+            />
+            {errors.minimumOrderAmount && <Text style={styles.errorText}>{errors.minimumOrderAmount}</Text>}
           </View>
 
-          {formData.pickup.enabled && (
-            <>
-              <CustomInput
-                label="Tempo estimado para retirada (minutos)"
-                value={formData.pickup.estimatedTime}
-                onChangeText={(text) => updatePickupData('estimatedTime', onlyDigits(text))}
-                keyboardType="numeric"
-                error={!!errors.estimatedTime}
+          {/* Seção de Retirada */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Retirada no Local</Text>
+            
+            <View style={styles.switchRow}>
+              <Text style={styles.switchLabel}>Permitir retirada no local</Text>
+              <Switch
+                value={formData.pickup.enabled}
+                onValueChange={(value) => updatePickupData('enabled', value)}
+                trackColor={{ false: '#d9d9d9', true: colors.primary }}
               />
-              {errors.estimatedTime && <Text style={styles.errorText}>{errors.estimatedTime}</Text>}
-            </>
-          )}
-        </View>
-
-        {/* Seção de Formas de Pagamento */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Formas de Pagamento</Text>
-          {errors.paymentOptions && <Text style={styles.errorText}>{errors.paymentOptions}</Text>}
-          
-          <View style={styles.switchRow}>
-            <Text style={styles.switchLabel}>Dinheiro</Text>
-            <Switch
-              value={formData.paymentOptions.dinheiro.enabled}
-              onValueChange={(value) => updatePaymentOption('dinheiro', value)}
-              trackColor={{ false: '#d9d9d9', true: colors.primary }}
-            />
-          </View>
-
-          <View style={styles.switchRow}>
-            <Text style={styles.switchLabel}>PIX</Text>
-            <Switch
-              value={formData.paymentOptions.pix.enabled}
-              onValueChange={(value) => updatePaymentOption('pix', value)}
-              trackColor={{ false: '#d9d9d9', true: colors.primary }}
-            />
-          </View>
-
-          <View style={styles.switchRow}>
-            <Text style={styles.switchLabel}>Cartão</Text>
-            <Switch
-              value={formData.paymentOptions.cartao.enabled}
-              onValueChange={(value) => updatePaymentOption('cartao', value)}
-              trackColor={{ false: '#d9d9d9', true: colors.primary }}
-            />
-          </View>
-
-          {formData.paymentOptions.cartao.enabled && (
-            <View style={styles.cardBrandsContainer}>
-              <Text style={styles.cardBrandsTitle}>Bandeiras aceitas:</Text>
-              {errors.cardBrands && <Text style={styles.errorText}>{errors.cardBrands}</Text>}
-              
-              <View style={styles.switchRow}>
-                <Text style={styles.switchLabel}>Visa</Text>
-                <Switch
-                  value={formData.paymentOptions.cartao.brands?.visa}
-                  onValueChange={(value) => updateCardBrand('visa', value)}
-                  trackColor={{ false: '#d9d9d9', true: colors.primary }}
-                />
-              </View>
-              
-              <View style={styles.switchRow}>
-                <Text style={styles.switchLabel}>Mastercard</Text>
-                <Switch
-                  value={formData.paymentOptions.cartao.brands?.mastercard}
-                  onValueChange={(value) => updateCardBrand('mastercard', value)}
-                  trackColor={{ false: '#d9d9d9', true: colors.primary }}
-                />
-              </View>
-              
-              <View style={styles.switchRow}>
-                <Text style={styles.switchLabel}>Elo</Text>
-                <Switch
-                  value={formData.paymentOptions.cartao.brands?.elo}
-                  onValueChange={(value) => updateCardBrand('elo', value)}
-                  trackColor={{ false: '#d9d9d9', true: colors.primary }}
-                />
-              </View>
-              
-              <View style={styles.switchRow}>
-                <Text style={styles.switchLabel}>American Express</Text>
-                <Switch
-                  value={formData.paymentOptions.cartao.brands?.amex}
-                  onValueChange={(value) => updateCardBrand('amex', value)}
-                  trackColor={{ false: '#d9d9d9', true: colors.primary }}
-                />
-              </View>
-              
-              <View style={styles.switchRow}>
-                <Text style={styles.switchLabel}>Hipercard</Text>
-                <Switch
-                  value={formData.paymentOptions.cartao.brands?.hipercard}
-                  onValueChange={(value) => updateCardBrand('hipercard', value)}
-                  trackColor={{ false: '#d9d9d9', true: colors.primary }}
-                />
-              </View>
             </View>
-          )}
-        </View>
 
-        {/* Seção de Horários */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Horário de Funcionamento</Text>
-          
-          {['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'].map((day) => {
-            const dayName = {
-              domingo: 'Domingo',
-              segunda: 'Segunda-feira',
-              terca: 'Terça-feira',
-              quarta: 'Quarta-feira',
-              quinta: 'Quinta-feira',
-              sexta: 'Sexta-feira',
-              sabado: 'Sábado'
-            }[day];
+            {formData.pickup.enabled && (
+              <>
+                <CustomInput
+                  label="Tempo estimado para retirada (minutos)"
+                  value={formData.pickup.estimatedTime}
+                  onChangeText={(text) => updatePickupData('estimatedTime', onlyDigits(text))}
+                  keyboardType="numeric"
+                  error={!!errors.estimatedTime}
+                />
+                {errors.estimatedTime && <Text style={styles.errorText}>{errors.estimatedTime}</Text>}
+              </>
+            )}
+          </View>
 
-            const currentDay = formData.schedule[day as keyof typeof formData.schedule];
+          {/* Seção de Formas de Pagamento */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Formas de Pagamento</Text>
+            {errors.paymentOptions && <Text style={styles.errorText}>{errors.paymentOptions}</Text>}
+            
+            <View style={styles.switchRow}>
+              <Text style={styles.switchLabel}>Dinheiro</Text>
+              <Switch
+                value={formData.paymentOptions.dinheiro.enabled}
+                onValueChange={(value) => updatePaymentOption('dinheiro', value)}
+                trackColor={{ false: '#d9d9d9', true: colors.primary }}
+              />
+            </View>
 
-            return (
-              <View key={day} style={styles.dayContainer}>
+            <View style={styles.switchRow}>
+              <Text style={styles.switchLabel}>PIX</Text>
+              <Switch
+                value={formData.paymentOptions.pix.enabled}
+                onValueChange={(value) => updatePaymentOption('pix', value)}
+                trackColor={{ false: '#d9d9d9', true: colors.primary }}
+              />
+            </View>
+
+            <View style={styles.switchRow}>
+              <Text style={styles.switchLabel}>Cartão</Text>
+              <Switch
+                value={formData.paymentOptions.cartao.enabled}
+                onValueChange={(value) => updatePaymentOption('cartao', value)}
+                trackColor={{ false: '#d9d9d9', true: colors.primary }}
+              />
+            </View>
+
+            {formData.paymentOptions.cartao.enabled && (
+              <View style={styles.cardBrandsContainer}>
+                <Text style={styles.cardBrandsTitle}>Bandeiras aceitas:</Text>
+                {errors.cardBrands && <Text style={styles.errorText}>{errors.cardBrands}</Text>}
+                
                 <View style={styles.switchRow}>
-                  <Text style={styles.switchLabel}>{dayName}</Text>
+                  <Text style={styles.switchLabel}>Visa</Text>
                   <Switch
-                    value={currentDay.isOpen}
-                    onValueChange={(value) => updateSchedule(day, 'isOpen', value)}
+                    value={formData.paymentOptions.cartao.brands?.visa}
+                    onValueChange={(value) => updateCardBrand('visa', value)}
                     trackColor={{ false: '#d9d9d9', true: colors.primary }}
                   />
                 </View>
-
-                {currentDay.isOpen && (
-                  <View style={styles.timeContainer}>
-                    <View style={styles.timeInput}>
-                      <Text style={styles.timeLabel}>Abertura:</Text>
-                      <CustomInput
-                        label="Horário de abertura"
-                        value={currentDay.openTime}
-                        onChangeText={(text) => updateSchedule(day, 'openTime', formatTime(text))}
-                        keyboardType="numeric"
-                        placeholder="00:00"
-                      />
-                    </View>
-                    
-                    <View style={styles.timeInput}>
-                      <Text style={styles.timeLabel}>Fechamento:</Text>
-                      <CustomInput
-                        label="Horário de fechamento"
-                        value={currentDay.closeTime}
-                        onChangeText={(text) => updateSchedule(day, 'closeTime', formatTime(text))}
-                        keyboardType="numeric"
-                        placeholder="00:00"
-                      />
-                    </View>
-                  </View>
-                )}
+                
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>Mastercard</Text>
+                  <Switch
+                    value={formData.paymentOptions.cartao.brands?.mastercard}
+                    onValueChange={(value) => updateCardBrand('mastercard', value)}
+                    trackColor={{ false: '#d9d9d9', true: colors.primary }}
+                  />
+                </View>
+                
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>Elo</Text>
+                  <Switch
+                    value={formData.paymentOptions.cartao.brands?.elo}
+                    onValueChange={(value) => updateCardBrand('elo', value)}
+                    trackColor={{ false: '#d9d9d9', true: colors.primary }}
+                  />
+                </View>
+                
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>American Express</Text>
+                  <Switch
+                    value={formData.paymentOptions.cartao.brands?.amex}
+                    onValueChange={(value) => updateCardBrand('amex', value)}
+                    trackColor={{ false: '#d9d9d9', true: colors.primary }}
+                  />
+                </View>
+                
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>Hipercard</Text>
+                  <Switch
+                    value={formData.paymentOptions.cartao.brands?.hipercard}
+                    onValueChange={(value) => updateCardBrand('hipercard', value)}
+                    trackColor={{ false: '#d9d9d9', true: colors.primary }}
+                  />
+                </View>
               </View>
-            );
-          })}
-        </View>
+            )}
+          </View>
 
-        <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
-          onPress={handleSubmit}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.buttonText}>Continuar</Text>
-          )}
-        </TouchableOpacity>
+          {/* Seção de Horários */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Horário de Funcionamento</Text>
+            
+            {['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'].map((day) => {
+              const dayName = {
+                domingo: 'Domingo',
+                segunda: 'Segunda-feira',
+                terca: 'Terça-feira',
+                quarta: 'Quarta-feira',
+                quinta: 'Quinta-feira',
+                sexta: 'Sexta-feira',
+                sabado: 'Sábado'
+              }[day];
 
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={handleBack}
-        >
-          <Text style={styles.backButtonText}>Voltar</Text>
-        </TouchableOpacity>
-      </ScrollView>
+              const currentDay = formData.schedule[day as keyof typeof formData.schedule];
+
+              return (
+                <View key={day} style={styles.dayContainer}>
+                  <View style={styles.switchRow}>
+                    <Text style={styles.switchLabel}>{dayName}</Text>
+                    <Switch
+                      value={currentDay.isOpen}
+                      onValueChange={(value) => updateSchedule(day, 'isOpen', value)}
+                      trackColor={{ false: '#d9d9d9', true: colors.primary }}
+                    />
+                  </View>
+
+                  {currentDay.isOpen && (
+                    <View style={styles.timeContainer}>
+                      <View style={styles.timeInput}>
+                        <Text style={styles.timeLabel}>Abertura:</Text>
+                        <View style={styles.timeInputContainer}>
+                          <CustomInput
+                            label=""
+                            value={currentDay.openTime}
+                            onChangeText={(text) => updateSchedule(day, 'openTime', formatTime(text))}
+                            keyboardType="numeric"
+                            placeholder="00:00"
+                          />
+                        </View>
+                      </View>
+                      
+                      <View style={styles.timeInput}>
+                        <Text style={styles.timeLabel}>Fechamento:</Text>
+                        <View style={styles.timeInputContainer}>
+                          <CustomInput
+                            label=""
+                            value={currentDay.closeTime}
+                            onChangeText={(text) => updateSchedule(day, 'closeTime', formatTime(text))}
+                            keyboardType="numeric"
+                            placeholder="00:00"
+                          />
+                        </View>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+
+          <TouchableOpacity
+            style={[styles.button, loading && styles.buttonDisabled]}
+            onPress={handleSubmit}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>Continuar</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={handleBack}
+          >
+            <Text style={styles.backButtonText}>Voltar</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -481,9 +491,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    flexGrow: 1,
+    flex: 1,
     padding: 30,
-    paddingTop: 20,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
     paddingBottom: 40,
   },
   title: {
@@ -501,14 +515,6 @@ const styles = StyleSheet.create({
   },
   section: {
     marginBottom: 24,
-    backgroundColor: colors.white,
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
   },
   sectionTitle: {
     fontSize: 18,
@@ -520,7 +526,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.border.default,
   },
@@ -556,11 +562,15 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     marginBottom: 4,
   },
+  timeInputContainer: {
+    marginBottom: 0,
+  },
   errorText: {
     color: colors.text.error,
     fontSize: 12,
-    marginTop: 4,
-    marginBottom: 8,
+    marginTop: -12,
+    marginBottom: 12,
+    marginLeft: 4,
   },
   button: {
     backgroundColor: colors.primary,

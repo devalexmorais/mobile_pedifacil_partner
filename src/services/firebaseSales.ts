@@ -162,7 +162,7 @@ const firebaseSalesService = {
             
             if (orderDate >= startOfDay && orderDate <= endOfDay) {
               // Normalizando e garantindo os dados dos itens
-              const normalizedItems = [];
+              const normalizedItems: OrderItem[] = [];
               
               if (Array.isArray(data.items)) {
                 data.items.forEach(item => {
@@ -178,7 +178,7 @@ const firebaseSalesService = {
               }
               
               // Extrair o status do pedido
-              const orderStatus = String(data.status || 'pending');
+              const orderStatus = String(data.status || 'pending') as 'pending' | 'delivered' | 'cancelled';
               
               // Garantir que todos os campos necessários existam
               const orderData: Order = {
@@ -279,7 +279,7 @@ const firebaseSalesService = {
           if (order.storeAddress) order.storeAddress = String(order.storeAddress);
           if (order.storePhone) order.storePhone = String(order.storePhone);
           if (order.storeCNPJ) order.storeCNPJ = String(order.storeCNPJ);
-          if (order.status) order.status = String(order.status);
+          if (order.status) order.status = String(order.status) as 'pending' | 'delivered' | 'cancelled';
           
           return order;
         });
@@ -319,7 +319,7 @@ const firebaseSalesService = {
       if (!data) return null;
       
       // Normalizando itens
-      const normalizedItems = [];
+      const normalizedItems: OrderItem[] = [];
       
       if (Array.isArray(data.items)) {
         data.items.forEach(item => {
@@ -343,7 +343,7 @@ const firebaseSalesService = {
         total: Number(data.total) || 0,
         paymentMethod: validatePaymentMethod(data.paymentMethod || data.payment),
         paymentData: data.payment || data.paymentMethod,
-        status: String(data.status || 'pending'),
+        status: String(data.status || 'pending') as 'pending' | 'delivered' | 'cancelled',
         createdAt: data.createdAt,
         // Opcionais
         customerAddress: data.customerAddress ? String(data.customerAddress) : data.customer?.address ? String(data.customer.address) : undefined,
@@ -385,7 +385,7 @@ const firebaseSalesService = {
       if (orderData.storeAddress) orderData.storeAddress = String(orderData.storeAddress);
       if (orderData.storePhone) orderData.storePhone = String(orderData.storePhone);
       if (orderData.storeCNPJ) orderData.storeCNPJ = String(orderData.storeCNPJ);
-      if (orderData.status) orderData.status = String(orderData.status);
+      if (orderData.status) orderData.status = String(orderData.status) as 'pending' | 'delivered' | 'cancelled';
 
       return orderData;
     } catch (error) {

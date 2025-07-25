@@ -32,7 +32,7 @@ export function AppBlockedScreen({
   };
 
   const handleGoToPayment = () => {
-    router.push('/faturas');
+    router.push('/(auth)/drawer/faturas' as any);
   };
 
   const getBloackSeverityInfo = () => {

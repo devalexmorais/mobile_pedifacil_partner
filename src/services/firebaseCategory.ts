@@ -1,3 +1,4 @@
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 
 export interface Category {
@@ -16,9 +17,9 @@ export interface SubCategory {
 export const categoryService = {
   async getCategories(): Promise<Category[]> {
     try {
-      const querySnapshot = await db.collection('categories')
-        .where('isActive', '==', true)
-        .get();
+      const categoriesRef = collection(db, 'categories');
+      const q = query(categoriesRef, where('isActive', '==', true));
+      const querySnapshot = await getDocs(q);
       
       return querySnapshot.docs.map(doc => ({
         id: doc.id,
@@ -32,10 +33,13 @@ export const categoryService = {
 
   async getSubCategories(categoryId: string): Promise<SubCategory[]> {
     try {
-      const querySnapshot = await db.collection('subcategories')
-        .where('categoryId', '==', categoryId)
-        .where('isActive', '==', true)
-        .get();
+      const subcategoriesRef = collection(db, 'subcategories');
+      const q = query(
+        subcategoriesRef, 
+        where('categoryId', '==', categoryId),
+        where('isActive', '==', true)
+      );
+      const querySnapshot = await getDocs(q);
       
       return querySnapshot.docs.map(doc => ({
         id: doc.id,

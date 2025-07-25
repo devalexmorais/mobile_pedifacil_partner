@@ -1,5 +1,4 @@
 import * as admin from 'firebase-admin';
 admin.initializeApp();
 
-export * from './invoices';
-export * from './mercadopago'; 
+export * from './invoices'; 

@@ -37,7 +37,7 @@ export function ProductCard({
             </Text>
             {product.promotion && calculatePromotionalPrice && (
               <Text style={styles.promotionalPrice}>
-                R$ {calculatePromotionalPrice(product.price, product.promotion)}
+                R$ {calculatePromotionalPrice(String(product.price), product.promotion)}
               </Text>
             )}
           </View>

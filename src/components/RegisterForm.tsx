@@ -1,51 +1,52 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import { View, ScrollView, StyleSheet } from 'react-native';
 import { Formik, Field } from 'formik';
 import * as Yup from 'yup';
-import { TextInput, Button, HelperText } from 'react-native-paper';
+import { TextInput, HelperText, Button } from 'react-native-paper';
 import { ErrorMessage } from './ErrorMessage';
+
+interface FormValues {
+  name: string;
+  email: string;
+  password: string;
+  phone: string;
+  cnpj_or_cpf: string;
+  storeName: string;
+}
+
+interface FormFieldProps {
+  name: string;
+  label: string;
+  [key: string]: any;
+}
+
+interface RegisterFormProps {
+  onSubmit: (values: FormValues) => Promise<any>;
+}
 
 const validationSchema = Yup.object().shape({
   name: Yup.string()
     .required('Nome é obrigatório')
-    .min(3, 'Nome deve ter pelo menos 3 caracteres'),
-  
+    .min(2, 'Nome deve ter pelo menos 2 caracteres'),
   email: Yup.string()
-    .email('Digite um email válido')
+    .email('Email inválido')
     .required('Email é obrigatório'),
-  
   password: Yup.string()
     .required('Senha é obrigatória')
-    .min(6, 'Senha deve ter pelo menos 6 caracteres')
-    .matches(
-      /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/,
-      'Senha deve conter letras e números'
-    ),
-  
+    .min(6, 'Senha deve ter pelo menos 6 caracteres'),
   phone: Yup.string()
-    .required('Telefone é obrigatório')
-    .matches(
-      /^\([1-9]{2}\) (?:[2-8]|9[1-9])[0-9]{3}\-[0-9]{4}$/,
-      'Formato inválido. Use (99) 99999-9999'
-    ),
-  
+    .required('Telefone é obrigatório'),
   cnpj_or_cpf: Yup.string()
-    .required('CPF/CNPJ é obrigatório')
-    .test('cpf-cnpj', 'CPF/CNPJ inválido', (value) => {
-      if (!value) return false;
-      const numbers = value.replace(/[^\d]/g, '');
-      return numbers.length === 11 || numbers.length === 14;
-    }),
-
+    .required('CPF/CNPJ é obrigatório'),
   storeName: Yup.string()
     .required('Nome da loja é obrigatório')
     .min(2, 'Nome da loja deve ter pelo menos 2 caracteres'),
 });
 
-const FormField = ({ name, label, ...props }) => {
+const FormField: React.FC<FormFieldProps> = ({ name, label, ...props }) => {
   return (
     <Field name={name}>
-      {({ field, form, meta }) => (
+      {({ field, form, meta }: any) => (
         <View style={styles.fieldContainer}>
           <TextInput
             label={label}
@@ -67,10 +68,10 @@ const FormField = ({ name, label, ...props }) => {
   );
 };
 
-export const RegisterForm = ({ onSubmit }) => {
+export const RegisterForm: React.FC<RegisterFormProps> = ({ onSubmit }) => {
   const [apiError, setApiError] = useState('');
 
-  const handleSubmit = async (values, { setSubmitting, setFieldError }) => {
+  const handleSubmit = async (values: FormValues, { setSubmitting, setFieldError }: any) => {
     try {
       const result = await onSubmit(values);
       
@@ -88,7 +89,7 @@ export const RegisterForm = ({ onSubmit }) => {
           setFieldError('cnpj_or_cpf', result.error);
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       setApiError(error.message);
     } finally {
       setSubmitting(false);
@@ -158,7 +159,7 @@ export const RegisterForm = ({ onSubmit }) => {
 
             <Button
               mode="contained"
-              onPress={handleSubmit}
+              onPress={() => handleSubmit()}
               disabled={!isValid || !dirty || isSubmitting}
               loading={isSubmitting}
               style={styles.button}

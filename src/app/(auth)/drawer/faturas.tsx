@@ -209,7 +209,6 @@ export default function Faturas() {
     const q = query(invoicesRef, orderBy('createdAt', 'desc'));
 
     const unsubscribe = onSnapshot(q, async (snapshot) => {
-      console.log('Recebida atualização em tempo real das faturas');
       
       const loadedInvoices = await Promise.all(
         snapshot.docs.map(async (doc) => {
@@ -240,18 +239,10 @@ export default function Faturas() {
         inv.status === 'pending' || inv.status === 'overdue'
       );
       
-      console.log('🔍 DEBUG - Fatura atual encontrada:', currentInvoiceData ? {
-        id: currentInvoiceData.id,
-        status: currentInvoiceData.status,
-        totalAmount: currentInvoiceData.totalAmount
-      } : 'Nenhuma fatura pendente/vencida');
-      
       if (currentInvoiceData) {
-        console.log('Atualizando fatura atual:', currentInvoiceData);
         setCurrentInvoice(currentInvoiceData);
       } else {
         // Se não há fatura pendente/vencida, limpa a fatura atual
-        console.log('✅ Nenhuma fatura pendente/vencida - limpando fatura atual');
         setCurrentInvoice(null);
       }
     }, (error) => {
@@ -272,7 +263,6 @@ export default function Faturas() {
 
 
           if (status === 'approved') {
-            console.log('Pagamento aprovado! Recarregando faturas...');
             await loadInvoices();
             Alert.alert('Pagamento Confirmado', 'Seu pagamento foi processado com sucesso!');
           }
@@ -293,18 +283,14 @@ export default function Faturas() {
   useEffect(() => {
     if (!user?.uid || !currentInvoice?.id) return;
 
-    console.log('Configurando listener em tempo real para a fatura:', currentInvoice.id);
-    
     const invoiceRef = doc(db, 'partners', user.uid, 'invoices', currentInvoice.id);
     const unsubscribe = onSnapshot(invoiceRef, (snapshot) => {
       if (!snapshot.exists()) return;
 
       const data = snapshot.data();
-      console.log('Atualização em tempo real recebida:', data);
 
       // Se a fatura foi paga, remove da lista de faturas atuais
       if (data.status === 'paid') {
-        console.log('✅ Fatura paga detectada - removendo da lista de faturas atuais');
         setCurrentInvoice(null);
         Alert.alert('Pagamento Confirmado', 'Seu pagamento foi processado com sucesso!');
         return;

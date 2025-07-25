@@ -160,7 +160,8 @@ export default function PremiumCharts({ analytics }: PremiumChartsProps) {
               withHorizontalLabels={true}
               withInnerLines={false}
               showValuesOnTopOfBars={true}
-              formatYLabel={(value) => `${value}%`}
+              yAxisLabel=""
+              yAxisSuffix=""
             />
           </View>
         </View>

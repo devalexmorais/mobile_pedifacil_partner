@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { View, Text, Button, TextInput, StyleSheet } from 'react-native';
-import { firebaseAuthService } from '@/services/firebaseAuth';
 
 export function TestFirebase() {
   const [email, setEmail] = useState('');
@@ -10,15 +9,8 @@ export function TestFirebase() {
   const handleTestRegister = async () => {
     try {
       setResult('Testando cadastro...');
-      const response = await firebaseAuthService.registerStep1({
-        email,
-        password,
-        name: 'Teste',
-        storeName: 'Loja Teste',
-        mainCategoryId: '1',
-        subCategoryId: '1'
-      });
-      setResult('Cadastro realizado com sucesso! Token: ' + response.token);
+      // Implementação futura
+      setResult('Funcionalidade em desenvolvimento');
     } catch (error: any) {
       setResult('Erro no cadastro: ' + error.message);
     }
@@ -27,11 +19,8 @@ export function TestFirebase() {
   const handleTestLogin = async () => {
     try {
       setResult('Testando login...');
-      const response = await firebaseAuthService.login({
-        email,
-        password
-      });
-      setResult('Login realizado com sucesso! Token: ' + response.token);
+      // Implementação futura
+      setResult('Funcionalidade em desenvolvimento');
     } catch (error: any) {
       setResult('Erro no login: ' + error.message);
     }

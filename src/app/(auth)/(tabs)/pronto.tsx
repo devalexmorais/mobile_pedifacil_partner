@@ -31,10 +31,11 @@ export default function Pronto() {
       setIsProcessing(true);
       await marcarComoEmEntrega(pedidoId);
       
-      // Enviar notificação de pedido em entrega
-      await notificationService.sendOrderNotification(
+      // Enviar notificação de pedido em entrega (como cupom)
+      await notificationService.sendOrderStatusNotificationToUser(
         userId,
-        notificationService.getOrderStatusMessage('delivery', pedidoId, userId)
+        pedidoId,
+        'out_for_delivery'
       );
       
       Alert.alert(
@@ -118,7 +119,7 @@ export default function Pronto() {
       <View style={styles.card}>
         {/* Cabeçalho com ID do Pedido */}
         <View style={styles.orderIdHeader}>
-          <Text style={styles.orderId}>Pedido #{item.id.slice(-4)}</Text>
+          <Text style={styles.orderId}>Pedido #{item.id.slice(0, 8)}</Text>
           <TouchableOpacity onPress={() => setExpandedId(isExpanded ? null : item.id)}>
             <Ionicons 
               name={isExpanded ? "chevron-up" : "chevron-down"} 

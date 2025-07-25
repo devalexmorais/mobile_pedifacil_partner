@@ -6,7 +6,6 @@ import './messaging_background'; // Importar manipulador de mensagens em segundo
 
 // Registrar tarefa em segundo plano para notificações
 messaging().setBackgroundMessageHandler(async remoteMessage => {
-  console.log('Mensagem recebida em segundo plano!', remoteMessage);
   // Necessário retornar uma promise
   return Promise.resolve();
 });

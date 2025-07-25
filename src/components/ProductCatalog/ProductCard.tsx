@@ -1,4 +1,4 @@
-import React, { useState, useEffect, memo } from 'react';
+import React, { useState, useEffect, memo, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TouchableWithoutFeedback } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { Product } from '@/types/product';
@@ -29,170 +29,100 @@ export function ProductCard({
   defaultImage,
   shouldLoadImage = true
 }: ProductCardProps) {
-  const [menuVisible, setMenuVisible] = useState(false);
-
   useEffect(() => {
     // Este efeito foi removido pois vamos usar product.isPromotion diretamente
   }, []);
 
-  const toggleMenu = () => {
-    setMenuVisible(!menuVisible);
-  };
-
-  const closeMenu = () => {
-    setMenuVisible(false);
-  };
-
-  const handleOptionPress = (action: () => void) => {
-    action();
-    closeMenu();
-  };
-
   return (
     <View style={styles.container}>
-      <TouchableWithoutFeedback onPress={closeMenu}>
-        <View style={styles.backdrop}>
-          <TouchableOpacity
-            style={[
-              styles.productCard,
-              !product.isActive && styles.productCardInactive,
-              isExceedingLimit && styles.productCardExceeding
-            ]}
-            onPress={onPress}
-            activeOpacity={0.7}
-          >
-            <OptimizedImage
-              uri={product.image}
-              defaultImage={defaultImage}
-              style={styles.productImage}
-              borderRadius={8}
-              lazy={true}
-              shouldLoad={shouldLoadImage}
-            />
-            
-            <View style={styles.productInfo}>
-              {isExceedingLimit && (
-                <Text style={styles.exceedingLabel}>Excede limite (inativo)</Text>
-              )}
-              
-              <Text style={styles.productName}>{product.name}</Text>
-              
-              {product.description && (
-                <Text style={styles.productDescription} numberOfLines={1}>
-                  {product.description}
-                </Text>
-              )}
+      <TouchableOpacity
+        style={[
+          styles.productCard,
+          !product.isActive && styles.productCardInactive,
+          isExceedingLimit && styles.productCardExceeding
+        ]}
+        onPress={onPress}
+        activeOpacity={0.7}
+      >
+        <OptimizedImage
+          uri={product.image || null}
+          defaultImage={defaultImage}
+          style={styles.productImage}
+          borderRadius={8}
+          lazy={true}
+          shouldLoad={shouldLoadImage}
+        />
+        
+        <View style={styles.productInfo}>
+          {isExceedingLimit && (
+            <Text style={styles.exceedingLabel}>Excede limite (inativo)</Text>
+          )}
+          
+          <Text style={styles.productName}>{product.name}</Text>
+          
+          {product.description && (
+            <Text style={styles.productDescription} numberOfLines={1}>
+              {product.description}
+            </Text>
+          )}
 
-              {product.isPromotion ? (
-                <View style={styles.priceContainer}>
-                  <View style={styles.promoTag}>
-                    <MaterialIcons name="local-offer" size={10} color="#FF6B6B" />
-                    <Text style={styles.promoTagText}>PROMOÇÃO</Text>
-                  </View>
-                  <Text style={styles.originalPrice}>
-                    De R$ {product.price.toFixed(2)}
-                  </Text>
-                  <Text style={styles.promoPrice}>
-                    Por R$ {(product.promotion?.finalPrice || product.price).toFixed(2)}
-                  </Text>
-                </View>
-              ) : (
-                <Text style={styles.productPrice}>R$ {product.price.toFixed(2)}</Text>
-              )}
-              
-              <Text style={[
-                styles.productStatusLabel,
-                { color: product.isActive ? '#4CAF50' : '#666' }
-              ]}>
-                {product.isActive ? 'Ativo' : 'Inativo'}
+          {product.isPromotion ? (
+            <View style={styles.priceContainer}>
+              <View style={styles.promoTag}>
+                <MaterialIcons name="local-offer" size={10} color="#FF6B6B" />
+                <Text style={styles.promoTagText}>PROMOÇÃO</Text>
+              </View>
+              <Text style={styles.originalPrice}>
+                De R$ {product.price.toFixed(2)}
+              </Text>
+              <Text style={styles.promoPrice}>
+                Por R$ {(product.promotion?.finalPrice || product.price).toFixed(2)}
               </Text>
             </View>
-            
-            <TouchableOpacity 
-              style={styles.menuButton} 
-              onPress={toggleMenu}
-            >
-              <Ionicons name="ellipsis-vertical" size={20} color="#666" />
-            </TouchableOpacity>
-          </TouchableOpacity>
+          ) : (
+            <Text style={styles.productPrice}>R$ {product.price.toFixed(2)}</Text>
+          )}
+          
+          <Text style={[
+            styles.productStatusLabel,
+            { color: product.isActive ? '#4CAF50' : '#666' }
+          ]}>
+            {product.isActive ? 'Ativo' : 'Inativo'}
+          </Text>
         </View>
-      </TouchableWithoutFeedback>
-
-      {menuVisible && (
-        <View style={styles.menuOverlay}>
-          <View style={styles.menu}>
-            <TouchableOpacity 
-              style={styles.menuItem} 
-              onPress={() => handleOptionPress(onToggleAvailability)}
-            >
-              <Ionicons 
-                name={product.isActive ? "checkmark-circle" : "checkmark-circle-outline"} 
-                size={20} 
-                color={product.isActive ? "#4CAF50" : "#666"} 
-              />
-              <Text style={styles.menuItemText}>
-                {product.isActive ? "Desativar" : "Ativar"}
-              </Text>
-            </TouchableOpacity>
-
-            {isPremium && onTogglePromotion && (
-              <TouchableOpacity 
-                style={styles.menuItem} 
-                onPress={() => handleOptionPress(onTogglePromotion)}
-              >
-                <MaterialIcons 
-                  name={product.isPromotion ? "money-off" : "local-offer"} 
-                  size={20} 
-                  color={product.isPromotion ? "#FF6B6B" : "#FFA500"} 
-                />
-                <Text style={styles.menuItemText}>
-                  {product.isPromotion ? "Remover promoção" : "Adicionar promoção"}
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            <TouchableOpacity 
-              style={styles.menuItem} 
-              onPress={() => handleOptionPress(onEdit)}
-            >
-              <Ionicons name="create-outline" size={20} color="#2196F3" />
-              <Text style={styles.menuItemText}>Editar</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.menuItem, styles.lastMenuItem]} 
-              onPress={() => handleOptionPress(onDelete)}
-            >
-              <Ionicons name="trash-outline" size={20} color="#F44336" />
-              <Text style={styles.menuItemText}>Excluir</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.menuItem, styles.closeMenuItem]}
-              onPress={closeMenu}
-            >
-              <Ionicons name="close" size={20} color="#333" />
-              <Text style={styles.menuItemText}>Fechar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
+        
+        <TouchableOpacity 
+          style={styles.menuButton} 
+          onPress={onPress}
+        >
+          <Ionicons name="ellipsis-vertical" size={20} color="#666" />
+        </TouchableOpacity>
+      </TouchableOpacity>
     </View>
   );
 }
 
 // Memoização para evitar renderizações desnecessárias
 const ProductCardMemo = memo(ProductCard, (prevProps, nextProps) => {
-  return (
-    prevProps.product.id === nextProps.product.id &&
-    prevProps.product.name === nextProps.product.name &&
-    prevProps.product.price === nextProps.product.price &&
-    prevProps.product.isActive === nextProps.product.isActive &&
-    prevProps.product.isPromotion === nextProps.product.isPromotion &&
-    prevProps.product.image === nextProps.product.image &&
-    prevProps.isPremium === nextProps.isPremium &&
-    prevProps.shouldLoadImage === nextProps.shouldLoadImage
-  );
+  // Comparação mais detalhada para evitar re-renderizações desnecessárias
+  const productChanged = 
+    prevProps.product.id !== nextProps.product.id ||
+    prevProps.product.name !== nextProps.product.name ||
+    prevProps.product.description !== nextProps.product.description ||
+    prevProps.product.price !== nextProps.product.price ||
+    prevProps.product.isActive !== nextProps.product.isActive ||
+    prevProps.product.isPromotion !== nextProps.product.isPromotion ||
+    prevProps.product.image !== nextProps.product.image ||
+    prevProps.product.promotion?.finalPrice !== nextProps.product.promotion?.finalPrice;
+
+  const propsChanged = 
+    prevProps.isPremium !== nextProps.isPremium ||
+    prevProps.isExceedingLimit !== nextProps.isExceedingLimit ||
+    prevProps.shouldLoadImage !== nextProps.shouldLoadImage ||
+    prevProps.defaultImage !== nextProps.defaultImage;
+
+  // Só re-renderiza se algo realmente mudou
+  return !productChanged && !propsChanged;
 });
 
 export { ProductCardMemo };
@@ -201,9 +131,6 @@ const styles = StyleSheet.create({
   container: {
     position: 'relative',
     marginBottom: 8,
-  },
-  backdrop: {
-    width: '100%',
   },
   productCard: {
     flexDirection: 'row',
@@ -284,44 +211,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 1,
-  },
-  menuOverlay: {
-    position: 'absolute',
-    right: 10,
-    top: 40,
-    zIndex: 10,
-  },
-  menu: {
-    backgroundColor: 'white',
-    borderRadius: 8,
-    padding: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 5,
-    width: 200,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#eee',
-  },
-  lastMenuItem: {
-    borderBottomWidth: 0,
-  },
-  closeMenuItem: {
-    borderTopWidth: 0.5,
-    borderTopColor: '#eee',
-    justifyContent: 'center',
-    backgroundColor: '#f9f9f9',
-  },
-  menuItemText: {
-    marginLeft: 10,
-    fontSize: 14,
-    color: '#333',
   },
   productCardInactive: {
     opacity: 0.7,

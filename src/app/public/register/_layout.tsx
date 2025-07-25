@@ -24,6 +24,12 @@ export default function RegisterLayout() {
           }} 
         />
         <Stack.Screen 
+          name="settings" 
+          options={{ 
+            headerShown: false 
+          }} 
+        />
+        <Stack.Screen 
           name="documents" 
           options={{ 
             headerShown: false 

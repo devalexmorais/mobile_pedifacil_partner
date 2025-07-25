@@ -67,10 +67,11 @@ export default function Preparando() {
       setIsProcessing(true);
       await marcarComoPronto(pedidoId);
       
-      // Enviar notificação de pedido pronto
-      await notificationService.sendOrderNotification(
+      // Enviar notificação de pedido pronto (como cupom)
+      await notificationService.sendOrderStatusNotificationToUser(
         userId,
-        notificationService.getOrderStatusMessage('ready', pedidoId, userId)
+        pedidoId,
+        'ready'
       );
       
       Alert.alert(
@@ -100,7 +101,7 @@ export default function Preparando() {
         <View style={styles.pedidoHeader}>
           <View style={styles.headerLeft}>
             <Text style={styles.orderTime}>
-              Pedido #{item.id.slice(-4)} • {createdAtDate.toLocaleTimeString('pt-BR')}
+              Pedido #{item.id.slice(0, 8)} • {createdAtDate.toLocaleTimeString('pt-BR')}
             </Text>
           </View>
           <View style={styles.headerRight}>

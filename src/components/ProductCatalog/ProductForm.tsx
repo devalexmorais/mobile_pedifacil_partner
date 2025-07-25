@@ -18,5 +18,8 @@ export function ProductForm({
 }
 
 const styles = StyleSheet.create({
-  // ... estilos
+  modalForm: {
+    flex: 1,
+    padding: 16,
+  },
 }); 

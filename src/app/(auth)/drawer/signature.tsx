@@ -122,7 +122,6 @@ export default function Signature() {
 
     try {
       setProcessingPayment(true);
-      console.log('Ativando plano premium:', premiumPlan);
       
       const partnerRef = doc(db, 'partners', user.uid);
       const docSnap = await getDoc(partnerRef);

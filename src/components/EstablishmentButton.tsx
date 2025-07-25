@@ -8,16 +8,16 @@ import { BlockedEstablishmentWarning } from './BlockedEstablishmentWarning';
 
 export function EstablishmentButton() {
   const { isOpen } = useEstablishment();
-  const { isBlocked, dueAmount, dueDate } = usePaymentStatus();
+  const { paymentStatus } = usePaymentStatus();
   const [showBlockedInfo, setShowBlockedInfo] = useState(false);
 
   const getStatusText = () => {
-    if (isBlocked) return "Bloqueado por Pagamento";
+    if (paymentStatus.isBlocked) return "Bloqueado por Pagamento";
     return isOpen ? "Estabelecimento Aberto" : "Estabelecimento Fechado";
   };
 
   const handlePress = () => {
-    if (isBlocked) {
+    if (paymentStatus.isBlocked) {
       setShowBlockedInfo(true);
     }
   };
@@ -27,22 +27,22 @@ export function EstablishmentButton() {
       <TouchableOpacity 
         style={styles.container}
         onPress={handlePress}
-        disabled={!isBlocked}
+        disabled={!paymentStatus.isBlocked}
       >
         <View style={[
           styles.button,
           isOpen ? styles.buttonOpen : styles.buttonClosed,
-          isBlocked && styles.buttonBlocked
+          paymentStatus.isBlocked && styles.buttonBlocked
         ]}>
           <View style={styles.buttonContent}>
             <Ionicons 
-              name={isBlocked ? "alert-circle" : isOpen ? "radio-button-on" : "radio-button-off"} 
+              name={paymentStatus.isBlocked ? "alert-circle" : isOpen ? "radio-button-on" : "radio-button-off"} 
               size={20} 
-              color={isBlocked ? colors.red[500] : isOpen ? colors.green[500] : colors.red[500]} 
+              color={paymentStatus.isBlocked ? colors.red[500] : isOpen ? colors.green[500] : colors.red[500]} 
             />
             <Text style={[
               styles.text,
-              { color: isBlocked ? colors.red[500] : isOpen ? colors.green[500] : colors.red[500] }
+              { color: paymentStatus.isBlocked ? colors.red[500] : isOpen ? colors.green[500] : colors.red[500] }
             ]}>
               {getStatusText()}
             </Text>
@@ -52,9 +52,7 @@ export function EstablishmentButton() {
 
       {showBlockedInfo && (
         <BlockedEstablishmentWarning 
-          dueAmount={dueAmount}
-          dueDate={dueDate}
-          onClose={() => setShowBlockedInfo(false)}
+          onUpgradePress={() => setShowBlockedInfo(false)}
         />
       )}
     </>

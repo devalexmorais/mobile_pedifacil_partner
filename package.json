@@ -1,7 +1,7 @@
 {
   "name": "pedifacil",
   "main": "expo-router/entry",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
@@ -47,6 +47,7 @@
     "expo-crypto": "~14.0.2",
     "expo-dev-client": "~5.0.20",
     "expo-device": "^7.0.3",
+    "expo-firebase-recaptcha": "^2.3.1",
     "expo-font": "~13.0.4",
     "expo-haptics": "~14.0.1",
     "expo-image-picker": "~16.0.6",
@@ -70,7 +71,9 @@
     "react-native": "0.76.9",
     "react-native-chart-kit": "^6.12.0",
     "react-native-dotenv": "^3.4.11",
+    "react-native-element-dropdown": "^2.12.4",
     "react-native-gesture-handler": "~2.20.2",
+    "react-native-image-picker": "^8.2.1",
     "react-native-pager-view": "6.5.1",
     "react-native-paper": "^5.13.1",
     "react-native-qrcode-svg": "^6.3.15",

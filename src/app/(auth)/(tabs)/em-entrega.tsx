@@ -28,10 +28,11 @@ export default function EmEntrega() {
       setIsProcessing(true);
       await marcarComoEntregue(pedidoId);
       
-      // Enviar notificação de pedido entregue
-      await notificationService.sendOrderNotification(
+      // Enviar notificação de pedido entregue (como cupom)
+      await notificationService.sendOrderStatusNotificationToUser(
         userId,
-        notificationService.getOrderStatusMessage('completed', pedidoId, userId)
+        pedidoId,
+        'delivered'
       );
       
       // Exibir alerta após a entrega ser confirmada
@@ -79,36 +80,48 @@ export default function EmEntrega() {
 
     return (
       <View style={styles.pedidoCard}>
-        <TouchableOpacity 
-          style={styles.pedidoHeader}
-          onPress={() => setExpandedId(isExpanded ? null : item.id)}
-          activeOpacity={0.7}
-        >
-          <View style={styles.headerLeft}>
-            <Text style={styles.orderTime}>
-              Pedido feito às {formatarDataHora(item.createdAt)}
-            </Text>
-          </View>
-          <View style={styles.headerRight}>
+        {/* Cabeçalho com ID do Pedido */}
+        <View style={styles.orderIdHeader}>
+          <Text style={styles.orderId}>Pedido #{item.id.slice(0, 8)}</Text>
+          <TouchableOpacity onPress={() => setExpandedId(isExpanded ? null : item.id)}>
             <Ionicons 
               name={isExpanded ? "chevron-up" : "chevron-down"} 
-              size={20} 
+              size={24} 
               color="#666"
-              style={styles.expandIcon}
             />
-          </View>
-        </TouchableOpacity>
-
-        <View style={styles.itemsList}>
-          {item.items.map((itemPedido, index) => (
-            <View key={index} style={styles.itemRow}>
-              <Text style={styles.quantityText}>{itemPedido.quantity}×</Text>
-              <Text style={styles.itemText}>
-                {itemPedido.name}
-              </Text>
-            </View>
-          ))}
+          </TouchableOpacity>
         </View>
+
+        {/* Informações Básicas */}
+        <View style={styles.basicInfo}>
+          <View style={styles.infoRow}>
+            <Ionicons name="time-outline" size={16} color="#666" />
+            <Text style={styles.infoText}>
+              Feito às {formatarDataHora(item.createdAt)}
+            </Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Ionicons name="list-outline" size={16} color="#666" />
+            <Text style={styles.infoText}>
+              {item.items.length} {item.items.length === 1 ? 'item' : 'itens'} no pedido
+            </Text>
+          </View>
+        </View>
+
+        {/* Lista de Itens - Só mostra quando expandido */}
+        {isExpanded && (
+          <View style={styles.content}>
+            <Text style={styles.sectionTitle}>Itens do Pedido</Text>
+            {item.items.map((itemPedido, index) => (
+              <View key={index} style={styles.itemRow}>
+                <Text style={styles.quantityText}>{itemPedido.quantity}×</Text>
+                <Text style={styles.itemText}>
+                  {itemPedido.name}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         {isExpanded && (
           <View style={styles.expandedContent}>
@@ -144,16 +157,19 @@ export default function EmEntrega() {
           </View>
         )}
 
-        <TouchableOpacity 
-          style={[styles.deliveredButton, isPickup && styles.pickupButton, isProcessing && styles.disabledButton]}
-          onPress={() => handleEntregaConfirmada(item.id, item.userId)}
-          disabled={isProcessing}
-        >
-          <Ionicons name="checkmark-done" size={22} color="#fff" />
-          <Text style={styles.deliveredButtonText}>
-            {isPickup ? 'Confirmar Retirada' : 'Confirmar Entrega'}
-          </Text>
-        </TouchableOpacity>
+        {/* Botão de Ação */}
+        <View style={styles.footer}>
+          <TouchableOpacity 
+            style={[styles.deliveredButton, isPickup && styles.pickupButton, isProcessing && styles.disabledButton]}
+            onPress={() => handleEntregaConfirmada(item.id, item.userId)}
+            disabled={isProcessing}
+          >
+            <Ionicons name="checkmark-done" size={22} color="#fff" />
+            <Text style={styles.deliveredButtonText}>
+              {isPickup ? 'Confirmar Retirada' : 'Confirmar Entrega'}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
 
       </View>
@@ -183,7 +199,6 @@ const styles = StyleSheet.create({
   pedidoCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
-    padding: 16,
     marginBottom: 16,
     elevation: 2,
     shadowColor: '#000',
@@ -191,24 +206,37 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
-  pedidoHeader: {
+  orderIdHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    backgroundColor: '#f8f8f8',
   },
-  headerLeft: {
-    flex: 1,
+  orderId: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
   },
-  headerRight: {
+  basicInfo: {
+    padding: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    marginBottom: 4,
   },
-  orderTime: {
-    fontSize: 16,
-    color: '#333',
-    fontWeight: '500',
+  infoText: {
+    fontSize: 13,
+    color: '#666',
+    flex: 1,
+    lineHeight: 18,
   },
   paymentMethod: {
     display: 'none',
@@ -216,51 +244,53 @@ const styles = StyleSheet.create({
   expandIcon: {
     marginLeft: 8,
   },
-  itemsList: {
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-    paddingTop: 12,
-    gap: 8,
-  },
-  itemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  quantityText: {
-    fontSize: 16,
-    color: '#666',
-    marginRight: 12,
-    fontWeight: '500',
-  },
-  itemText: {
-    fontSize: 16,
-    color: '#333',
-    fontWeight: '500',
-    flex: 1,
-  },
   expandedContent: {
     borderTopWidth: 1,
     borderTopColor: '#f0f0f0',
     paddingTop: 16,
     marginBottom: 12,
+    paddingHorizontal: 16,
   },
   infoSection: {
-    marginBottom: 16,
-    gap: 8,
+    marginBottom: 12,
+    gap: 6,
   },
   sectionTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#333',
+    marginBottom: 2,
+  },
+  itemsList: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 4,
   },
-  infoText: {
+  quantityText: {
     fontSize: 14,
+    fontWeight: '500',
     color: '#666',
+    width: 40,
+    textAlign: 'left',
+  },
+  itemText: {
     flex: 1,
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '500',
+  },
+  content: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  footer: {
+    padding: 16,
   },
 
   deliveredButton: {

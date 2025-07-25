@@ -19,21 +19,8 @@ export function MainEstablishmentButton() {
 
   // Debug do status de pagamento e reação a mudanças
   useEffect(() => {
-    console.log('🏪 MainEstablishmentButton - Status de pagamento:', {
-      hasOverdueInvoice: paymentStatus.hasOverdueInvoice,
-      daysPastDue: paymentStatus.daysPastDue,
-      isBlocked: paymentStatus.isBlocked,
-      loading: paymentLoading
-    });
-
     // Reação instantânea a mudanças de bloqueio
-    if (paymentStatus.isBlocked) {
-      console.log('🔒 BLOQUEIO DETECTADO - Interface será atualizada instantaneamente');
-    } else if (paymentStatus.hasOverdueInvoice) {
-      console.log('⚠️ FATURA VENCIDA DETECTADA - Mostrando aviso');
-    } else {
-      console.log('✅ STATUS NORMAL - Estabelecimento pode operar normalmente');
-    }
+    // Status de pagamento monitorado automaticamente
   }, [paymentStatus, paymentLoading]);
 
   useEffect(() => {
@@ -53,11 +40,6 @@ export function MainEstablishmentButton() {
       unsubscribe = onSnapshot(partnerRef, (doc) => {
         if (doc.exists()) {
           const data = doc.data();
-          console.log('🔄 MUDANÇA EM TEMPO REAL detectada:', {
-            isOpen: data.isOpen,
-            operationMode: data.operationMode,
-            statusChangeReason: data.statusChangeReason
-          });
           
           setStatus({
             isOpen: data.isOpen || false,
@@ -90,7 +72,6 @@ export function MainEstablishmentButton() {
       // Depois carrega o status atual
       const currentStatus = await establishmentService.getEstablishmentStatus();
       
-      console.log('🏪 MainEstablishmentButton - Status carregado:', currentStatus);
       setStatus(currentStatus);
     } catch (error) {
       console.error('Erro ao carregar status:', error);

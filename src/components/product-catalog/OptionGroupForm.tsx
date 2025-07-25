@@ -63,5 +63,29 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 2,
   },
-  // ... outros estilos
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  groupInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.gray[300],
+    borderRadius: 8,
+    padding: 12,
+    marginRight: 12,
+  },
+  deleteButton: {
+    padding: 8,
+  },
+  typeContainer: {
+    marginBottom: 16,
+  },
+  dropdown: {
+    borderWidth: 1,
+    borderColor: colors.gray[300],
+    borderRadius: 8,
+    padding: 12,
+  },
 }); 

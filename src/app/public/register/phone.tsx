@@ -39,18 +39,13 @@ export default function Phone() {
     values: FormValues, 
     { setSubmitting }: FormikHelpers<FormValues>
   ) => {
-    console.log('handleSubmit chamado com valores:', values);
-    console.log('isVerifying:', isVerifying);
-    
     try {
       if (!isVerifying) {
         // Etapa 1: Enviar código de verificação (método direto temporário)
-        console.log('Etapa 1: Enviando código via método direto (temporário)...');
         
         const response = await TwilioService.sendVerificationCodeDirect(values.phone);
         
         if (response.success) {
-          console.log('Código enviado com sucesso:', response);
           setPhoneNumber(values.phone);
           setIsVerifying(true);
           
@@ -63,15 +58,9 @@ export default function Phone() {
         }
       } else {
         // Etapa 2: Verificar código (método direto temporário)
-        console.log('Etapa 2: Verificando código via método direto (temporário)...');
-        
         const response = await TwilioService.verifyCodeDirect(phoneNumber, values.code);
         
         if (response.success && response.valid) {
-          console.log('=================================================');
-          console.log('VERIFICAÇÃO BEM-SUCEDIDA VIA TWILIO!');
-          console.log('Telefone validado:', phoneNumber);
-          console.log('=================================================');
           
           const formattedPhone = phoneNumber.replace(/\D/g, '');
           router.push({
@@ -79,7 +68,6 @@ export default function Phone() {
             params: { ...params, phone: formattedPhone },
           });
         } else {
-          console.log('ERRO: Código inválido via Twilio');
           Alert.alert('Código Inválido', response.message || 'O código digitado está incorreto.');
         }
       }
@@ -107,12 +95,9 @@ export default function Phone() {
 
   const handleResendCode = async () => {
     try {
-      console.log('Reenviando código via método direto (temporário)...');
-      
       const response = await TwilioService.sendVerificationCodeDirect(phoneNumber);
       
       if (response.success) {
-        console.log('Código reenviado com sucesso:', response);
         Alert.alert(
           'Código Reenviado', 
           `Um novo código de verificação foi enviado para ${TwilioService.formatPhoneDisplay(phoneNumber)}.`
@@ -146,7 +131,6 @@ export default function Phone() {
 
   const testTwilioCredentials = async () => {
     try {
-      console.log('Testando credenciais do Twilio...');
       const result = await TwilioService.testCredentials();
       
       if (result.success) {
@@ -219,7 +203,7 @@ export default function Phone() {
 
               <TouchableOpacity
                 style={[styles.button, isSubmitting && styles.buttonDisabled]}
-                onPress={handleSubmit}
+                onPress={() => handleSubmit()}
                 disabled={isSubmitting}
               >
                 {isSubmitting ? (

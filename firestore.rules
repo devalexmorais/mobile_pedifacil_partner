@@ -1,17 +1,16 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Função para verificar se o usuário é o proprietário do documento
-    function isOwner(userId) {
-      return request.auth != null && request.auth.uid == userId;
-    }
     
-    // Função para verificar se o usuário está autenticado
+    // Funções auxiliares
     function isAuthenticated() {
       return request.auth != null;
     }
-    
-    // Função para verificar se o usuário é administrador
+
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
     function isAdmin() {
       let user = get(/databases/$(database)/documents/users/$(request.auth.uid));
       return request.auth != null && 
@@ -20,173 +19,83 @@ service cloud.firestore {
              ('role' in user.data) && 
              user.data.role == 'ADMIN';
     }
-    
-    // Regras para cupons
-    match /coupons/{couponId} {
-      allow read: if true;
-      allow create, update, delete: if isAuthenticated();
+
+    // Função para verificar se é uma Cloud Function
+    function isCloudFunction() {
+      return request.auth != null &&
+             request.auth.token != null &&
+             request.auth.token.firebase != null &&
+             request.auth.token.firebase.sign_in_provider == 'google.com' &&
+             request.auth.token.firebase.sign_in_attributes.email.matches('.*@system.gserviceaccount.com');
     }
-    
-    // Regra geral para leitura
+
+    // Função para verificar se é uma atualização apenas dos campos usedBy e updatedAt
+    function isOnlyUsageUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedBy', 'updatedAt']);
+    }
+
+    // ---------------- Regras globais ----------------
+
+    // Regra específica para notificações de usuários - DEVE VIR ANTES DA REGRA GLOBAL
+    match /users/{userId}/notifications/{notificationId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() || isCloudFunction();
+      allow update, delete: if isOwner(userId);
+    }
+
+    // Regra geral para leitura (mas não para notificações de usuários)
     match /{document=**} {
       allow read: if true;
     }
-    
-   // Regras específicas para usuários
-    match /users/{userId} {
+
+    match /advertisements/{advertisementId} {
       allow read: if true;
-      allow create: if request.auth != null && request.auth.uid == userId;
-      allow update: if isAuthenticated();
-      allow delete: if request.auth != null && request.auth.uid == userId;
-
-      match /favorites/{favoriteId} {
-        allow read: if true;
-        allow create, update, delete: if isOwner(userId);
-      }
-
-      match /orders/{orderId} {
-        allow read: if true;
-        allow create, update, delete: if isOwner(userId);
-
-        match /review/{reviewId} {
-          allow read: if true;
-          allow create, update, delete: if isOwner(userId);
-        }
-      }
-
-      match /addresses/{addressId} {
-        allow read: if true;
-        allow create, update, delete: if isOwner(userId);
-      }
-
-      // Permissão específica para a subcoleção usedCoupons
-      match /usedCoupons/{couponId} {
-        allow read: if true;
-        // Permitir que o próprio usuário ou qualquer parceiro autenticado crie registros
-        allow create: if isAuthenticated();
-        allow update, delete: if isOwner(userId);
-      }
-
-      // ✅ ADICIONAR ESTA REGRA: Permitir que parceiros autenticados criem notificações para usuários
-      match /notifications/{notificationId} {
-        allow read: if true;
-        allow create: if isAuthenticated();
-        allow update, delete: if isOwner(userId);
-      }
+      allow write: if isAuthenticated();
     }
-    
-    // Regras específicas para parceiros
-    match /partners/{partnerId} {
+
+    match /billing_control/{billingId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /invoices/{invoiceId} {
+      allow read: if isAuthenticated() && isAdmin();
+      allow create, update: if isAdmin() || isCloudFunction();
+      allow delete: if isAdmin();
+    }
+
+    match /coupons/{couponId} {
       allow read: if true;
-      allow create: if isOwner(partnerId);
-      allow update: if (
-        isOwner(partnerId) || 
-        (isAdmin() && 
-          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isActive', 'lastUpdated']) ||
-           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastUpdated', 'isActive']))
-        )
-      );
-      allow delete: if isOwner(partnerId);
-      
-      // Regras para cupons
-      match /coupons/{couponId} {
-        allow read: if true;
-        allow create, update, delete: if isOwner(partnerId);
-      }
-      
-      match /delivery_fees/{feeId} {
-        allow read: if true;
-        allow create, update, delete: if isOwner(partnerId);
-      }
-
-      match /fees/{feeId} {
-        allow read: if true;
-        allow create, update, delete: if isOwner(partnerId);
-      }
-
-      match /neighborhoods_fees/{feeId} {
-        allow read: if true;
-        allow create, update, delete: if isOwner(partnerId);
-      }
-      
-      match /orders/{orderId} {
-        allow read: if true;
-        allow create: if isAuthenticated();
-        allow update, delete: if isAuthenticated() && (
-          resource.data.userId == request.auth.uid || isOwner(partnerId)
-        );
-        
-        match /review/{reviewId} {
-          allow read: if true;
-          allow create: if isAuthenticated();
-          allow update, delete: if isAuthenticated() && (
-            resource.data.userId == request.auth.uid
-          );
-        }
-      }
-      
-      match /app_fees/{feeId} {
-        allow read: if true;
-        allow create, update, delete: if isOwner(partnerId) || isAdmin();
-      }
-      
-      match /products/{productId} {
-        allow read: if true;
-        allow create, update, delete: if isOwner(partnerId);
-      }
-      
-      match /categories/{categoryId} {
-        allow read: if true;
-        allow create, update, delete: if isOwner(partnerId);
-      }
-
-      match /billing_control/{docId} {
-        allow read: if isAuthenticated() && (isOwner(partnerId) || isAdmin());
-        allow create, update, delete: if isAdmin();
-      }
-      
-      match /invoices/{invoiceId} {
-        allow read: if isAuthenticated() && (isOwner(partnerId) || isAdmin());
-        allow create, update: if isOwner(partnerId) || isAdmin();
-        allow delete: if isAdmin();
-      }
-      
-      // Regras para a subcoleção credits (cupons globais)
-      match /credits/{creditId} {
-        allow read: if isAuthenticated() && isOwner(partnerId);
-        allow create: if isAuthenticated() && isOwner(partnerId);
-        allow update: if isAuthenticated() && isOwner(partnerId);
-        allow delete: if isAdmin();
-      }
-      
-      // Regras para notificações do parceiro
-      match /notifications/{notificationId} {
-        allow read: if isAuthenticated() && isOwner(partnerId);
-        allow create: if isAuthenticated() && isOwner(partnerId);
-        allow update: if isAuthenticated() && isOwner(partnerId);
-        allow delete: if isAuthenticated() && isOwner(partnerId);
-      }
+      allow create, delete: if isAuthenticated();
+      // ✅ CORREÇÃO: Permitir que usuários autenticados atualizem apenas usedBy e updatedAt
+      allow update: if isAuthenticated() && isOnlyUsageUpdate();
     }
-    
-    // Regras para avaliações globais
+
+    match /banners/{bannerId} {
+      allow read: if true;
+      allow create, update, delete: if isAuthenticated();
+    }
+
+    match /devices/{deviceId} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+
     match /reviews/{reviewId} {
       allow read: if true;
       allow create: if isAuthenticated();
-      allow update, delete: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid
-      );
+      allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
-    
-    // Regras para categorias
+
     match /categories/{categoryId} {
       allow read: if true;
-      
+      allow create, update, delete: if isAuthenticated();
+
       match /subcategories/{subcategoryId} {
         allow read: if true;
+        allow create, update, delete: if isAuthenticated();
       }
     }
-    
-    // Regras para estrutura de localidades
+
     match /states/{stateId} {
       allow read: if true;
       allow write: if isAuthenticated();
@@ -201,40 +110,155 @@ service cloud.firestore {
         }
       }
     }
-    
+
     match /cities/{cityId} {
       allow read: if true;
     }
 
-    match /advertisements/{advertisementId} {
+    // Regras para a coleção admin
+    match /admin/{adminId} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if isAdmin();
+      
+      match /advertisements/{advertisementId} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
     }
-    
-    // Regras para notificações globais
-    match /notifications/{notificationId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
+
+    // ✅ ADICIONE ESTA REGRA AQUI (FORA DOS PARTNERS)
+    match /payments/{paymentId} {
+      allow read: if isAuthenticated() && (
+        resource.data.partnerId == request.auth.uid || isAdmin() || isCloudFunction()
+      );
+      allow create: if isAuthenticated() && request.resource.data.partnerId == request.auth.uid;
+      allow update: if isAdmin() || isCloudFunction();
+      allow delete: if isAdmin();
+    }
+
+    // ---------------- Regras para usuários ----------------
+
+    match /users/{userId} {
+      allow read: if true;
+      allow create: if isOwner(userId);
       allow update: if isAuthenticated();
-      allow delete: if isAuthenticated();
+      allow delete: if isOwner(userId);
+
+      match /usedCoupons/{couponId} {
+        allow read: if true;
+        allow create: if isAuthenticated();
+        allow update, delete: if isOwner(userId);
+      }
+
+      match /favorites/{favoriteId} {
+        allow read: if true;
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      match /orders/{orderId} {
+        allow read: if true;
+        allow create, update, delete: if isAuthenticated();
+
+        match /review/{reviewId} {
+          allow read: if true;
+          allow create, update, delete: if isAuthenticated();
+        }
+      }
+
+      match /addresses/{addressId} {
+        allow read: if true;
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      // Regra removida - movida para antes da regra global
     }
 
-    match /billing_control/{billingId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAdmin();
-    }
+    // ---------------- Regras para parceiros ----------------
 
-    // Permite que o parceiro autenticado leia e escreva seus próprios pedidos
-    match /partners/{partnerId}/orders/{orderId} {
-      allow read, write: if request.auth != null && request.auth.uid == partnerId;
-    }
-
-    // Permite que o parceiro autenticado leia e escreva suas próprias taxas
-    match /partners/{partnerId}/app_fees/{feeId} {
+    match /partners/{partnerId} {
       allow read: if true;
-      allow create, update, delete: if request.auth.uid == partnerId;
-    }
-    
+      allow create: if isOwner(partnerId);
+      allow update: if isOwner(partnerId) || (
+        isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isActive', 'lastUpdated'])
+      );
+      allow delete: if isOwner(partnerId);
 
+      match /billing_control/{docId} {
+        allow read: if isAuthenticated() && (isOwner(partnerId) || isAdmin());
+        allow create, update, delete: if isAdmin();
+      }
+      
+      match /saved_cards/{cardId} {
+        allow read, create, update, delete: if isOwner(partnerId);
+      }
+
+      match /invoices/{invoiceId} {
+        allow read: if isAuthenticated() && (isOwner(partnerId) || isAdmin() || isCloudFunction());
+        allow create, update: if isOwner(partnerId) || isAdmin() || isCloudFunction();
+        allow delete: if isAdmin();
+      }
+
+      match /app_fees/{feeId} {
+        allow read: if isAuthenticated() && (isOwner(partnerId) || isAdmin() || isCloudFunction());
+        allow create, update: if isOwner(partnerId) || isAdmin() || isCloudFunction();
+        allow delete: if isAdmin();
+      }
+
+      match /coupons/{couponId} {
+        allow read: if true;
+        allow create, delete: if isOwner(partnerId);
+        // ✅ CORREÇÃO: Permitir que usuários autenticados atualizem apenas usedBy e updatedAt
+        allow update: if isOwner(partnerId) || (isAuthenticated() && isOnlyUsageUpdate());
+      }
+
+      match /delivery_fees/{feeId} {
+        allow read: if true;
+        allow create, update, delete: if isOwner(partnerId);
+      }
+
+      match /fees/{feeId} {
+        allow read: if true;
+        allow create, update, delete: if isOwner(partnerId);
+      }
+
+      match /neighborhoods_fees/{feeId} {
+        allow read: if true;
+        allow create, update, delete: if isOwner(partnerId);
+      }
+
+      match /orders/{orderId} {
+        allow read: if true;
+        allow create: if isAuthenticated();
+        allow update, delete: if isAuthenticated();
+
+        match /review/{reviewId} {
+          allow read: if true;
+          allow create: if isAuthenticated();
+          allow update, delete: if isAuthenticated();
+        }
+      }
+
+      match /products/{productId} {
+        allow read: if true;
+        allow create, update, delete: if isOwner(partnerId);
+      }
+
+      match /categories/{categoryId} {
+        allow read: if true;
+        allow create, update, delete: if isOwner(partnerId);
+      }
+
+      match /notifications/{notificationId} {
+        allow read: if isAuthenticated() && isOwner(partnerId);
+        allow create: if isAuthenticated() || isCloudFunction(); // Permitir que usuários autenticados e Cloud Functions criem notificações
+        allow update, delete: if isAuthenticated() && isOwner(partnerId);
+      }
+
+      match /usedCoupons/{couponId} {
+        allow read: if true;
+        allow create: if isAuthenticated();
+        allow update, delete: if isOwner(partnerId);
+      }
+    }
   }
 } 

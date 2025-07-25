@@ -15,6 +15,7 @@ import { FloatingButton } from '../../../components/FloatingButton';
 import { colors } from '../../../styles/theme/colors';
 import { establishmentSettingsService } from '../../../services/establishmentSettingsService';
 import { notificationService } from '../../../services/notificationService';
+import { useAuth } from '../../../contexts/AuthContext';
 
 // Adicionando interface para o tipo do cupom
 interface CouponApplied {
@@ -39,6 +40,7 @@ interface PedidoExtended extends Pedido {
 export default function Pedidos() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { pedidosPendentes, aceitarPedido, recusarPedido } = usePedidos();
+  const { user } = useAuth();
   const pedidosPendentesExtended = pedidosPendentes as PedidoExtended[];
 
   useEffect(() => {
@@ -53,10 +55,7 @@ export default function Pedidos() {
     }
   };
 
-  console.log('Pedidos pendentes na tela:', pedidosPendentes);
-
   if (!pedidosPendentes || pedidosPendentes.length === 0) {
-    console.log('Nenhum pedido pendente encontrado');
     return (
       <SafeAreaView style={styles.safeArea}>
         <EmptyState
@@ -115,10 +114,11 @@ export default function Pedidos() {
       // Aceita o pedido
       await aceitarPedido(pedido);
       
-      // Enviar notificação de pedido aceito
-      await notificationService.sendOrderNotification(
+      // Enviar notificação de pedido aceito (como cupom)
+      await notificationService.sendOrderStatusNotificationToUser(
         pedido.userId,
-        notificationService.getOrderStatusMessage('accepted', pedido.id, pedido.userId)
+        pedido.id,
+        'preparing'
       );
     } catch (error) {
       console.error('Erro ao aceitar pedido:', error);
@@ -137,10 +137,11 @@ export default function Pedidos() {
       // Recusa o pedido
       await recusarPedido(pedidoId);
       
-      // Enviar notificação de pedido recusado
-      await notificationService.sendOrderNotification(
+      // Enviar notificação de pedido cancelado (como cupom)
+      await notificationService.sendOrderStatusNotificationToUser(
         userId,
-        notificationService.getOrderStatusMessage('cancelled', pedidoId, userId)
+        pedidoId,
+        'cancelled'
       );
     } catch (error) {
       console.error('Erro ao recusar pedido:', error);
@@ -152,7 +153,6 @@ export default function Pedidos() {
   };
 
   const renderPedido = ({ item }: { item: PedidoExtended }) => {
-    console.log('Renderizando pedido:', item);
     const isExpanded = expandedId === item.id;
     
     // Formata o endereço de forma simplificada
@@ -166,7 +166,7 @@ export default function Pedidos() {
       <View style={styles.card}>
         {/* Cabeçalho com ID do Pedido */}
         <View style={styles.orderIdHeader}>
-          <Text style={styles.orderId}>Pedido #{item.id.slice(-4)}</Text>
+          <Text style={styles.orderId}>Pedido #{item.id.slice(0, 8)}</Text>
           <TouchableOpacity onPress={() => handleExpandPedido(item.id)}>
             <Ionicons 
               name={isExpanded ? "chevron-up" : "chevron-down"} 
@@ -202,56 +202,64 @@ export default function Pedidos() {
               Total: R$ {item.finalPrice.toFixed(2)}
             </Text>
           </View>
+          <View style={styles.infoRow}>
+            <Ionicons name="list-outline" size={16} color="#666" />
+            <Text style={styles.infoText}>
+              {item.items.length} {item.items.length === 1 ? 'item' : 'itens'} no pedido
+            </Text>
+          </View>
         </View>
 
-        {/* Lista de Itens */}
-        <View style={styles.content}>
-          <Text style={styles.sectionTitle}>Itens do Pedido</Text>
-          {item.items.map((produto, index) => {
-            // Calcular preço total do item incluindo opcionais
-            let precoItemComOpcionais = produto.price * produto.quantity;
-            if (produto.options && produto.options.length > 0) {
-              produto.options.forEach(option => {
-                precoItemComOpcionais += (option.price || 0);
-              });
-            }
-            
-            return (
-              <View key={index} style={styles.itemContainer}>
-                <View style={styles.itemRow}>
-                  <Text style={styles.itemQuantity}>{produto.quantity}x</Text>
-                  <Text style={styles.itemName}>{produto.name}</Text>
-                  <Text style={styles.itemPrice}>
-                    R$ {(produto.price * produto.quantity).toFixed(2)}
-                  </Text>
-                </View>
-                {produto.options && produto.options.length > 0 && (
-                  <View style={styles.optionsContainer}>
-                    {produto.options.map((option, optionIndex) => (
-                      <View key={`option-${optionIndex}`} style={styles.optionRow}>
-                        <Text style={styles.optionQuantity}>1x</Text>
-                        <Text style={styles.optionName}>{option.name}</Text>
-                        <Text style={styles.optionPrice}>
-                          R$ {(option.price || 0).toFixed(2)}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-                
-                {/* Total do item com opcionais */}
-                {produto.options && produto.options.length > 0 && (
-                  <View style={styles.itemTotalRow}>
-                    <Text style={styles.itemTotalLabel}>Total:</Text>
-                    <Text style={styles.itemTotalValue}>
-                      R$ {precoItemComOpcionais.toFixed(2)}
+        {/* Lista de Itens - Só mostra quando expandido */}
+        {isExpanded && (
+          <View style={styles.content}>
+            <Text style={styles.sectionTitle}>Itens do Pedido</Text>
+            {item.items.map((produto, index) => {
+              // Calcular preço total do item incluindo opcionais
+              let precoItemComOpcionais = produto.price * produto.quantity;
+              if (produto.options && produto.options.length > 0) {
+                produto.options.forEach(option => {
+                  precoItemComOpcionais += (option.price || 0);
+                });
+              }
+              
+              return (
+                <View key={index} style={styles.itemContainer}>
+                  <View style={styles.itemRow}>
+                    <Text style={styles.itemQuantity}>{produto.quantity}x</Text>
+                    <Text style={styles.itemName}>{produto.name}</Text>
+                    <Text style={styles.itemPrice}>
+                      R$ {(produto.price * produto.quantity).toFixed(2)}
                     </Text>
                   </View>
-                )}
-              </View>
-            );
-          })}
-        </View>
+                  {produto.options && produto.options.length > 0 && (
+                    <View style={styles.optionsContainer}>
+                      {produto.options.map((option, optionIndex) => (
+                        <View key={`option-${optionIndex}`} style={styles.optionRow}>
+                          <Text style={styles.optionQuantity}>1x</Text>
+                          <Text style={styles.optionName}>{option.name}</Text>
+                          <Text style={styles.optionPrice}>
+                            R$ {(option.price || 0).toFixed(2)}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  
+                  {/* Total do item com opcionais */}
+                  {produto.options && produto.options.length > 0 && (
+                    <View style={styles.itemTotalRow}>
+                      <Text style={styles.itemTotalLabel}>Total:</Text>
+                      <Text style={styles.itemTotalValue}>
+                        R$ {precoItemComOpcionais.toFixed(2)}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        )}
 
         {/* Informações do Cliente e Detalhes */}
         {isExpanded && (

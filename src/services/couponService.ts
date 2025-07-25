@@ -56,7 +56,10 @@ const sendCouponNotificationToUsers = async (
 
     const title = '🎉 Novo Cupom Disponível!';
 
-    const body = `${storeName || 'Estabelecimento'} criou um novo cupom: ${coupon.code} - ${discountText}`;
+    // Buscar cidade do estabelecimento
+    let storeCity = await getStoreCity(coupon.storeId);
+    if (!storeCity) storeCity = 'Cidade não informada';
+    const body = `${storeName || 'Estabelecimento'} (${storeCity}) criou um novo cupom: ${coupon.code} - ${discountText}`;
 
     // Limitar o número de usuários para evitar sobrecarga (máximo 100)
     const limitedUsers = users.slice(0, 100);
@@ -81,7 +84,8 @@ const sendCouponNotificationToUsers = async (
             discountType: coupon.discountType,
             discountValue: coupon.value,
             storeId: coupon.storeId,
-            storeName
+            storeName,
+            city: storeCity
           }
         }).catch(error => {
           console.error(`Erro ao enviar notificação para usuário ${userId}:`, error);
@@ -109,7 +113,8 @@ const sendCouponNotificationToUsers = async (
         discountType: coupon.discountType,
         discountValue: coupon.value,
         storeId: coupon.storeId,
-        storeName
+        storeName,
+        city: storeCity
       });
       console.log('✅ Notificação push local enviada para o parceiro');
     } catch (pushError) {
@@ -133,6 +138,23 @@ const getStoreName = async (storeId: string): Promise<string | undefined> => {
     return undefined;
   } catch (error) {
     console.error('Erro ao buscar nome do estabelecimento:', error);
+    return undefined;
+  }
+};
+
+// Função para buscar cidade do estabelecimento
+const getStoreCity = async (storeId: string): Promise<string | undefined> => {
+  try {
+    const partnerRef = doc(db, 'partners', storeId);
+    const partnerDoc = await getDoc(partnerRef);
+    if (partnerDoc.exists()) {
+      const data = partnerDoc.data();
+      // Tenta pegar o nome da cidade amigável, depois o id, depois undefined
+      return data.address?.cityName || data.address?.city || undefined;
+    }
+    return undefined;
+  } catch (error) {
+    console.error('Erro ao buscar cidade do estabelecimento:', error);
     return undefined;
   }
 };

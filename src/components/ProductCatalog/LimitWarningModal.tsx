@@ -53,5 +53,56 @@ export function LimitWarningModal({
 }
 
 const styles = StyleSheet.create({
-  // ... (copiar os estilos relevantes do arquivo original)
+  limitWarningContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  limitWarningContent: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 24,
+    alignItems: 'center',
+    maxWidth: 300,
+  },
+  limitWarningText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  limitWarningDetails: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+  warningButtons: {
+    flexDirection: 'row',
+    marginTop: 20,
+    gap: 12,
+  },
+  closeButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#f0f0f0',
+  },
+  closeButtonText: {
+    color: '#666',
+    fontWeight: '600',
+  },
+  upgradeButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#FFA500',
+  },
+  upgradeButtonText: {
+    color: 'white',
+    fontWeight: '600',
+  },
 }); 

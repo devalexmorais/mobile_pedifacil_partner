@@ -10,6 +10,8 @@ import {
   ActivityIndicator,
   LogBox,
   SafeAreaView,
+  Modal,
+  Dimensions,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Picker } from '@react-native-picker/picker';
@@ -38,6 +40,9 @@ interface DocumentsFormData {
 // Função para capitalizar a primeira letra de cada palavra
 const capitalizeWords = (s: string): string => s.replace(/\b\w/g, c => c.toUpperCase());
 
+// Dimensões da tela para responsividade
+const { width: screenWidth } = Dimensions.get('window');
+
 export default function Documents() {
   const router = useRouter();
   const rawParams = useLocalSearchParams();
@@ -61,6 +66,10 @@ export default function Documents() {
     subcategory: '',
     document: '',
   });
+
+  // Estados para controlar os modais dos pickers
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [showSubcategoryPicker, setShowSubcategoryPicker] = useState(false);
 
   const updateFormData = (field: Partial<DocumentsFormData>) => {
     setFormData(prev => ({
@@ -287,8 +296,6 @@ export default function Documents() {
     try {
       setLoading(true);
 
-
-
       // Verificação mais detalhada dos dados
       if (!params.name || !params.email || !params.password || 
           !params.phone || !params.street || !params.number || 
@@ -331,8 +338,6 @@ export default function Documents() {
         if ('error' in result) {
           throw new Error(String(result.error));
         }
-
-
 
         Alert.alert(
           'Sucesso!',
@@ -394,9 +399,31 @@ export default function Documents() {
     router.back();
   };
 
+  const getSelectedCategoryName = () => {
+    const selectedCategory = categories.find(category => category.id === formData.category);
+    return selectedCategory?.name || 'Selecione uma categoria';
+  };
+
+  const getSelectedSubcategoryName = () => {
+    const selectedSubcategory = subcategories.find(subcategory => subcategory.id === formData.subcategory);
+    return selectedSubcategory?.name || 'Selecione uma subcategoria';
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
+      <ScrollView 
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         <Text style={styles.title}>Dados do Estabelecimento</Text>
         <Text style={styles.subtitle}>Complete as informações do seu negócio</Text>
 
@@ -424,57 +451,56 @@ export default function Documents() {
           />
           {errors.document ? <Text style={styles.errorText}>{errors.document}</Text> : null}
 
-          {/* Categoria - mantendo o Picker */}
+          {/* Categoria */}
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Categoria</Text>
-            <View style={[styles.pickerContainer, errors.category ? styles.pickerError : null]}>
-              <Picker
-                selectedValue={formData.category}
-                onValueChange={(itemValue) => {
-                  updateFormData({ category: itemValue });
-                  if (itemValue) {
-                    loadSubcategories(itemValue);
-                  }
-                }}
-                style={styles.picker}
-              >
-                <Picker.Item label="Selecione uma categoria" value="" />
-                {categories.map((category) => (
-                  <Picker.Item key={category.id} label={category.name} value={category.id} />
-                ))}
-              </Picker>
-            </View>
-            {errors.category ? <Text style={styles.errorText}>{errors.category}</Text> : null}
+            <TouchableOpacity
+              style={[styles.pickerButton, errors.category && styles.pickerError]}
+              onPress={() => setShowCategoryPicker(true)}
+              activeOpacity={0.7}
+            >
+              <Text style={[
+                styles.pickerButtonText,
+                !formData.category && styles.pickerButtonPlaceholder
+              ]}>
+                {getSelectedCategoryName()}
+              </Text>
+            </TouchableOpacity>
+            {errors.category && <Text style={styles.errorText}>{errors.category}</Text>}
           </View>
 
-          {/* Subcategoria - mantendo o Picker */}
+          {/* Subcategoria */}
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Subcategoria</Text>
-            <View style={[styles.pickerContainer, errors.subcategory ? styles.pickerError : null]}>
-              <Picker
-                selectedValue={formData.subcategory}
-                onValueChange={(itemValue) => updateFormData({ subcategory: itemValue })}
-                style={styles.picker}
-                enabled={!!formData.category}
-              >
-                <Picker.Item label="Selecione uma subcategoria" value="" />
-                {subcategories.map((subcategory) => (
-                  <Picker.Item key={subcategory.id} label={subcategory.name} value={subcategory.id} />
-                ))}
-              </Picker>
-            </View>
-            {errors.subcategory ? <Text style={styles.errorText}>{errors.subcategory}</Text> : null}
+            <TouchableOpacity
+              style={[
+                styles.pickerButton, 
+                errors.subcategory && styles.pickerError,
+                !formData.category && styles.pickerButtonDisabled
+              ]}
+              onPress={() => formData.category && setShowSubcategoryPicker(true)}
+              activeOpacity={0.7}
+              disabled={!formData.category}
+            >
+              <Text style={[
+                styles.pickerButtonText,
+                !formData.subcategory && styles.pickerButtonPlaceholder
+              ]}>
+                {getSelectedSubcategoryName()}
+              </Text>
+            </TouchableOpacity>
+            {errors.subcategory && <Text style={styles.errorText}>{errors.subcategory}</Text>}
           </View>
-
         </View>
 
         <TouchableOpacity
           style={[styles.button, loading && styles.buttonDisabled]}
           onPress={handleNext}
           disabled={loading}
+          activeOpacity={0.8}
         >
           {loading ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={colors.white} />
           ) : (
             <Text style={styles.buttonText}>Finalizar Cadastro</Text>
           )}
@@ -483,10 +509,81 @@ export default function Documents() {
         <TouchableOpacity 
           style={styles.backButton}
           onPress={handleBack}
+          activeOpacity={0.8}
         >
           <Text style={styles.backButtonText}>Voltar</Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
+
+      {/* Modal da Categoria */}
+      <Modal
+        visible={showCategoryPicker}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowCategoryPicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Selecione a Categoria</Text>
+              <TouchableOpacity onPress={() => setShowCategoryPicker(false)}>
+                <Text style={styles.modalCloseButton}>Fechar</Text>
+              </TouchableOpacity>
+            </View>
+            <Picker
+              selectedValue={formData.category}
+              onValueChange={(itemValue) => {
+                updateFormData({ 
+                  category: itemValue,
+                  subcategory: '' 
+                });
+                if (itemValue) {
+                  loadSubcategories(itemValue);
+                }
+                setShowCategoryPicker(false);
+              }}
+              style={styles.modalPicker}
+            >
+              <Picker.Item label="Selecione uma categoria" value="" />
+              {categories.map((category) => (
+                <Picker.Item key={category.id} label={category.name} value={category.id} />
+              ))}
+            </Picker>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal da Subcategoria */}
+      <Modal
+        visible={showSubcategoryPicker}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowSubcategoryPicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Selecione a Subcategoria</Text>
+              <TouchableOpacity onPress={() => setShowSubcategoryPicker(false)}>
+                <Text style={styles.modalCloseButton}>Fechar</Text>
+              </TouchableOpacity>
+            </View>
+            <Picker
+              selectedValue={formData.subcategory}
+              onValueChange={(itemValue) => {
+                updateFormData({ subcategory: itemValue });
+                setShowSubcategoryPicker(false);
+              }}
+              style={styles.modalPicker}
+            >
+              <Picker.Item label="Selecione uma subcategoria" value="" />
+              {subcategories.map((subcategory) => (
+                <Picker.Item key={subcategory.id} label={subcategory.name} value={subcategory.id} />
+              ))}
+            </Picker>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -497,19 +594,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    flex: 1,
-    padding: 30,
-    justifyContent: 'center',
+    flexGrow: 1,
+    paddingHorizontal: Math.min(30, screenWidth * 0.08),
+    paddingTop: 20,
+    paddingBottom: 40,
   },
   title: {
-    fontSize: 28,
+    fontSize: Math.min(28, screenWidth * 0.07),
     fontWeight: '600',
     color: colors.text.primary,
     marginBottom: 8,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: Math.min(16, screenWidth * 0.04),
     color: colors.text.secondary,
     marginBottom: 30,
     textAlign: 'center',
@@ -524,27 +622,38 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text.secondary,
     marginBottom: 8,
+    fontWeight: '500',
   },
-  pickerContainer: {
+  pickerButton: {
     borderWidth: 1,
     borderColor: colors.border.default,
     borderRadius: 8,
     backgroundColor: colors.inputBackground,
-    height: 60,
+    minHeight: 56,
     justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  pickerButtonDisabled: {
+    opacity: 0.5,
+    backgroundColor: colors.gray[100],
   },
   pickerError: {
     borderColor: colors.text.error,
+    borderWidth: 2,
   },
-  picker: {
-    height: 50,
+  pickerButtonText: {
+    fontSize: 16,
     color: colors.text.primary,
+  },
+  pickerButtonPlaceholder: {
+    color: colors.text.secondary,
   },
   errorText: {
     color: colors.text.error,
     fontSize: 12,
-    marginTop: -12,
-    marginBottom: 12,
+    marginTop: 4,
+    marginBottom: 8,
     marginLeft: 4,
   },
   button: {
@@ -586,5 +695,45 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     letterSpacing: 0.5,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+  },
+  // Estilos dos modais
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 40,
+    maxHeight: '70%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.default,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text.primary,
+  },
+  modalCloseButton: {
+    fontSize: 16,
+    color: colors.primary,
+    fontWeight: '500',
+  },
+  modalPicker: {
+    height: 200,
   },
 });

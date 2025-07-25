@@ -33,7 +33,6 @@ export default function NotificationsScreen() {
 
         // Ouvir por notificações recebidas em primeiro plano
         notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
-          console.log('Notificação recebida em primeiro plano:', notification);
           // Atualizar lista de notificações quando uma nova for recebida
           setRefreshing(true);
         });
@@ -41,7 +40,6 @@ export default function NotificationsScreen() {
         // Ouvir por notificações respondidas (clicadas pelo usuário)
         responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
           const data = response.notification.request.content.data;
-          console.log('Notificação clicada com dados:', data);
           
           // Navegar sempre para a tela de pedidos
           router.push('/(auth)/(tabs)/pedidos');
@@ -53,7 +51,6 @@ export default function NotificationsScreen() {
             appState.current.match(/inactive|background/) && 
             nextAppState === 'active'
           ) {
-            console.log('App voltou para o primeiro plano');
             // Atualizar notificações quando o app voltar para o primeiro plano
             setRefreshing(true);
           }

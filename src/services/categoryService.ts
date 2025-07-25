@@ -29,8 +29,6 @@ interface Category {
 export const categoryService = {
   async getCategories(): Promise<Category[]> {
     try {
-      console.log('Iniciando busca de categorias no Firebase...');
-      
       const categoriesRef = collection(db, 'categories');
       const categoriesSnapshot = await getDocs(categoriesRef);
       
@@ -55,7 +53,6 @@ export const categoryService = {
       });
 
       const categories = await Promise.all(categoriesPromises);
-      console.log('Categorias com subcategorias:', categories);
       return categories;
     } catch (error: any) {
       console.error('Erro ao buscar categorias:', error);
@@ -65,8 +62,6 @@ export const categoryService = {
 
   async getSubcategories(categoryId: string): Promise<Subcategory[]> {
     try {
-      console.log('Buscando subcategorias para categoria:', categoryId);
-      
       // Buscar subcategorias usando a subcoleção
       const subcategoriesRef = collection(db, 'categories', categoryId, 'subcategories');
       const subcategoriesSnapshot = await getDocs(subcategoriesRef);
@@ -76,7 +71,6 @@ export const categoryService = {
         name: doc.data().name
       }));
 
-      console.log('Subcategorias encontradas:', subcategories);
       return subcategories;
     } catch (error) {
       console.error('Erro ao buscar subcategorias:', error);
@@ -103,7 +97,6 @@ export const categoryService = {
   // Novo método para criar categoria personalizada para o parceiro
   async createPartnerCategory(name: string): Promise<Category> {
     try {
-      console.log('Criando categoria personalizada:', name);
       
       const auth = getAuth();
       const userId = auth.currentUser?.uid;
@@ -123,8 +116,6 @@ export const categoryService = {
       
       const docRef = await addDoc(partnerCategoriesRef, newCategory);
       
-      console.log('Categoria criada com ID:', docRef.id);
-      
       return {
         id: docRef.id,
         name
@@ -138,7 +129,6 @@ export const categoryService = {
   // Método para buscar categorias personalizadas do parceiro
   async getPartnerCategories(): Promise<Category[]> {
     try {
-      console.log('Buscando categorias personalizadas do parceiro...');
       
       const auth = getAuth();
       const userId = auth.currentUser?.uid;
@@ -156,7 +146,6 @@ export const categoryService = {
         name: doc.data().name
       }));
       
-      console.log('Categorias personalizadas encontradas:', categories);
       return categories;
     } catch (error: any) {
       console.error('Erro ao buscar categorias personalizadas:', error);

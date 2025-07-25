@@ -84,7 +84,7 @@ export const pushNotificationService = {
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#FFA500',
-        sound: true, // Garantir que tenha som
+        sound: 'default', // Garantir que tenha som
       });
     }
 
@@ -108,13 +108,12 @@ export const pushNotificationService = {
           allowCriticalAlerts: true,
           provideAppNotificationSettings: true,
           allowProvisional: true,
-          allowAnnouncements: true,
         },
       });
       
       permissionStatus = status === 'granted' ? 
         messaging.AuthorizationStatus.AUTHORIZED : 
-        messaging.AuthorizationStatus.NOT_AUTHORIZED;
+        messaging.AuthorizationStatus.DENIED;
     }
     
     const enabled =

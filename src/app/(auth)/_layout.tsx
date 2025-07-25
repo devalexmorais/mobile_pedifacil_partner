@@ -22,8 +22,6 @@ function CustomDrawerContent(props: any) {
   
   const handleLogout = async () => {
     try {
-      console.log('Iniciando processo de logout...');
-      
       // Para a verificação automática do status do estabelecimento
       establishmentService.stopAutoStatusCheck();
       
@@ -34,7 +32,6 @@ function CustomDrawerContent(props: any) {
       await AsyncStorage.removeItem('@auth_token');
       await AsyncStorage.removeItem('@user_data');
       
-      console.log('Logout bem sucedido, redirecionando...');
       if (isMounted.current) {
         // Usar setTimeout para adiar a navegação
         setTimeout(() => {
@@ -54,7 +51,6 @@ function CustomDrawerContent(props: any) {
       try {
         const token = await AsyncStorage.getItem('@auth_token');
         if (!token && isMounted.current) {
-          console.log('Token não encontrado, redirecionando para login...');
           // Usar setTimeout para adiar a navegação
           setTimeout(() => {
             router.replace('/');

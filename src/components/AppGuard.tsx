@@ -10,17 +10,7 @@ interface AppGuardProps {
 export function AppGuard({ children }: AppGuardProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { 
-    isAppBlocked, 
-    isBlocked,
-    dueAmount, 
-    dueDate, 
-    suspensionReason, 
-    blockedSince, 
-    overdueCount, 
-    daysOverdue,
-    isLoading 
-  } = usePaymentStatus();
+  const { paymentStatus, loading } = usePaymentStatus();
 
   // Rotas permitidas mesmo quando bloqueado
   const allowedRoutes = [
@@ -53,38 +43,31 @@ export function AppGuard({ children }: AppGuardProps) {
 
   // Redireciona automaticamente se o app estiver bloqueado e não estiver em rota permitida
   useEffect(() => {
-    if (!isLoading && isAppBlocked && !isRouteAllowed(pathname)) {
-      console.log('🚫 App bloqueado! Redirecionando para faturas...');
-      console.log('📍 Rota atual:', pathname);
-      console.log('🔒 Dias em atraso:', daysOverdue);
-      
+    if (!loading && paymentStatus.isBlocked && !isRouteAllowed(pathname)) {
       // Redireciona para faturas com flag de bloqueio
-      router.replace('/faturas?blocked=true');
+      router.replace('/faturas' as any);
     }
-  }, [isAppBlocked, pathname, isLoading, router, daysOverdue]);
+  }, [paymentStatus.isBlocked, pathname, loading, router]);
 
   // Ainda carregando status de pagamento
-  if (isLoading) {
+  if (loading) {
     return <>{children}</>;
   }
 
   // Se o app está bloqueado e não está em rota permitida, mostra tela de bloqueio
-  if (isAppBlocked && !isRouteAllowed(pathname)) {
-    console.log('🚫 Mostrando tela de bloqueio completo');
-    
+  if (paymentStatus.isBlocked && !isRouteAllowed(pathname)) {
     return (
       <AppBlockedScreen
-        dueAmount={dueAmount}
-        dueDate={dueDate}
-        suspensionReason={suspensionReason}
-        blockedSince={blockedSince}
-        overdueCount={overdueCount}
-        daysOverdue={daysOverdue}
+        dueAmount={paymentStatus.overdueInvoice?.amount || 0}
+        dueDate={paymentStatus.overdueInvoice?.endDate?.toDate?.() || new Date()}
+        suspensionReason={paymentStatus.blockingMessage}
+        blockedSince={paymentStatus.overdueInvoice?.endDate?.toDate?.() || new Date()}
+        overdueCount={1}
+        daysOverdue={paymentStatus.daysPastDue}
       />
     );
   }
 
   // App liberado ou rota permitida - mostra conteúdo normal
-  console.log('✅ App liberado ou rota permitida:', pathname);
   return <>{children}</>;
 } 

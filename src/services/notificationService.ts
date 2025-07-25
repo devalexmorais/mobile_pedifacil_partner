@@ -313,17 +313,135 @@ export const notificationService = {
 
   async sendOrderNotification(userId: string, data: NotificationData) {
     try {
+      console.log(`🚀 Iniciando envio de notificação para usuário: ${userId}`);
+      console.log('📋 Dados da notificação:', data);
+      
       const userNotificationsRef = collection(db, 'users', userId, 'notifications');
       
-      await addDoc(userNotificationsRef, {
-        ...data,
-        createdAt: serverTimestamp(),
-        read: false
-      });
+      // Limpar dados para remover campos undefined
+      const cleanData: any = {};
+      if (data.data) {
+        Object.keys(data.data).forEach(key => {
+          if (data.data[key] !== undefined) {
+            cleanData[key] = data.data[key];
+          }
+        });
+      }
       
-      console.log('Notificação enviada com sucesso');
+      // Preparar dados da notificação (mesmo formato do cupom)
+      const notificationData = {
+        title: data.title,
+        body: data.body,
+        data: cleanData,
+        read: false,
+        createdAt: serverTimestamp()
+      };
+      
+      console.log('📝 Salvando notificação no Firestore...');
+      console.log('🧹 Dados limpos:', notificationData);
+      const docRef = await addDoc(userNotificationsRef, notificationData);
+      
+      console.log(`✅ Notificação salva com sucesso! ID: ${docRef.id}`);
+      
+      // Tentar enviar notificação push também
+      try {
+        await this.sendPushNotification(data.title, data.body, {
+          ...cleanData,
+          notificationId: docRef.id,
+          type: 'order_status'
+        });
+        console.log('📱 Notificação push local enviada com sucesso');
+      } catch (pushError) {
+        console.warn('⚠️ Erro ao enviar notificação push local:', pushError);
+        // Não falhar se a notificação push falhar
+      }
+      
+      return docRef.id;
     } catch (error) {
-      console.error('Erro ao enviar notificação:', error);
+      console.error('❌ Erro ao enviar notificação:', error);
+      console.error('🔍 Detalhes do erro:', {
+        userId,
+        data,
+        errorMessage: error instanceof Error ? error.message : 'Erro desconhecido',
+        errorCode: error instanceof Error ? (error as any).code : 'UNKNOWN'
+      });
+      throw error;
+    }
+  },
+
+  // Nova função para enviar notificação de pedido para usuário específico (como cupom)
+  async sendOrderStatusNotificationToUser(userId: string, orderId: string, status: string, partnerId?: string) {
+    try {
+      console.log(`🚀 Enviando notificação de status para usuário: ${userId}, pedido: ${orderId}, status: ${status}`);
+      
+      // Gerar mensagem baseada no status
+      const getNotificationData = (status: string): { title: string; body: string } => {
+        switch (status) {
+          case 'preparing':
+            return {
+              title: 'Pedido Aceito',
+              body: `Seu pedido #${orderId.slice(-4)} foi aceito e está sendo preparado!`
+            };
+          case 'ready':
+            return {
+              title: 'Pedido Pronto',
+              body: `Seu pedido #${orderId.slice(-4)} está pronto!`
+            };
+          case 'out_for_delivery':
+            return {
+              title: 'Pedido em Entrega',
+              body: `Seu pedido #${orderId.slice(-4)} saiu para entrega!`
+            };
+          case 'delivered':
+            return {
+              title: 'Pedido Entregue',
+              body: `Seu pedido #${orderId.slice(-4)} foi entregue. Bom apetite!`
+            };
+          case 'cancelled':
+            return {
+              title: 'Pedido Cancelado',
+              body: `Seu pedido #${orderId.slice(-4)} foi cancelado.`
+            };
+          default:
+            return {
+              title: 'Status do Pedido Atualizado',
+              body: `O status do seu pedido #${orderId.slice(-4)} foi atualizado.`
+            };
+        }
+      };
+      
+      const notificationData = getNotificationData(status);
+      
+      // Preparar dados da notificação sem campos undefined
+      const notificationDataObj: any = {
+        orderId,
+        status,
+        userId,
+        type: 'order_status'
+      };
+      
+      // Adicionar partnerId apenas se não for undefined
+      if (partnerId) {
+        notificationDataObj.partnerId = partnerId;
+      }
+      
+      const notificationPayload = {
+        id: orderId,
+        title: notificationData.title,
+        body: notificationData.body,
+        createdAt: new Date(),
+        read: false,
+        data: notificationDataObj
+      };
+      
+      // Enviar notificação usando a mesma função do cupom
+      const notificationId = await this.sendOrderNotification(userId, notificationPayload);
+      
+      console.log(`✅ Notificação de status enviada com sucesso! ID: ${notificationId}`);
+      return notificationId;
+      
+    } catch (error) {
+      console.error('❌ Erro ao enviar notificação de status:', error);
       throw error;
     }
   },
@@ -412,6 +530,32 @@ export const notificationService = {
       console.log('Notificação de teste enviada:', result.data);
     } catch (error) {
       console.error('Erro ao enviar notificação de teste:', error);
+    }
+  },
+
+  // Função de teste para verificar se as notificações estão funcionando
+  async testNotification(userId: string): Promise<void> {
+    try {
+      console.log('🧪 Iniciando teste de notificação...');
+      
+      const testNotification = await this.sendOrderNotification(userId, {
+        id: 'test-' + Date.now(),
+        title: '🧪 Teste de Notificação',
+        body: 'Esta é uma notificação de teste para verificar se o sistema está funcionando!',
+        createdAt: new Date(),
+        read: false,
+        data: {
+          type: 'test',
+          testId: Date.now()
+        }
+      });
+      
+      console.log('✅ Teste de notificação concluído com sucesso!');
+      console.log('📋 ID da notificação de teste:', testNotification);
+      
+    } catch (error) {
+      console.error('❌ Erro no teste de notificação:', error);
+      throw error;
     }
   },
 
@@ -588,4 +732,4 @@ export const notificationService = {
       throw error;
     }
   }
-}; 
+};

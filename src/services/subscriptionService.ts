@@ -90,8 +90,7 @@ class SubscriptionService {
       // Se não existir, cria um novo
       if (!customer) {
         customer = await mercadoPagoService.createCustomer({
-          ...customerData,
-          description: `Cliente PediFácil - ${partnerId}`
+          ...customerData
         });
       }
 
@@ -203,7 +202,7 @@ class SubscriptionService {
       const customerId = partnerSnap.data().mercadoPagoCustomerId;
       const cards = await mercadoPagoService.getCustomerCards(customerId);
 
-      return cards.map(card => ({
+      return cards.map((card: any) => ({
         id: card.id,
         first_six_digits: card.first_six_digits,
         last_four_digits: card.last_four_digits,
@@ -533,7 +532,7 @@ class SubscriptionService {
       const customerId = partnerSnap.data().mercadoPagoCustomerId;
 
       // Chama a Cloud Function para processar o pagamento
-      const { getFunctions, httpsCallable } = await import('firebase/functions');
+      const { getFunctions, httpsCallable } = require('firebase/functions');
       const functions = getFunctions();
       const processPayment = httpsCallable(functions, 'processSubscriptionPayment');
 

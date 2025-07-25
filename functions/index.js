@@ -1171,6 +1171,10 @@ exports.getUserRole = functions.https.onCall(async (data, context) => {
   }
 });
 
+// Cloud Function removida - não é mais necessária
+// As notificações agora são enviadas diretamente via sendOrderStatusNotificationToUser
+// (mesma lógica dos cupons que funciona perfeitamente)
+
 // Função para detectar novas notificações e enviar push
 exports.sendNotificationOnCreate = functions.firestore
   .document('partners/{partnerId}/notifications/{notificationId}')

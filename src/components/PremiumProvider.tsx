@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { PlanProvider } from '@/contexts/PlanContext';
-import { premiumService } from '@/services/premiumService';
+import { premiumService, PremiumStatus } from '@/services/premiumService';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface PremiumProviderProps {
@@ -9,10 +9,8 @@ interface PremiumProviderProps {
 
 export function PremiumProvider({ children }: PremiumProviderProps) {
   const { isAuthenticated } = useAuth();
-  const [premiumStatus, setPremiumStatus] = useState({
-    isPremium: false,
-    expirationDate: undefined,
-    features: undefined
+  const [premiumStatus, setPremiumStatus] = useState<PremiumStatus>({
+    isPremium: false
   });
 
   useEffect(() => {
@@ -20,9 +18,7 @@ export function PremiumProvider({ children }: PremiumProviderProps) {
       if (!isAuthenticated) return;
       
       try {
-        console.log('Verificando status premium...');
         const status = await premiumService.checkUserPremium();
-        console.log('Status premium recebido:', status);
         setPremiumStatus(status);
       } catch (error) {
         console.error('Erro ao carregar status premium:', error);

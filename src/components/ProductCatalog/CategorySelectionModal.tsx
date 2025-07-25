@@ -83,7 +83,6 @@ export function CategorySelectionModal({
       const trimmedName = newCategoryName.trim();
       const formattedName = trimmedName.charAt(0).toUpperCase() + trimmedName.slice(1);
       const newCategory = await categoryService.createPartnerCategory(formattedName);
-      console.log('Nova categoria criada:', newCategory);
       
       // Adiciona à lista de categorias personalizadas
       setCustomCategories(prev => [...prev, newCategory]);
