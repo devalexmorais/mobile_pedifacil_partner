@@ -188,14 +188,13 @@ export function usePaymentStatus() {
       return;
     }
 
-    console.log('🔄 Iniciando monitoramento em tempo real de faturas para:', user.uid);
+
 
     // Monitoramento em tempo real das faturas
     const invoicesRef = collection(db, 'partners', user.uid, 'invoices');
     const q = query(invoicesRef, orderBy('endDate', 'asc'));
 
     const unsubscribe = onSnapshot(q, async (snapshot) => {
-      console.log('🔄 MUDANÇA DETECTADA nas faturas - verificando status instantaneamente');
       
       try {
         setLoading(true);
@@ -208,7 +207,7 @@ export function usePaymentStatus() {
           const result = await verificarBloqueio();
           const data = result.data as any;
           
-          console.log('🔒 Status de bloqueio INSTANTÂNEO via Cloud Function:', data);
+
           
           const blockingMessage = data.isBlocked 
             ? `Estabelecimento bloqueado! Fatura vencida há ${data.daysPastDue} dias. Efetue o pagamento para continuar operando.`

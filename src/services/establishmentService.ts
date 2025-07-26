@@ -91,17 +91,7 @@ export const establishmentService = {
       if (partnerDoc.exists()) {
         const data = partnerDoc.data();
         
-        // DEBUG: Log dos dados lidos do Firestore
-        console.log('🔍 DEBUG - Dados lidos do Firestore:', {
-          isOpen: data.isOpen,
-          operationMode: data.operationMode,
-          closedDueToInactivity: data.closedDueToInactivity,
-          inactivityMessage: data.inactivityMessage,
-          lastStatusChange: data.lastStatusChange,
-          statusChangeReason: data.statusChangeReason,
-          // Verifica se ainda há estrutura aninhada
-          establishmentStatus: data.establishmentStatus
-        });
+
         
         const result = {
           isOpen: data.isOpen || false,
@@ -110,7 +100,7 @@ export const establishmentService = {
           statusChangeReason: data.statusChangeReason || 'Status inicial'
         };
         
-        console.log('🔍 DEBUG - Resultado retornado:', result);
+
         return result;
       }
 
@@ -152,7 +142,7 @@ export const establishmentService = {
         
         // Se ainda tem a estrutura aninhada antiga, migra e limpa
         if (data.establishmentStatus) {
-          console.log('🔄 LIMPANDO estrutura aninhada desnecessária...');
+
           
           const establishmentStatus = data.establishmentStatus;
           
@@ -174,12 +164,12 @@ export const establishmentService = {
           };
           
           await updateDoc(partnerRef, updateData);
-          console.log('✅ LIMPEZA concluída - estrutura simplificada');
+
         }
         
         // Limpeza adicional de campos desnecessários mesmo sem estrutura aninhada
         else if (data.hasUnSettledFees !== undefined || data.establishmentStatus !== undefined) {
-          console.log('🧹 LIMPANDO campos desnecessários...');
+
           
           const cleanupData: any = {};
           
@@ -817,12 +807,10 @@ export const establishmentService = {
       
       // Se estiver no modo manual, NÃO inicia timer
       if (data.operationMode === this.OPERATION_MODE.MANUAL) {
-        console.log('🎛️ Modo manual ativo - timer de verificação automática NÃO será iniciado (economia de recursos)');
         return;
       }
 
       // Se estiver no modo automático, inicia timer
-      console.log('⏰ Modo automático ativo - iniciando timer de verificação a cada 5 minutos');
       
       this._statusCheckInterval = setInterval(async () => {
         try {
@@ -834,14 +822,12 @@ export const establishmentService = {
           
           // Se mudou para manual, para o timer
           if (currentData.operationMode === this.OPERATION_MODE.MANUAL) {
-            console.log('🎛️ Modo mudou para manual - parando timer automático');
             this.stopAutoStatusCheck();
             return;
           }
 
           // Verifica se a loja está aberta manualmente
           if (currentData.isOpen && currentData.lastStatusChange && currentData.statusChangeReason?.includes('manualmente')) {
-            console.log('Loja aberta manualmente, ignorando verificação automática');
             return;
           }
 
@@ -861,7 +847,7 @@ export const establishmentService = {
                 lastStatusChange: new Date().toISOString(),
                 statusChangeReason: 'Fechado automaticamente - fora do horário de funcionamento'
               });
-              console.log('Loja fechada automaticamente - fora do horário de funcionamento');
+
             }
             return;
           }
@@ -877,7 +863,7 @@ export const establishmentService = {
                 ? 'Aberto automaticamente - dentro do horário de funcionamento'
                 : 'Fechado automaticamente - fora do horário de funcionamento'
             });
-            console.log(`Status atualizado automaticamente: isOpen=${shouldBeOpen}`);
+
           }
         } catch (error) {
           console.error('Erro ao verificar status:', error);
@@ -906,11 +892,8 @@ export const establishmentService = {
       // Verifica se a loja está aberta
       const isOpen = await this.isStoreOpen(user.uid);
       if (!isOpen) {
-        console.log('🏪 Loja fechada - não iniciará monitoramento de pedidos');
         return;
       }
-
-      console.log('🏪 Loja aberta - verificando pedidos pendentes existentes...');
 
       // Verifica se já existem pedidos pendentes
       const ordersRef = collection(db, 'partners', user.uid, 'orders');
@@ -931,7 +914,6 @@ export const establishmentService = {
         // Inicia o monitoramento de novos pedidos
         this.startNewOrdersMonitoring();
       } else {
-        console.log('✅ Nenhum pedido pendente - monitoramento ficará em standby');
         // Ainda assim inicia o listener para novos pedidos
         this.startNewOrdersMonitoring();
       }
@@ -951,7 +933,6 @@ export const establishmentService = {
         // Se a loja estiver fechada, cancelamos qualquer monitoramento existente e não iniciamos um novo
         if (!isOpen) {
           if (this._newOrdersUnsubscribe) {
-            console.log('Loja fechada, parando monitoramento de pedidos');
             this._newOrdersUnsubscribe();
             this._newOrdersUnsubscribe = null;
           }
@@ -979,15 +960,13 @@ export const establishmentService = {
           // Verifica se existem pedidos pendentes
           const hasPendingOrders = !snapshot.empty;
           
-          console.log(`📊 Monitor de pedidos: ${snapshot.size} pedido(s) pendente(s)`);
+
           
           // Se há pedidos pendentes, ativa o monitoramento de inatividade
           if (hasPendingOrders) {
-            console.log('🔔 Pedidos pendentes detectados, ativando monitoramento de inatividade');
             this._inactivityMonitoringActive = true;
             this.registerOrderActivity(); // Registra atividade e inicia timer
           } else {
-            console.log('✅ Nenhum pedido pendente, desativando monitoramento de inatividade');
             this._inactivityMonitoringActive = false;
             this.lastOrderProcessedTime = null;
             if (this._inactivityTimer) {
@@ -1020,9 +999,6 @@ export const establishmentService = {
               // (criado após o último snapshot)
               if (creationTime && creationTime > lastSnapshotTime) {
                 this.registerOrderActivity();
-                console.log('Novo pedido detectado, atualizando atividade da loja');
-              } else {
-                console.log('Pedido pendente existente detectado, ignorando para inatividade');
               }
             }
           });
@@ -1033,7 +1009,7 @@ export const establishmentService = {
           console.error('Erro ao monitorar novos pedidos:', error);
         });
         
-        console.log('Monitoramento de novos pedidos iniciado - loja aberta');
+
       }).catch(error => {
         console.error('Erro ao verificar status da loja para monitoramento:', error);
       });

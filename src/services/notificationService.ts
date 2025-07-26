@@ -236,8 +236,6 @@ export const notificationService = {
       } catch (error) {
         console.error('Erro ao obter token de notificação:', error);
       }
-    } else {
-      console.log('Notificações push requerem um dispositivo físico');
     }
   
     return token;
@@ -250,7 +248,6 @@ export const notificationService = {
       const token = await this.registerForPushNotificationsAsync();
       
       if (!token) {
-        console.log('Não foi possível obter token de notificação');
         return undefined;
       }
       
@@ -261,16 +258,13 @@ export const notificationService = {
 
       // Configurar listener para notificações recebidas quando o app está em primeiro plano
       const foregroundSubscription = Notifications.addNotificationReceivedListener(notification => {
-        console.log('Notificação recebida em primeiro plano:', notification);
+        // Notificação recebida em primeiro plano
       });
       
       // Configurar listener para notificações clicadas
       const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
-        console.log('Notificação respondida:', response);
-        
         // Processar dados da notificação quando o usuário clica
         const data = response.notification.request.content.data;
-        console.log('Dados da notificação:', data);
         
         // Aqui você pode adicionar lógica de navegação ou processamento
         // com base nos dados da notificação
@@ -301,7 +295,7 @@ export const notificationService = {
         }
       });
       
-      console.log('Token de notificação salvo com sucesso');
+
     } catch (error) {
       console.error('Erro ao salvar token de notificação:', error);
     }
@@ -398,8 +392,6 @@ export const notificationService = {
 
   async sendOrderNotification(userId: string, data: NotificationData) {
     try {
-      console.log(`🚀 Iniciando envio de notificação para usuário: ${userId}`);
-      console.log('📋 Dados da notificação:', data);
       
       const userNotificationsRef = collection(db, 'users', userId, 'notifications');
       
@@ -422,11 +414,7 @@ export const notificationService = {
         createdAt: serverTimestamp()
       };
       
-      console.log('📝 Salvando notificação no Firestore...');
-      console.log('🧹 Dados limpos:', notificationData);
       const docRef = await addDoc(userNotificationsRef, notificationData);
-      
-      console.log(`✅ Notificação salva com sucesso! ID: ${docRef.id}`);
       
       // Tentar enviar notificação push também
       try {
@@ -435,7 +423,7 @@ export const notificationService = {
           notificationId: docRef.id,
           type: 'order_status'
         });
-        console.log('📱 Notificação push local enviada com sucesso');
+
       } catch (pushError) {
         console.warn('⚠️ Erro ao enviar notificação push local:', pushError);
         // Não falhar se a notificação push falhar
@@ -457,7 +445,7 @@ export const notificationService = {
   // Nova função para enviar notificação de pedido para usuário específico (como cupom)
   async sendOrderStatusNotificationToUser(userId: string, orderId: string, status: string, partnerId?: string) {
     try {
-      console.log(`🚀 Enviando notificação de status para usuário: ${userId}, pedido: ${orderId}, status: ${status}`);
+
       
       // Gerar mensagem baseada no status
       const getNotificationData = (status: string): { title: string; body: string } => {
@@ -612,7 +600,7 @@ export const notificationService = {
         screen: params.screen || 'notifications'
       });
       
-      console.log('Notificação de teste enviada:', result.data);
+
     } catch (error) {
       console.error('Erro ao enviar notificação de teste:', error);
     }
@@ -621,7 +609,7 @@ export const notificationService = {
   // Função de teste para verificar se as notificações estão funcionando
   async testNotification(userId: string): Promise<void> {
     try {
-      console.log('🧪 Iniciando teste de notificação...');
+
       
       const testNotification = await this.sendOrderNotification(userId, {
         id: 'test-' + Date.now(),
@@ -677,7 +665,7 @@ export const notificationService = {
         createdAt: serverTimestamp()
       });
 
-      console.log(`✅ Notificação de inatividade criada para pedido ${orderId}`);
+
       
       // Também envia notificação push local
       await this.sendPushNotification(title, body, {
@@ -719,7 +707,7 @@ export const notificationService = {
         createdAt: serverTimestamp()
       });
 
-      console.log(`✅ Notificação de fechamento por inatividade criada (${canceledOrdersCount} pedidos cancelados)`);
+
       
       // Também envia notificação push local
       await this.sendPushNotification(title, body, {
@@ -783,7 +771,7 @@ export const notificationService = {
         createdAt: serverTimestamp()
       });
 
-      console.log(`✅ Notificação de cancelamentos em lote criada (${canceledOrders.length} pedidos)`);
+
       
       // Também envia notificação push local
       await this.sendPushNotification(title, body, {

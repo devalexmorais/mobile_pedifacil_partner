@@ -135,7 +135,7 @@ export const addressService = {
 
   async getNeighborhoods(stateId: string, cityId: string): Promise<Neighborhood[]> {
     try {
-      console.log('Buscando bairros para cidade:', cityId);
+
       
       const neighborhoodsRef = collection(
         db, 
@@ -152,7 +152,7 @@ export const addressService = {
         name: doc.data().name
       }));
 
-      console.log('Bairros encontrados:', neighborhoods);
+
       return neighborhoods;
     } catch (error) {
       console.error('Erro ao buscar bairros:', error);

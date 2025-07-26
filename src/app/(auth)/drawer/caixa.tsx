@@ -68,7 +68,6 @@ const getPaymentInfo = (method: string | undefined, paymentData?: any) => {
 const findOrderWithDetails = (orderId: string, ordersList: Order[]): Order | null => {
   const foundOrder = ordersList?.find(order => order.id === orderId);
   if (foundOrder) {
-    console.log('ENCONTROU PEDIDO COMPLETO:', JSON.stringify(foundOrder, null, 2));
     return foundOrder;
   }
   return null;
@@ -84,11 +83,7 @@ export default function Caixa() {
   // Efeito para registrar os dados do pedido selecionado
   useEffect(() => {
     if (selectedOrder) {
-      console.log('DADOS DO PEDIDO COMPLETOS:', JSON.stringify(selectedOrder, null, 2));
-      console.log('DADOS DO CLIENTE:', JSON.stringify({
-        userName: selectedOrder.userName,
-        customerName: selectedOrder.customerName
-      }, null, 2));
+      // Dados do pedido selecionado
     }
   }, [selectedOrder]);
 
@@ -100,10 +95,7 @@ export default function Caixa() {
         setError(null);
         const summary = await firebaseSalesService.getDaySales(selectedDate);
         
-        // Inspecionar os dados recebidos
-        if (summary && Array.isArray(summary.ordersList) && summary.ordersList.length > 0) {
-          console.log('AMOSTRA DE PEDIDO:', JSON.stringify(summary.ordersList[0], null, 2));
-        }
+
         
         setDaySummary(summary);
       } catch (err) {
@@ -279,11 +271,7 @@ export default function Caixa() {
                           safeOrder.items = [];
                         }
                         
-                        // Inspecionar especificamente o userName e outros dados importantes
-                        console.log(`PEDIDO ${safeOrder.id} SELECIONADO:`, JSON.stringify({
-                          userName: safeOrder.userName,
-                          customerName: safeOrder.customerName
-                        }, null, 2));
+
                         
                         setSelectedOrder(safeOrder);
                       }}

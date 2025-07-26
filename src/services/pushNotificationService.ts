@@ -117,7 +117,6 @@ export const pushNotificationService = {
   // Obter token FCM
   async getFCMToken() {
     if (!Device.isDevice) {
-      console.log('Notificações push requerem um dispositivo físico');
       return null;
     }
     
