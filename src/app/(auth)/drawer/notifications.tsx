@@ -92,23 +92,17 @@ export default function NotificationsScreen() {
   // Recarregar notificações quando a tela for focada
   useFocusEffect(
     useCallback(() => {
-      if (refreshing) {
-        // Se já estivermos recarregando, o listener irá atualizar
-        return;
+      // Não recarregar automaticamente quando a tela é focada
+      // O listener em tempo real já mantém os dados atualizados
+      // Apenas garantir que o loading seja removido se ainda estiver ativo
+      if (loading) {
+        setLoading(false);
       }
-      
-      setRefreshing(true);
-      
-      // O listener em tempo real irá atualizar os dados
-      // Este setTimeout apenas garante que o indicador de refresh apareça por tempo suficiente
-      setTimeout(() => {
-        setRefreshing(false);
-      }, 500);
       
       return () => {
         // cleanup if needed
       };
-    }, [])
+    }, [loading])
   );
 
   // Função para lidar com refresh manual

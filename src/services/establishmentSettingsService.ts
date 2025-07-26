@@ -34,29 +34,24 @@ interface PaymentOptions {
 export const establishmentSettingsService = {
   async initializeSettings() {
     try {
-      const currentUser = auth.currentUser || getAuth().currentUser;
+      const currentUser = auth.currentUser;
       
       if (!currentUser) {
-        console.log('Nenhum usuário autenticado para inicializar configurações');
         return;
       }
       
       const uid = currentUser.uid;
-      console.log('Inicializando configurações para o parceiro:', uid);
       
       const partnerRef = doc(db, 'partners', uid);
       const partnerSnap = await getDoc(partnerRef);
       
       if (!partnerSnap.exists()) {
-        console.log('Parceiro não encontrado no Firestore');
         return;
       }
       
       const partnerData = partnerSnap.data();
       
       if (!partnerData.settings) {
-        console.log('Configurações não encontradas, utilizando padrões do registro');
-        
         const defaultSettings = {
           delivery: {
             enabled: true,
@@ -95,11 +90,9 @@ export const establishmentSettingsService = {
         };
         
         await setDoc(partnerRef, { settings: defaultSettings }, { merge: true });
-        console.log('Configurações padrão inicializadas com sucesso');
         return defaultSettings;
       }
       
-      console.log('Configurações já existem para este parceiro');
       return partnerData.settings;
     } catch (error) {
       console.error('Erro ao inicializar configurações:', error);
@@ -109,7 +102,7 @@ export const establishmentSettingsService = {
 
   async getPickupSettings() {
     try {
-      const currentUser = auth.currentUser || getAuth().currentUser;
+      const currentUser = auth.currentUser;
       
       if (!currentUser) {
         throw new Error('Usuário não autenticado');
@@ -141,7 +134,7 @@ export const establishmentSettingsService = {
 
   async getDeliveryTime() {
     try {
-      const currentUser = auth.currentUser || getAuth().currentUser;
+      const currentUser = auth.currentUser;
       
       if (!currentUser) {
         throw new Error('Usuário não autenticado');
@@ -178,7 +171,7 @@ export const establishmentSettingsService = {
 
   async getPaymentOptions() {
     try {
-      const currentUser = auth.currentUser || getAuth().currentUser;
+      const currentUser = auth.currentUser;
       
       if (!currentUser) {
         throw new Error('Usuário não autenticado');
@@ -221,7 +214,7 @@ export const establishmentSettingsService = {
 
   async getSchedule() {
     try {
-      const currentUser = auth.currentUser || getAuth().currentUser;
+      const currentUser = auth.currentUser;
       
       if (!currentUser) {
         throw new Error('Usuário não autenticado');
@@ -258,7 +251,7 @@ export const establishmentSettingsService = {
 
   async savePickupSettings(allowPickup: boolean, estimatedTime: string): Promise<boolean> {
     try {
-      const currentUser = auth.currentUser || getAuth().currentUser;
+      const currentUser = auth.currentUser;
       
       if (!currentUser) {
         throw new Error('Usuário não autenticado');
@@ -276,7 +269,6 @@ export const establishmentSettingsService = {
         }
       }, { merge: true });
       
-      console.log('Configurações de retirada salvas com sucesso');
       return true;
     } catch (error) {
       console.error('Erro ao salvar configurações de retirada:', error);
@@ -286,7 +278,7 @@ export const establishmentSettingsService = {
 
   async saveDeliveryTime(minTime: string, maxTime: string): Promise<boolean> {
     try {
-      const currentUser = auth.currentUser || getAuth().currentUser;
+      const currentUser = auth.currentUser;
       
       if (!currentUser) {
         throw new Error('Usuário não autenticado');
@@ -314,7 +306,6 @@ export const establishmentSettingsService = {
         }
       }, { merge: true });
       
-      console.log('Configurações de tempo de entrega salvas com sucesso');
       return true;
     } catch (error) {
       console.error('Erro ao salvar configurações de tempo de entrega:', error);
@@ -324,7 +315,7 @@ export const establishmentSettingsService = {
 
   async saveMinimumOrderAmount(minimumOrderAmount: string): Promise<boolean> {
     try {
-      const currentUser = auth.currentUser || getAuth().currentUser;
+      const currentUser = auth.currentUser;
       
       if (!currentUser) {
         throw new Error('Usuário não autenticado');
@@ -355,7 +346,6 @@ export const establishmentSettingsService = {
         }
       }, { merge: true });
       
-      console.log('Valor mínimo do pedido salvo com sucesso');
       return true;
     } catch (error) {
       console.error('Erro ao salvar valor mínimo do pedido:', error);
@@ -365,7 +355,7 @@ export const establishmentSettingsService = {
 
   async savePaymentOptions(paymentOptions: PaymentOptions): Promise<boolean> {
     try {
-      const currentUser = auth.currentUser || getAuth().currentUser;
+      const currentUser = auth.currentUser;
       
       if (!currentUser) {
         throw new Error('Usuário não autenticado');
@@ -380,7 +370,6 @@ export const establishmentSettingsService = {
         }
       }, { merge: true });
       
-      console.log('Configurações de pagamento salvas com sucesso');
       return true;
     } catch (error) {
       console.error('Erro ao salvar configurações de pagamento:', error);
@@ -390,7 +379,7 @@ export const establishmentSettingsService = {
 
   async saveSchedule(schedule: Schedule): Promise<boolean> {
     try {
-      const currentUser = auth.currentUser || getAuth().currentUser;
+      const currentUser = auth.currentUser;
       
       if (!currentUser) {
         throw new Error('Usuário não autenticado');
@@ -405,7 +394,6 @@ export const establishmentSettingsService = {
         }
       }, { merge: true });
       
-      console.log('Configurações de horário de funcionamento salvas com sucesso');
       return true;
     } catch (error) {
       console.error('Erro ao salvar configurações de horário de funcionamento:', error);

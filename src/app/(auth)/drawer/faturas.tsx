@@ -309,7 +309,6 @@ export default function Faturas() {
         }));
       } else {
         // Se não é mais pendente/vencida, remove da lista
-        console.log('❌ Fatura não é mais atual - removendo da lista');
         setCurrentInvoice(null);
       }
     }, (error) => {
@@ -324,7 +323,6 @@ export default function Faturas() {
     
     setIsLoading(true);
     try {
-      console.log('Carregando faturas...');
       const invoicesRef = collection(db, 'partners', user.uid, 'invoices');
       const q = query(invoicesRef, orderBy('createdAt', 'desc'));
       const snapshot = await getDocs(q);
@@ -332,7 +330,6 @@ export default function Faturas() {
       const loadedInvoices = await Promise.all(
         snapshot.docs.map(async (doc) => {
           const data = doc.data();
-          console.log('Dados da fatura:', data);
           
           // Calcula se a fatura está vencida
           let status = data.status || 'pending';
@@ -343,7 +340,6 @@ export default function Faturas() {
             
             if (daysPastDue > 0) {
               status = 'overdue';
-              console.log(`Fatura ${doc.id} está vencida há ${daysPastDue} dias`);
             }
           }
           
@@ -368,38 +364,14 @@ export default function Faturas() {
       
       setInvoices(loadedInvoices);
       
-      // Debug: mostra todas as faturas carregadas
-      console.log('📋 Faturas carregadas:', loadedInvoices.map(inv => ({
-        id: inv.id,
-        status: inv.status,
-        totalAmount: inv.totalAmount,
-        endDate: inv.endDate?.toDate?.()?.toLocaleDateString?.() || 'N/A'
-      })));
-      
       // Busca fatura pendente ou vencida (não paga)
       const currentInvoiceCandidate = loadedInvoices.find(inv => 
         inv.status === 'pending' || inv.status === 'overdue'
       );
       
-      // Debug: mostra todas as faturas e suas condições
-      console.log('🔍 DEBUG - Verificando faturas para fatura atual:');
-      loadedInvoices.forEach(inv => {
-        console.log(`  - Fatura ${inv.id}: status=${inv.status}, endDate=${inv.endDate?.toDate?.()?.toLocaleDateString?.()}`);
-      });
-      
       if (currentInvoiceCandidate) {
-        console.log('✅ Fatura atual encontrada:', {
-          id: currentInvoiceCandidate.id,
-          status: currentInvoiceCandidate.status,
-          totalAmount: currentInvoiceCandidate.totalAmount,
-          endDate: currentInvoiceCandidate.endDate?.toDate?.()?.toLocaleDateString?.()
-        });
         setCurrentInvoice(currentInvoiceCandidate);
-        
-        // Não gera pagamento automaticamente - deixa o usuário escolher
-        console.log('Fatura carregada. Aguardando escolha do método de pagamento pelo usuário.');
       } else {
-        console.log('❌ Nenhuma fatura pendente ou vencida encontrada');
         setCurrentInvoice(null);
       }
     } catch (error) {
@@ -425,23 +397,15 @@ export default function Faturas() {
     
     // Usa o método forçado se fornecido, senão usa o estado atual
     const methodToUse = forceMethod || paymentMethod;
-    console.log('🎯 Método de pagamento sendo usado:', methodToUse);
     
     setIsGeneratingPayment(true);
     setPaymentError(null);
     
     try {
-      console.log('Iniciando geração de pagamento para fatura:', targetInvoice.id);
-      
       // Busca os dados do parceiro
       const partnerRef = doc(db, 'partners', user.uid);
       const partnerSnap = await getDoc(partnerRef);
       const partnerData = partnerSnap.data();
-      
-      console.log('Dados do parceiro para boleto:', {
-        hasAddress: !!partnerData?.address,
-        address: partnerData?.address
-      });
 
       // Validação mais detalhada do endereço para boleto
       if (methodToUse === 'boleto') {
@@ -483,16 +447,6 @@ export default function Faturas() {
           name: partnerData.name || partnerData.displayName,
           cpf: partnerData.store?.document || partnerData.cpf || partnerData.document
         };
-
-        console.log('📋 Dados do parceiro para boleto:', {
-          email: requiredPartnerFields.email,
-          name: requiredPartnerFields.name,
-          cpf: requiredPartnerFields.cpf,
-          hasAddress: !!partnerData.address,
-          storeDocument: partnerData.store?.document,
-          directCpf: partnerData.cpf,
-          directDocument: partnerData.document
-        });
 
         // Extrai primeiro e último nome
         const nameParts = (requiredPartnerFields.name || '').split(' ');
@@ -569,33 +523,10 @@ export default function Faturas() {
           throw new Error(`Para gerar um boleto, os seguintes dados são obrigatórios: ${missingFields.join(', ')}. Por favor, complete seu cadastro.`);
         }
       }
-
-      console.log('Dados do pagamento:', paymentData);
-
-      // Log final dos dados que serão enviados
-      console.log('🚀 Enviando para servidor:', JSON.stringify(paymentData, null, 2));
       
       // Para boleto, log extra de verificação
       if (methodToUse === 'boleto') {
-        console.log('🔍 Verificação final do boleto:', {
-          temTransactionAmount: !!paymentData.transaction_amount,
-          temDescription: !!paymentData.description,
-          temPaymentMethod: !!paymentData.payment_method_id,
-          temPayer: !!paymentData.payer,
-          temPayerEmail: !!paymentData.payer?.email,
-          temPayerName: !!(paymentData.payer?.first_name && paymentData.payer?.last_name),
-          temPayerCPF: !!paymentData.payer?.identification?.number,
-          temPayerAddress: !!paymentData.payer?.address,
-          todosOsCamposAddress: !!(
-            paymentData.payer?.address?.zip_code &&
-            paymentData.payer?.address?.street_name &&
-            paymentData.payer?.address?.street_number &&
-            paymentData.payer?.address?.neighborhood &&
-            paymentData.payer?.address?.city &&
-            paymentData.payer?.address?.federal_unit
-          ),
-          payerAddressCompleto: paymentData.payer?.address
-        });
+        // Verificação final do boleto
       }
       
       const gerarPagamento = httpsCallable(functions, 'gerarPagamento');
@@ -603,7 +534,6 @@ export default function Faturas() {
       
       try {
         result = await gerarPagamento(paymentData);
-        console.log('✅ Resposta do servidor recebida:', result);
               } catch (serverError: any) {
         console.error('❌ Erro detalhado do servidor:', {
           code: serverError.code,
@@ -615,8 +545,6 @@ export default function Faturas() {
 
         // Para boleto, tentar com estrutura alternativa como último recurso
         if (methodToUse === 'boleto' && serverError.message?.includes('campos de endereço são obrigatórios')) {
-          console.log('🔄 Tentando enviar boleto com estrutura híbrida...');
-          
           const hybridPaymentData = {
             ...paymentData,
             // Adiciona os campos também no nível raiz (compatibilidade)
@@ -629,12 +557,9 @@ export default function Faturas() {
             // E também em uma estrutura address simples
             address: paymentData.payer?.address
           };
-
-          console.log('🚀 Estrutura híbrida:', JSON.stringify(hybridPaymentData, null, 2));
           
           try {
             result = await gerarPagamento(hybridPaymentData);
-            console.log('✅ Sucesso com estrutura híbrida!', result);
           } catch (hybridError: any) {
             console.error('❌ Erro também na estrutura híbrida:', hybridError.message);
             throw serverError; // Lança o erro original
@@ -644,19 +569,13 @@ export default function Faturas() {
         }
       }
 
-      console.log('Resposta detalhada do servidor:', {
-        data: result.data,
-        paymentMethod,
-        boletoUrl: (result.data as any)?.boletoUrl,
-        paymentInfo: (result.data as any)?.paymentInfo,
-        paymentData: (result.data as any)?.paymentData
-      });
+
 
       if (!result.data) {
         throw new Error('Não foi possível gerar o pagamento. Tente novamente.');
       }
 
-      console.log('Resposta do pagamento:', result.data);
+
 
       // Recarrega a fatura para obter os dados atualizados
       const invoiceRef = doc(db, 'partners', user.uid, 'invoices', targetInvoice.id);
@@ -664,7 +583,6 @@ export default function Faturas() {
       
       if (updatedInvoiceSnap.exists()) {
         const data = updatedInvoiceSnap.data();
-        console.log('Dados atualizados da fatura:', data);
         
         let boletoUrl = null;
         let boletoBarCode = null;
@@ -681,16 +599,11 @@ export default function Faturas() {
         boletoBarCode = data?.paymentInfo?.barCode || 
                        data?.paymentData?.barCode || 
                        (result.data as any)?.barCode;
-        
-        console.log('🔍 Código de barras encontrado:', boletoBarCode);
           
           if (!boletoUrl) {
             console.error('URL do boleto não encontrado nos dados:', { data, result });
             throw new Error('URL do boleto não gerado. Por favor, tente novamente.');
           }
-          
-          console.log('URL do boleto encontrado:', boletoUrl);
-          console.log('Código de barras do boleto:', boletoBarCode);
         }
         
         const updatedInvoice = {
@@ -715,11 +628,9 @@ export default function Faturas() {
           }
         } as Invoice;
         
-        console.log('Fatura atualizada:', updatedInvoice);
         setCurrentInvoice(updatedInvoice);
 
         if (methodToUse === 'boleto' && boletoUrl) {
-          console.log('Abrindo URL do boleto:', boletoUrl);
           Linking.openURL(boletoUrl);
         }
       }
@@ -765,8 +676,6 @@ export default function Faturas() {
     // Usa o status do hook em tempo real
     const { isBlocked, daysPastDue, hasOverdueInvoice } = paymentStatus.paymentStatus;
     const isOverdue = hasOverdueInvoice;
-    
-    console.log('🏪 Faturas - Status de pagamento:', { isBlocked, daysPastDue, hasOverdueInvoice });
 
     return (
       <LinearGradient
@@ -913,7 +822,6 @@ export default function Faturas() {
                     <TouchableOpacity
                       style={styles.alternatePaymentButton}
                       onPress={async () => {
-                        console.log('🔄 Usuário quer trocar PIX por Boleto');
                         await handleGeneratePayment(undefined, 'boleto');
                       }}
                       disabled={isGeneratingPayment}
@@ -1002,7 +910,6 @@ export default function Faturas() {
                       <TouchableOpacity
                         style={styles.alternatePaymentButton}
                         onPress={async () => {
-                          console.log('🔄 Usuário quer trocar Boleto por PIX');
                           await handleGeneratePayment(undefined, 'pix');
                         }}
                         disabled={isGeneratingPayment}
@@ -1018,7 +925,6 @@ export default function Faturas() {
                     <TouchableOpacity
                       style={styles.boletoButton}
                       onPress={async () => {
-                        console.log('🎯 Usuário clicou em Gerar Boleto (alternativo)');
                         await handleGeneratePayment(undefined, 'boleto');
                       }}
                     >
@@ -1034,7 +940,6 @@ export default function Faturas() {
                 <TouchableOpacity 
                   style={styles.retryButton}
                   onPress={() => {
-                    console.log('🎯 Usuário clicou em Tentar Novamente (PIX)');
                     handleGeneratePayment(undefined, 'pix');
                   }}
                 >
@@ -1049,7 +954,6 @@ export default function Faturas() {
                   <TouchableOpacity
                     style={styles.paymentOptionButton}
                     onPress={async () => {
-                      console.log('🎯 Usuário clicou em PIX');
                       await handleGeneratePayment(undefined, 'pix');
                     }}
                     disabled={isGeneratingPayment}
@@ -1064,7 +968,6 @@ export default function Faturas() {
                   <TouchableOpacity
                     style={styles.paymentOptionButton}
                     onPress={async () => {
-                      console.log('🎯 Usuário clicou em BOLETO');
                       await handleGeneratePayment(undefined, 'boleto');
                     }}
                     disabled={isGeneratingPayment}
@@ -1131,7 +1034,6 @@ export default function Faturas() {
           <TouchableOpacity 
             style={styles.generatePaymentButton}
             onPress={() => {
-              console.log('🎯 Usuário clicou em Gerar no modal:', paymentMethod);
               handleGeneratePayment(undefined, paymentMethod);
             }}
             disabled={isGeneratingPayment}

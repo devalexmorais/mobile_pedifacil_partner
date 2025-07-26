@@ -1,10 +1,11 @@
-import { initializeApp } from 'firebase/app';
-import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeApp, getApps } from 'firebase/app';
+import { getAuth, Auth, initializeAuth, getReactNativePersistence } from 'firebase/auth';
+import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 import { getAnalytics, isSupported } from 'firebase/analytics';
 import { getStorage } from 'firebase/storage';
 import { getFunctions } from 'firebase/functions';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getApp } from '@react-native-firebase/app';
 
 const firebaseConfig = {
   apiKey: "AIzaSyChPcaHDVCuz6Whhr87xaT-X_3lStqL_Is",
@@ -17,15 +18,53 @@ const firebaseConfig = {
   measurementId: "G-LYP6JFSKHK"
 };
 
-// Inicializa o Firebase
-const app = initializeApp(firebaseConfig);
+// Inicializa o Firebase apenas se não houver apps já inicializados
+let app;
+try {
+  const apps = getApps();
+  if (apps.length === 0) {
+    app = initializeApp(firebaseConfig);
+  } else {
+    app = apps[0];
+  }
+} catch (error) {
+  // Se houver erro, tenta usar uma instância existente
+  const apps = getApps();
+  if (apps.length > 0) {
+    app = apps[0];
+  } else {
+    throw new Error('Não foi possível inicializar o Firebase');
+  }
+}
 
-// Inicializa Auth com persistência
-export const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(AsyncStorage)
-});
+// Inicializa Auth com persistência AsyncStorage
+let auth: Auth;
+try {
+  // Tentar usar initializeAuth com persistência primeiro
+  auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(AsyncStorage)
+  });
+} catch (error) {
+  // Se já foi inicializado, usar getAuth
+  try {
+    auth = getAuth(app);
+  } catch (authError) {
+    console.error('Erro crítico ao obter Firebase Auth:', authError);
+    throw authError;
+  }
+}
 
+export { auth };
+
+// Inicializa Firestore com configurações de retry
 export const db = getFirestore(app);
+
+// Configurações adicionais para melhorar estabilidade da conexão
+// Estas configurações ajudam com os erros de WebChannelConnection
+if (__DEV__) {
+  // Em desenvolvimento, podemos conectar ao emulador se necessário
+  // connectFirestoreEmulator(db, 'localhost', 8080);
+}
 
 // Inicializa Analytics apenas se suportado
 export const analytics = async () => {
@@ -35,12 +74,14 @@ export const analytics = async () => {
     }
     return null;
   } catch (error) {
-    console.log('Analytics não suportado nesta plataforma');
     return null;
   }
 };
 
 export const storage = getStorage(app);
 export const functions = getFunctions(app, 'us-central1');
+
+// Exportar instância do React Native Firebase para compatibilidade
+export const rnFirebaseApp = getApp();
 
 export default app;

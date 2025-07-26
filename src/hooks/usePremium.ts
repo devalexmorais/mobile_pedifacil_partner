@@ -21,20 +21,14 @@ export function usePremium() {
   useEffect(() => {
     if (!user?.uid) return;
 
-    console.log('Iniciando listener do premium status para usuário:', user.uid);
-
     const unsubscribe = onSnapshot(doc(db, 'partners', user.uid), (doc) => {
       if (doc.exists()) {
         const data = doc.data();
-        console.log('Dados completos do documento:', data);
 
         // Acessar o campo isPremium diretamente do store
         const store = data.store || {};
         const isPremium = Boolean(store.isPremium);
         const premiumExpiresAt = store.premiumExpiresAt;
-        
-        console.log('Store:', store);
-        console.log('isPremium:', isPremium);
         
         let daysRemaining = 0;
         if (premiumExpiresAt) {

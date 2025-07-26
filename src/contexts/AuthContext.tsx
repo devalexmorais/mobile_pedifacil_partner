@@ -35,16 +35,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUserData(JSON.parse(storedUserData));
         }
 
+        // Se não há token, verificar se há usuário autenticado no Firebase
         if (!token) {
-          setLoading(false);
-          router.replace('/');
+          const currentUser = auth.currentUser;
+          if (currentUser) {
+            // Se há usuário autenticado mas não há token, gerar um novo
+            const newToken = await currentUser.getIdToken();
+            await AsyncStorage.setItem('@auth_token', newToken);
+            
+            // Aguardar um pouco para o Firebase inicializar completamente
+            setTimeout(() => {
+              router.replace('/(auth)/(tabs)/pedidos');
+            }, 1500);
+          } else {
+            setLoading(false);
+            router.replace('/');
+          }
           return;
         }
 
-        // Aguarda um pequeno delay para garantir que o Firebase esteja pronto
+        // Se há token, aguardar o Firebase verificar a autenticação
         setTimeout(() => {
           if (auth.currentUser) {
             router.replace('/(auth)/(tabs)/pedidos');
+          } else {
+            // Se não há usuário autenticado mas há token, limpar dados inválidos
+            AsyncStorage.removeItem('@auth_token');
+            AsyncStorage.removeItem('@user_data');
+            setLoading(false);
+            router.replace('/');
           }
         }, 1000);
       } catch (error) {
@@ -56,7 +75,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Monitorar mudanças no estado de autenticação
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      
       if (user) {
         try {
           // Atualizar token quando o usuário estiver autenticado
@@ -72,7 +90,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           router.replace('/');
         }
       } else {
-        // Se não estiver autenticado, redireciona para a tela inicial
+        // Se não estiver autenticado, limpar dados e redirecionar
+        await AsyncStorage.removeItem('@auth_token');
+        await AsyncStorage.removeItem('@user_data');
         router.replace('/');
       }
       

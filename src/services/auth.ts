@@ -1,5 +1,6 @@
 import { auth } from '@/config/firebase';
-import firestore from '@react-native-firebase/firestore';
+import { collection, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/config/firebase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { 
   signInWithEmailAndPassword, 
@@ -64,7 +65,8 @@ export const authService = {
         throw new Error('Usuário não encontrado');
       }
 
-      const userDoc = await firestore().collection('stores').doc(user.uid).get();
+      const userDocRef = doc(db, 'stores', user.uid);
+      const userDoc = await getDoc(userDocRef);
       const userData = userDoc.data() as Omit<User, 'id'>;
 
       if (!userData) {
@@ -121,10 +123,10 @@ export const authService = {
       }
 
       // Salvar dados adicionais no Firestore
-      await firestore().collection('stores').doc(user.uid).set({
+      await setDoc(doc(db, 'stores', user.uid), {
         ...userData,
         email: user.email,
-        createdAt: firestore.FieldValue.serverTimestamp(),
+        createdAt: serverTimestamp(),
       });
 
       const token = await user.getIdToken();
@@ -161,7 +163,8 @@ export const authService = {
         return null;
       }
 
-      const userDoc = await firestore().collection('stores').doc(user.uid).get();
+      const userDocRef = doc(db, 'stores', user.uid);
+      const userDoc = await getDoc(userDocRef);
       const userData = userDoc.data() as Omit<User, 'id'>;
 
       if (!userData) {
@@ -186,7 +189,8 @@ export const authService = {
   onAuthStateChanged(callback: (user: User | null) => void) {
     return firebaseOnAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const userDoc = await firestore().collection('stores').doc(firebaseUser.uid).get();
+        const userDocRef = doc(db, 'stores', firebaseUser.uid);
+        const userDoc = await getDoc(userDocRef);
         const userData = userDoc.data() as Omit<User, 'id'>;
 
         const user = {

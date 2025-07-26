@@ -199,7 +199,7 @@ export default function Pedidos() {
           <View style={styles.infoRow}>
             <Ionicons name="cash-outline" size={16} color="#666" />
             <Text style={styles.infoText}>
-              Total: R$ {item.finalPrice.toFixed(2)}
+              Total: R$ {(item.finalPrice || 0).toFixed(2)}
             </Text>
           </View>
           <View style={styles.infoRow}>
@@ -276,12 +276,12 @@ export default function Pedidos() {
                 <View style={styles.infoRow}>
                   <Ionicons name="card-outline" size={16} color="#666" />
                   <Text style={styles.infoText}>
-                    Pagamento: {item.payment.method === 'money' ? 'DINHEIRO' : item.payment.method.toUpperCase()}
-                    {item.payment.cardFee?.flagName && ` - ${item.payment.cardFee.flagName}`}
-                    {item.payment.method === 'money' && item.payment.changeFor && (
-                      item.payment.changeFor === 'sem_troco' 
+                    Pagamento: {item.payment?.method === 'money' ? 'DINHEIRO' : item.payment?.method?.toUpperCase() || 'NÃO INFORMADO'}
+                    {item.payment?.cardFee?.flagName && ` - ${item.payment?.cardFee?.flagName}`}
+                    {item.payment?.method === 'money' && item.payment?.changeFor && (
+                      item.payment?.changeFor === 'sem_troco' 
                         ? ' - Sem troco'
-                        : ` - Troco para R$ ${Number(item.payment.changeFor).toFixed(2)} (R$ ${(Number(item.payment.changeFor) - item.finalPrice).toFixed(2)})`
+                        : ` - Troco para R$ ${Number(item.payment?.changeFor).toFixed(2)} (R$ ${(Number(item.payment?.changeFor) - (item.finalPrice || 0)).toFixed(2)})`
                     )}
                   </Text>
                 </View>
@@ -316,29 +316,29 @@ export default function Pedidos() {
               <View style={styles.valueContainer}>
                 <View style={styles.valueRow}>
                   <Text style={styles.valueLabel}>Subtotal:</Text>
-                  <Text style={styles.valueText}>R$ {item.totalPrice.toFixed(2)}</Text>
+                  <Text style={styles.valueText}>R$ {(item.totalPrice || 0).toFixed(2)}</Text>
                 </View>
                 {item.payment?.cardFee && (
                   <View style={styles.valueRow}>
-                    <Text style={styles.valueLabel}>Taxa do Cartão ({item.payment.cardFee.flagName}):</Text>
-                    <Text style={styles.valueText}>- R$ {item.payment.cardFee.value.toFixed(2)}</Text>
+                    <Text style={styles.valueLabel}>Taxa do Cartão ({item.payment?.cardFee?.flagName}):</Text>
+                    <Text style={styles.valueText}>- R$ {(item.payment?.cardFee?.value || 0).toFixed(2)}</Text>
                   </View>
                 )}
                 <View style={styles.valueRow}>
                   <Text style={styles.valueLabel}>Taxa de Entrega:</Text>
-                  <Text style={styles.valueText}>R$ {item.deliveryFee.toFixed(2)}</Text>
+                  <Text style={styles.valueText}>R$ {(item.deliveryFee || 0).toFixed(2)}</Text>
                 </View>
                 {item.hasCoupon && item.couponApplied && (
                   <View style={styles.valueRow}>
                     <Text style={[styles.valueLabel, { color: '#28a745' }]}>Desconto do Cupom ({item.couponApplied.discountPercentage}%):</Text>
                     <Text style={[styles.valueText, { color: '#28a745' }]}>
-                      - R$ {((item.totalPrice * item.couponApplied.discountPercentage) / 100).toFixed(2)}
+                      - R$ {(((item.totalPrice || 0) * (item.couponApplied.discountPercentage || 0)) / 100).toFixed(2)}
                     </Text>
                   </View>
                 )}
                 <View style={[styles.valueRow, styles.totalRow]}>
                   <Text style={styles.totalLabel}>Total:</Text>
-                  <Text style={styles.totalValue}>R$ {item.finalPrice.toFixed(2)}</Text>
+                  <Text style={styles.totalValue}>R$ {(item.finalPrice || 0).toFixed(2)}</Text>
                 </View>
               </View>
             </View>

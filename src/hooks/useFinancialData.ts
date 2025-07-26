@@ -76,16 +76,25 @@ export function useFinancialData() {
         );
 
         const currentMonthSnapshot = await getDocs(currentMonthQuery);
-        
-        // Buscar pedidos do mês anterior
+        const currentMonthData = currentMonthSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+
+        // Buscar dados do mês anterior
         const lastMonthQuery = query(
           ordersRef,
-          where('createdAt', '>=', Timestamp.fromDate(lastMonthStart)),
-          where('createdAt', '<=', Timestamp.fromDate(lastMonthEnd)),
-          orderBy('createdAt', 'desc')
+          where('establishmentId', '==', user.uid),
+          where('status', '==', 'delivered'),
+          where('createdAt', '>=', lastMonthStart),
+          where('createdAt', '<', currentMonthStart)
         );
 
         const lastMonthSnapshot = await getDocs(lastMonthQuery);
+        const lastMonthData = lastMonthSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
 
         // Processar dados do mês atual
         let currentMonthRevenue = 0;
@@ -101,8 +110,6 @@ export function useFinancialData() {
         let cancelledRevenue = 0;
         let completedOrders = 0;
         let pendingOrders = 0;
-
-        console.log('📋 Total de documentos encontrados no mês atual:', currentMonthSnapshot.size);
 
         currentMonthSnapshot.forEach((doc) => {
           const data = doc.data();
@@ -149,7 +156,6 @@ export function useFinancialData() {
 
         // Se ainda não encontrou receita, buscar qualquer pedido com valor
         if (currentMonthRevenue === 0 && currentMonthSnapshot.size > 0) {
-          console.log('⚠️ Tentando buscar QUALQUER pedido com valor...');
           currentMonthSnapshot.forEach((doc) => {
             const data = doc.data();
             const orderTotal = data.total || data.finalPrice || 0;
@@ -163,20 +169,9 @@ export function useFinancialData() {
           });
         }
 
-        console.log('📊 Receita do mês atual:', `R$ ${currentMonthRevenue.toFixed(2)} (${currentMonthOrders} pedidos)`);
-        console.log('📊 Estatísticas de pedidos:', {
-          'Total de pedidos': totalOrders,
-          'Pedidos completados': completedOrders,
-          'Pedidos cancelados': cancelledOrders,
-          'Pedidos pendentes': pendingOrders,
-          'Receita perdida (cancelados)': `R$ ${cancelledRevenue.toFixed(2)}`
-        });
-
         // Processar dados do mês anterior
         let lastMonthRevenue = 0;
         let lastMonthOrders = 0;
-
-        console.log('📋 Total de documentos encontrados no mês anterior:', lastMonthSnapshot.size);
 
         lastMonthSnapshot.forEach((doc) => {
           const data = doc.data();
@@ -192,7 +187,6 @@ export function useFinancialData() {
 
         // Fallback para mês anterior também
         if (lastMonthRevenue === 0 && lastMonthSnapshot.size > 0) {
-          console.log('⚠️ Tentando buscar QUALQUER pedido do mês anterior com valor...');
           lastMonthSnapshot.forEach((doc) => {
             const data = doc.data();
             const orderTotal = data.total || data.finalPrice || 0;
@@ -204,14 +198,11 @@ export function useFinancialData() {
           });
         }
 
-        console.log('📊 Receita do mês anterior:', `R$ ${lastMonthRevenue.toFixed(2)} (${lastMonthOrders} pedidos)`);
-
         // Buscar taxas reais da coleção app_fees
         let totalFees = 0;
         let averageFeePercentage = 5; // Taxa padrão de 5%
 
         try {
-          console.log('🔍 Buscando taxas reais da coleção app_fees...');
           
           // Buscar taxas do mês atual diretamente da subcoleção app_fees
           const appFeesRef = collection(db, 'partners', user.uid, 'app_fees');
@@ -223,7 +214,6 @@ export function useFinancialData() {
           );
 
           const appFeesSnapshot = await getDocs(appFeesQuery);
-          console.log(`📊 Encontradas ${appFeesSnapshot.size} taxas no mês atual`);
 
           if (!appFeesSnapshot.empty) {
             let totalFeeValue = 0;
@@ -253,15 +243,7 @@ export function useFinancialData() {
               averageFeePercentage = 5;
             }
 
-            console.log('💼 Resumo das taxas:', {
-              totalFees: `R$ ${totalFees.toFixed(2)}`,
-              receita: `R$ ${currentMonthRevenue.toFixed(2)}`,
-              porcentagemCalculada: `${averageFeePercentage.toFixed(2)}%`,
-              validFees,
-              porcentagemDados: validFees > 0 ? `${(totalPercentage / validFees).toFixed(4)}` : 'N/A'
-            });
           } else {
-            console.log('⚠️ Nenhuma taxa encontrada na coleção app_fees, verificando fatura...');
             
             // Se não encontrou taxas individuais, buscar na fatura do mês
             const invoicesRef = collection(db, 'partners', user.uid, 'invoices');
@@ -273,7 +255,6 @@ export function useFinancialData() {
             );
 
             const invoicesSnapshot = await getDocs(invoicesQuery);
-            console.log(`📋 Encontradas ${invoicesSnapshot.size} faturas no mês atual`);
 
             if (!invoicesSnapshot.empty) {
               const invoiceData = invoicesSnapshot.docs[0].data();
@@ -284,13 +265,7 @@ export function useFinancialData() {
                 averageFeePercentage = (totalFees / currentMonthRevenue) * 100;
               }
               
-              console.log('📄 Taxa obtida da fatura:', {
-                valor: `R$ ${totalFees.toFixed(2)}`,
-                porcentagem: `${averageFeePercentage.toFixed(2)}%`,
-                receita: `R$ ${currentMonthRevenue.toFixed(2)}`
-              });
             } else {
-              console.log('🔧 Calculando taxa estimada baseada na receita...');
               // Calcular taxa estimada se não há dados
               totalFees = currentMonthRevenue * (averageFeePercentage / 100);
             }
@@ -299,33 +274,26 @@ export function useFinancialData() {
           console.error('❌ Erro ao buscar taxas reais:', error);
           // Fallback para cálculo estimado
           totalFees = currentMonthRevenue * (averageFeePercentage / 100);
-          console.log('⚠️ Usando cálculo estimado de taxas:', `R$ ${totalFees.toFixed(2)}`);
         }
 
         // Validar e ajustar porcentagem se necessário
         if (averageFeePercentage <= 0 || averageFeePercentage > 20) {
-          console.log('⚠️ Porcentagem inválida detectada:', averageFeePercentage);
           if (currentMonthRevenue > 0 && totalFees > 0) {
             averageFeePercentage = (totalFees / currentMonthRevenue) * 100;
-            console.log('✅ Porcentagem recalculada:', averageFeePercentage);
           } else {
             averageFeePercentage = 5; // fallback padrão
-            console.log('✅ Usando porcentagem padrão: 5%');
           }
         }
 
         // Verificar se a porcentagem é muito pequena (pode ser decimal em vez de porcentagem)
         if (averageFeePercentage > 0 && averageFeePercentage < 1) {
-          console.log('⚠️ Porcentagem muito pequena detectada:', averageFeePercentage);
           // Verificar se multiplicando por 100 fica mais próximo do esperado
           const adjustedPercentage = averageFeePercentage * 100;
           if (adjustedPercentage >= 3 && adjustedPercentage <= 15) {
             averageFeePercentage = adjustedPercentage;
-            console.log('✅ Porcentagem ajustada para:', averageFeePercentage);
           } else {
             // Calcular baseado na receita real
             averageFeePercentage = currentMonthRevenue > 0 ? (totalFees / currentMonthRevenue) * 100 : 5;
-            console.log('✅ Porcentagem recalculada baseada na receita:', averageFeePercentage);
           }
         }
 
@@ -379,28 +347,6 @@ export function useFinancialData() {
             total: totalOrders
           }
         };
-
-        console.log('💰 RESUMO FINANCEIRO COMPLETO:', {
-          'Receita do mês atual': `R$ ${currentMonthRevenue.toFixed(2)}`,
-          'Pedidos válidos atual': currentMonthOrders,
-          'Total de pedidos atual': totalOrders,
-          'Taxa do app': `R$ ${totalFees.toFixed(2)} (${averageFeePercentage.toFixed(2)}%)`,
-          'Valor líquido': `R$ ${(currentMonthRevenue - totalFees).toFixed(2)}`,
-          'Receita mês anterior': `R$ ${lastMonthRevenue.toFixed(2)}`,
-          'Crescimento': `${growthPercentage.toFixed(1)}%`,
-          'Taxa de entrega': `${deliveryRate.toFixed(1)}%`,
-          'Percentual da taxa (calculado)': currentMonthRevenue > 0 ? `${((totalFees / currentMonthRevenue) * 100).toFixed(2)}%` : '0%',
-          'Estatísticas de cancelamento': {
-            'Pedidos cancelados': cancelledOrders,
-            'Percentual de cancelamento': `${cancelledPercentage.toFixed(1)}%`,
-            'Receita perdida': `R$ ${cancelledRevenue.toFixed(2)}`
-          },
-          'Métodos de pagamento': {
-            'Dinheiro': `R$ ${cashTotal.toFixed(2)}`,
-            'Cartão': `R$ ${cardTotal.toFixed(2)}`,
-            'PIX': `R$ ${pixTotal.toFixed(2)}`
-          }
-        });
 
         setFinancialData(financialData);
       } catch (err) {

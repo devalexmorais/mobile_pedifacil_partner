@@ -15,11 +15,11 @@ try {
         analytics = getAnalytics();
       }
     }).catch(() => {
-      console.log('Analytics não verificável neste ambiente');
+      // Analytics não verificável neste ambiente
     });
   }
 } catch (error) {
-  console.log('Analytics não suportado neste ambiente');
+  // Analytics não suportado neste ambiente
 }
 
 interface RegisterData {
@@ -90,14 +90,6 @@ const checkDocumentExists = async (document: string): Promise<boolean> => {
 export const registerService = {
   async registerPartner(data: RegisterPartnerData) {
     try {
-      // Log dos dados recebidos
-      console.log('Dados recebidos no registerService:', {
-        email: data.email,
-        name: data.name,
-        phone: data.phone,
-        // ... outros dados
-      });
-
       // Validação mais detalhada
       if (!data.email?.trim()) {
         throw new Error('Email é obrigatório');
@@ -123,7 +115,6 @@ export const registerService = {
       );
       
       const userId = userCredential.user.uid;
-      console.log('Usuário criado com ID:', userId);
 
       // Documento armazenado sem criptografia
       const documentValue = data.cnpj_or_cpf;
@@ -182,19 +173,9 @@ export const registerService = {
         updatedAt: new Date(),
       };
 
-      // Log de cada seção separadamente para debug
-      console.log('🏠 Dados de endereço:', addressData);
-      console.log('📮 CEP capturado:', data.zip_code);
-      console.log('⚙️ Dados de configurações:', settingsData);
-      console.log('🏪 Dados da loja:', storeData);
-      console.log('💎 Dados premium:', premiumFeaturesData);
-
-      console.log('Salvando dados do parceiro no Firestore:', partnerData);
-
       // Salvar no Firestore (a Cloud Function está corrigida para não sobrescrever)
       try {
         await setDoc(doc(db, 'partners', userId), partnerData);
-        console.log('✅ Dados do parceiro salvos com sucesso no Firestore');
         
         // Verificar se os dados foram salvos corretamente
         const savedDoc = await getDoc(doc(db, 'partners', userId));

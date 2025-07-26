@@ -101,12 +101,12 @@ export default function Pronto() {
 
     // Calcula o valor do troco se necessário
     const calcularTroco = () => {
-      if (item.payment.method === 'money' && item.payment.changeFor) {
+      if (item.payment?.method === 'money' && item.payment?.changeFor) {
         // Verifica se é "sem troco"
-        if (item.payment.changeFor === 'sem_troco') {
+        if (item.payment?.changeFor === 'sem_troco') {
           return 'sem_troco';
         }
-        const valorPagamento = parseFloat(item.payment.changeFor);
+        const valorPagamento = parseFloat(item.payment?.changeFor || '0');
         const trocoValue = valorPagamento - item.finalPrice;
         return trocoValue > 0 ? trocoValue.toFixed(2) : '0.00';
       }
@@ -146,7 +146,7 @@ export default function Pronto() {
           <View style={styles.infoRow}>
             <Ionicons name="cash-outline" size={16} color="#666" />
             <Text style={styles.infoText}>
-              Total: R$ {item.finalPrice.toFixed(2)}
+              Total: R$ {(item.finalPrice || 0).toFixed(2)}
             </Text>
           </View>
         </View>
@@ -213,18 +213,18 @@ export default function Pronto() {
               <View style={styles.infoContainer}>
                 <View style={styles.infoRow}>
                   <Ionicons 
-                    name={item.payment.method === 'money' ? "cash-outline" : "card-outline"} 
+                    name={item.payment?.method === 'money' ? "cash-outline" : "card-outline"} 
                     size={16} 
                     color="#666" 
                   />
                   <Text style={styles.infoText}>
-                    {item.payment.method === 'money' ? 'DINHEIRO' : item.payment.method.toUpperCase()}
-                    {item.payment.cardFee?.flagName && ` - ${item.payment.cardFee.flagName}`}
+                    {item.payment?.method === 'money' ? 'DINHEIRO' : item.payment?.method?.toUpperCase() || 'NÃO INFORMADO'}
+                    {item.payment?.cardFee?.flagName && ` - ${item.payment?.cardFee?.flagName}`}
                   </Text>
                 </View>
-                {item.payment.method === 'money' && item.payment.changeFor && (
+                {item.payment?.method === 'money' && item.payment?.changeFor && (
                   <>
-                    {item.payment.changeFor === 'sem_troco' ? (
+                    {item.payment?.changeFor === 'sem_troco' ? (
                       <View style={styles.infoRow}>
                         <Ionicons name="close-circle-outline" size={16} color="#666" />
                         <Text style={styles.infoText}>Pagamento: Sem troco</Text>
@@ -233,7 +233,7 @@ export default function Pronto() {
                       <>
                         <View style={styles.infoRow}>
                           <Ionicons name="wallet-outline" size={16} color="#666" />
-                          <Text style={styles.infoText}>Pago com: R$ {item.payment.changeFor}</Text>
+                          <Text style={styles.infoText}>Pago com: R$ {item.payment?.changeFor}</Text>
                         </View>
                         <View style={styles.infoRow}>
                           <Ionicons name="return-down-back-outline" size={16} color="#666" />

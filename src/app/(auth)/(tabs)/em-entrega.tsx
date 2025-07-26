@@ -138,12 +138,12 @@ export default function EmEntrega() {
             <View style={styles.infoSection}>
               <Text style={styles.sectionTitle}>Pagamento:</Text>
               <Text style={styles.infoText}>
-                {item.payment.method === 'money' ? 'DINHEIRO' : item.payment.method.toUpperCase()}
-                {item.payment.cardFee?.flagName && ` - ${item.payment.cardFee.flagName}`}
-                {item.payment.method === 'money' && item.payment.changeFor && (
-                  item.payment.changeFor === 'sem_troco' 
+                {item.payment?.method === 'money' ? 'DINHEIRO' : item.payment?.method?.toUpperCase() || 'NÃO INFORMADO'}
+                {item.payment?.cardFee?.flagName && ` - ${item.payment?.cardFee?.flagName}`}
+                {item.payment?.method === 'money' && item.payment?.changeFor && (
+                  item.payment?.changeFor === 'sem_troco' 
                     ? ' - Sem troco'
-                    : ` - Troco para R$ ${Number(item.payment.changeFor).toFixed(2)}`
+                    : ` - Troco para R$ ${Number(item.payment?.changeFor).toFixed(2)}`
                 )}
               </Text>
             </View>

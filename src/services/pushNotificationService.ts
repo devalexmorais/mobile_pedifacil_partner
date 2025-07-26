@@ -1,10 +1,11 @@
-import messaging from '@react-native-firebase/messaging';
+import { getMessaging, onMessage, getToken, onTokenRefresh } from '@react-native-firebase/messaging';
 import { Platform } from 'react-native';
 import { doc, updateDoc } from 'firebase/firestore';
-import { db, auth } from '../config/firebase';
+import { db, auth, rnFirebaseApp } from '../config/firebase';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { router } from 'expo-router';
+import { serverTimestamp } from 'firebase/firestore';
 
 // Configurar o comportamento padrão das notificações em primeiro plano
 Notifications.setNotificationHandler({
@@ -18,7 +19,6 @@ Notifications.setNotificationHandler({
 export const pushNotificationService = {
   // Navegar para a tela de pedidos
   navigateToPedidos() {
-    // Usar setTimeout para evitar problemas de navegação antes da inicialização completa
     setTimeout(() => {
       router.push('/(auth)/(tabs)/pedidos');
     }, 300);
@@ -26,52 +26,40 @@ export const pushNotificationService = {
 
   // Configurar notificações em segundo plano para Android
   configureFCMBackgroundHandler() {
+    const messaging = getMessaging(rnFirebaseApp);
+    
     // Quando o aplicativo está em segundo plano/fechado,
     // este listener é chamado quando o usuário clica na notificação
-    messaging().onNotificationOpenedApp(remoteMessage => {
-      console.log(
-        'Notificação em segundo plano clicada:',
-        remoteMessage.notification,
-      );
-      
-      // Navegar para a tela de pedidos
+    messaging.onNotificationOpenedApp(remoteMessage => {
       this.navigateToPedidos();
     });
 
     // Verificar se o aplicativo foi aberto através de uma notificação quando estava fechado
-    messaging()
+    messaging
       .getInitialNotification()
       .then(remoteMessage => {
         if (remoteMessage) {
-          console.log(
-            'Aplicativo aberto por notificação com app fechado:',
-            remoteMessage.notification,
-          );
-          
-          // Navegar para a tela de pedidos
           this.navigateToPedidos();
         }
       });
 
     // Garantir que o manipulador de mensagens em segundo plano esteja configurado
     if (Platform.OS === 'android') {
-      messaging().setBackgroundMessageHandler(async remoteMessage => {
-        console.log('Mensagem manipulada em segundo plano:', remoteMessage);
-        
+      messaging.setBackgroundMessageHandler(async remoteMessage => {
         // Mostrar uma notificação local mesmo em segundo plano
         await Notifications.scheduleNotificationAsync({
           content: {
             title: remoteMessage.notification?.title || 'Nova notificação',
             body: remoteMessage.notification?.body || '',
             data: remoteMessage.data || {
-              screen: 'pedidos' // Adicionar informação de tela para navegação
+              screen: 'pedidos'
             },
-            sound: true, // Garantir que tenha som
+            sound: true,
           },
-          trigger: null, // exibir imediatamente
+          trigger: null,
         });
         
-        return Promise.resolve(); // Necessário retornar uma promise
+        return Promise.resolve();
       });
     }
   },
@@ -84,7 +72,7 @@ export const pushNotificationService = {
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#FFA500',
-        sound: 'default', // Garantir que tenha som
+        sound: 'default',
       });
     }
 
@@ -92,11 +80,12 @@ export const pushNotificationService = {
     
     if (Platform.OS === 'ios') {
       // Para iOS, precisamos de permissões especiais para notificações em segundo plano
-      permissionStatus = await messaging().requestPermission({
+      const messaging = getMessaging(rnFirebaseApp);
+      permissionStatus = await messaging.requestPermission({
         sound: true,
         badge: true,
         alert: true,
-        provisional: true, // Permite notificações sem solicitar explicitamente ao usuário
+        provisional: true,
       });
     } else {
       const { status } = await Notifications.requestPermissionsAsync({
@@ -112,20 +101,16 @@ export const pushNotificationService = {
       });
       
       permissionStatus = status === 'granted' ? 
-        messaging.AuthorizationStatus.AUTHORIZED : 
-        messaging.AuthorizationStatus.DENIED;
+        'authorized' : 
+        'denied';
     }
     
-    const enabled =
-      permissionStatus === messaging.AuthorizationStatus.AUTHORIZED ||
-      permissionStatus === messaging.AuthorizationStatus.PROVISIONAL;
+    const enabled = permissionStatus === 'authorized' || permissionStatus === 'provisional';
 
     if (enabled) {
-      console.log('Autorização de notificação: ', permissionStatus);
       return true;
     }
     
-    console.log('Permissão de notificação recusada');
     return false;
   },
 
@@ -139,16 +124,24 @@ export const pushNotificationService = {
     try {
       // Primeiro verificar/solicitar permissão
       const permissionGranted = await this.requestUserPermission();
-      if (!permissionGranted) return null;
+      if (!permissionGranted) {
+        console.log('Permissão para notificações não concedida');
+        return null;
+      }
       
       // Para iOS, registrar para notificações em segundo plano
       if (Platform.OS === 'ios') {
-        await messaging().registerDeviceForRemoteMessages();
+        try {
+          const messaging = getMessaging(rnFirebaseApp);
+          await messaging.registerDeviceForRemoteMessages();
+        } catch (error) {
+          // Erro silencioso para registro de mensagens remotas
+        }
       }
       
       // Obter o token
-      const fcmToken = await messaging().getToken();
-      console.log('FCM Token:', fcmToken);
+      const messaging = getMessaging(rnFirebaseApp);
+      const fcmToken = await getToken(messaging);
       
       // Salvar o token no Firestore
       if (fcmToken) {
@@ -157,29 +150,22 @@ export const pushNotificationService = {
       
       return fcmToken;
     } catch (error) {
-      console.error('Erro ao obter FCM token:', error);
+      console.error('Erro ao obter token FCM:', error);
       return null;
     }
   },
 
-  // Salvar token no Firestore
-  async saveTokenToDatabase(token: string) {
+  // Salvar token no banco de dados
+  async saveTokenToDatabase(fcmToken: string) {
     try {
       const user = auth.currentUser;
       if (!user) return;
-      
-      // Atualizar documento do parceiro
-      const partnerRef = doc(db, 'partners', user.uid);
-      await updateDoc(partnerRef, {
-        fcmTokens: {
-          token,
-          device: Device.modelName || 'unknown device',
-          platform: Platform.OS,
-          updatedAt: new Date()
-        }
+
+      const userRef = doc(db, 'partners', user.uid);
+      await updateDoc(userRef, {
+        fcmToken: fcmToken,
+        lastTokenUpdate: serverTimestamp()
       });
-      
-      console.log('Token FCM salvo no banco de dados');
     } catch (error) {
       console.error('Erro ao salvar token no banco de dados:', error);
     }
@@ -195,14 +181,13 @@ export const pushNotificationService = {
       await this.getFCMToken();
       
       // Configurar renovação de token
-      messaging().onTokenRefresh(token => {
+      const messaging = getMessaging(rnFirebaseApp);
+      onTokenRefresh(messaging, token => {
         this.saveTokenToDatabase(token);
       });
       
       // Configurar handler para notificações em primeiro plano
-      const unsubscribe = messaging().onMessage(async remoteMessage => {
-        console.log('Notificação recebida em primeiro plano:', remoteMessage);
-        
+      const unsubscribe = onMessage(messaging, async remoteMessage => {
         // Mostrar notificação local
         await Notifications.scheduleNotificationAsync({
           content: {
@@ -210,10 +195,10 @@ export const pushNotificationService = {
             body: remoteMessage.notification?.body || '',
             data: {
               ...(remoteMessage.data || {}),
-              screen: 'pedidos', // Adicionar informação da tela de destino
+              screen: 'pedidos',
               orderId: remoteMessage.data?.orderId || null
             },
-            sound: true, // Garantir que tenha som
+            sound: true,
           },
           trigger: null,
         });
@@ -222,9 +207,6 @@ export const pushNotificationService = {
       // Configurar resposta para quando uma notificação é clicada
       const responseSubscription = Notifications.addNotificationResponseReceivedListener(
         response => {
-          console.log('Notificação respondida:', response);
-          
-          // Navegar para a tela de pedidos
           this.navigateToPedidos();
         }
       );

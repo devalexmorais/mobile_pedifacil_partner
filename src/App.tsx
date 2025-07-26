@@ -4,7 +4,8 @@ import { pushNotificationService } from './services/pushNotificationService';
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { router } from 'expo-router';
-import messaging from '@react-native-firebase/messaging';
+import { getMessaging } from '@react-native-firebase/messaging';
+import { rnFirebaseApp } from './config/firebase';
 
 // Configurar handler para notificações em primeiro plano
 Notifications.setNotificationHandler({
@@ -13,22 +14,6 @@ Notifications.setNotificationHandler({
     shouldPlaySound: true,
     shouldSetBadge: true,
   }),
-});
-
-// Configurar handler para mensagens em segundo plano (fora do componente)
-messaging().setBackgroundMessageHandler(async remoteMessage => {
-  // Mostrar notificação local mesmo quando o app estiver fechado
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: remoteMessage.notification?.title || 'Nova notificação',
-      body: remoteMessage.notification?.body || '',
-      data: remoteMessage.data || { screen: 'pedidos' },
-      sound: true,
-    },
-    trigger: null,
-  });
-  
-  return Promise.resolve();
 });
 
 function App() {
@@ -41,8 +26,8 @@ function App() {
       try {
         // Para iOS, registrar para notificações remotas
         if (Platform.OS === 'ios') {
-          await messaging().registerDeviceForRemoteMessages();
-          await messaging().setAutoInitEnabled(true);
+          const messaging = getMessaging(rnFirebaseApp);
+          await messaging.registerDeviceForRemoteMessages();
         }
         
         // Inicializar FCM para notificações em segundo plano
@@ -60,7 +45,8 @@ function App() {
         });
         
         // Configurar verificação de notificação inicial (quando o app é aberto por uma notificação)
-        messaging()
+        const messaging = getMessaging(rnFirebaseApp);
+        messaging
           .getInitialNotification()
           .then(remoteMessage => {
             if (remoteMessage) {
@@ -82,13 +68,17 @@ function App() {
         };
       } catch (error) {
         console.error('Erro ao inicializar notificações:', error);
+        setNotificationsInitialized(true); // Mesmo com erro, marcar como inicializado
       }
     };
 
-    initNotifications();
-  }, []);
+    if (!notificationsInitialized) {
+      initNotifications();
+    }
+  }, [notificationsInitialized]);
 
   return null; // App.tsx não renderiza nada, apenas configura notificações
 }
+
 export default App;
 

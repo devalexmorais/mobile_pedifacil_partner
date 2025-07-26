@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { db } from '../config/firebase';
 import { collection, query, where, doc, updateDoc, onSnapshot, orderBy, getDoc, getDocs, DocumentData, addDoc, Timestamp } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
@@ -120,274 +120,163 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
   const [pedidosCozinha, setPedidosCozinha] = useState<Pedido[]>([]);
   const [pedidosProntos, setPedidosProntos] = useState<Pedido[]>([]);
   const [pedidosEmEntrega, setPedidosEmEntrega] = useState<Pedido[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchPedidos = useCallback(async () => {
+    if (!user?.uid) return;
+
+    try {
+      setLoading(true);
+      
+      const ordersRef = collection(db, 'partners', user.uid, 'orders');
+      const q = query(
+        ordersRef,
+        where('status', 'in', ['pending', 'preparing', 'ready', 'out_for_delivery']),
+        orderBy('createdAt', 'desc')
+      );
+
+      const querySnapshot = await getDocs(q);
+      const pedidos = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Pedido[];
+
+      setPedidosPendentes(pedidos.filter(p => p.status === 'pending'));
+      setPedidosCozinha(pedidos.filter(p => p.status === 'preparing'));
+      setPedidosProntos(pedidos.filter(p => p.status === 'ready'));
+      setPedidosEmEntrega(pedidos.filter(p => p.status === 'out_for_delivery'));
+    } catch (error) {
+      console.error('Erro ao buscar pedidos:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.uid]);
 
   useEffect(() => {
     if (!user?.uid) return;
-
-    console.log('Iniciando busca de pedidos...');
     
-    const ordersRef = collection(db, 'partners', user.uid, 'orders');
-    
-    const pendentesQuery = query(
-      ordersRef,
-      where('status', '==', 'pending')
-    );
-
-    const unsubPendentes = onSnapshot(pendentesQuery, async (snapshot) => {
-      console.log('Query executada');
-      console.log('Documentos encontrados:', snapshot.docs.length);
-      
-      if (snapshot.empty) {
-        console.log('Nenhum documento encontrado com status = pending');
-      }
-
-      const pedidosPromises = snapshot.docs.map(async (docSnapshot) => {
-        const data = docSnapshot.data();
-        
-        // Buscar informações do usuário
-        let userName = '';
-        try {
-          const userRef = doc(db, 'users', data.userId);
-          const userDoc = await getDoc(userRef);
-          if (userDoc.exists()) {
-            const userData = userDoc.data() as UserData;
-            userName = userData.name || '';
-          }
-        } catch (error) {
-          console.error('Erro ao buscar nome do usuário:', error);
-        }
-
-        return {
-          id: docSnapshot.id,
-          address: {
-            city: data.address?.city || '',
-            complement: data.address?.complement || '',
-            neighborhood: data.address?.neighborhood || '',
-            number: data.address?.number || '',
-            state: data.address?.state || '',
-            street: data.address?.street || ''
-          },
-          createdAt: data.createdAt || new Date().toISOString(),
-          deliveryFee: Number(data.deliveryFee) || 0,
-          deliveryMode: data.deliveryMode || 'delivery',
-          finalPrice: Number(data.finalPrice) || 0,
-          items: data.items?.map((item: any) => ({
-            name: item.name || '',
-            options: item.options || [],
-            requiredSelections: item.requiredSelections || [],
-            price: Number(item.price) || 0,
-            productId: item.productId || '',
-            quantity: Number(item.quantity) || 0,
-            totalPrice: Number(item.totalPrice) || 0
-          })) || [],
-          payment: {
-            method: data.payment?.method || '',
-            status: data.status || 'pending',
-            cardFee: data.payment?.cardFee ? {
-              value: Number(data.payment.cardFee.value) || 0,
-              percentage: data.payment.cardFee.percentage || '',
-              flag: data.payment.cardFee.flag || '',
-              flagName: data.payment.cardFee.flagName || ''
-            } : undefined,
-            changeFor: data.payment?.changeFor || ''
-          },
-          storeId: data.storeId || '',
-          totalPrice: Number(data.totalPrice) || 0,
-          updatedAt: data.updatedAt || new Date().toISOString(),
-          userId: data.userId || '',
-          userName: userName,
-          status: data.status || 'pending',
-          observations: data.observations || '',
-          coupon: data.coupon || '',
-          hasCoupon: data.hasCoupon || false,
-          couponCode: data.couponCode || '',
-          couponApplied: data.couponApplied || undefined
-        } as Pedido;
-      });
-
-      const pedidos = await Promise.all(pedidosPromises);
-      console.log('Pedidos processados:', pedidos);
-      setPedidosPendentes(pedidos);
-    });
-
-    // Query para pedidos na cozinha
-    const cozinhaQuery = query(
-      ordersRef,
-      where('status', '==', 'preparing')
-    );
-
-    // Query para pedidos prontos
-    const prontosQuery = query(
-      ordersRef,
-      where('status', '==', 'ready')
-    );
-
-    // Query para pedidos em entrega
-    const emEntregaQuery = query(
-      ordersRef,
-      where('status', '==', 'out_for_delivery')
-    );
-
-    // Listener para pedidos na cozinha
-    const unsubCozinha = onSnapshot(cozinhaQuery, (snapshot) => {
+    fetchPedidos();
+    const unsubPendentes = onSnapshot(collection(db, 'partners', user.uid, 'orders'), (snapshot) => {
       const pedidos = snapshot.docs.map(doc => {
         const data = doc.data();
         return {
           id: doc.id,
           address: {
             city: data.address?.city || '',
-            complement: data.address?.complement || '',
             neighborhood: data.address?.neighborhood || '',
+            street: data.address?.street || '',
             number: data.address?.number || '',
-            state: data.address?.state || '',
-            street: data.address?.street || ''
+            complement: data.address?.complement || '',
+            zipCode: data.address?.zipCode || '',
           },
           createdAt: data.createdAt || new Date().toISOString(),
-          deliveryFee: Number(data.deliveryFee) || 0,
-          deliveryMode: data.deliveryMode || 'delivery',
-          finalPrice: Number(data.finalPrice) || 0,
-          items: data.items?.map((item: any) => ({
-            name: item.name || '',
-            options: item.options || [],
-            requiredSelections: item.requiredSelections || [],
-            price: Number(item.price) || 0,
-            productId: item.productId || '',
-            quantity: Number(item.quantity) || 0,
-            totalPrice: Number(item.totalPrice) || 0
-          })) || [],
-          payment: {
-            method: data.payment?.method || '',
-            status: data.status || 'pending',
-            cardFee: data.payment?.cardFee ? {
-              value: Number(data.payment.cardFee.value) || 0,
-              percentage: data.payment.cardFee.percentage || '',
-              flag: data.payment.cardFee.flag || '',
-              flagName: data.payment.cardFee.flagName || ''
-            } : undefined,
-            changeFor: data.payment?.changeFor || ''
-          },
-          storeId: data.storeId || '',
-          totalPrice: Number(data.totalPrice) || 0,
+          deliveryFee: data.deliveryFee || 0,
+          items: data.items || [],
+          paymentMethod: data.paymentMethod || 'cash',
+          status: data.status || 'pending',
+          total: data.total || 0,
           updatedAt: data.updatedAt || new Date().toISOString(),
           userId: data.userId || '',
           userName: data.userName || '',
-          status: data.status || 'pending',
           observations: data.observations || '',
-          coupon: data.coupon || '',
-          hasCoupon: data.hasCoupon || false,
-          couponCode: data.couponCode || '',
-          couponApplied: data.couponApplied || undefined
+          deliveryTime: data.deliveryTime || '',
+          pickupTime: data.pickupTime || '',
         } as Pedido;
       });
-      setPedidosCozinha(pedidos);
+      setPedidosPendentes(pedidos.filter(p => p.status === 'pending'));
+      setPedidosCozinha(pedidos.filter(p => p.status === 'preparing'));
+      setPedidosProntos(pedidos.filter(p => p.status === 'ready'));
+      setPedidosEmEntrega(pedidos.filter(p => p.status === 'out_for_delivery'));
     });
 
-    // Listener para pedidos prontos
-    const unsubProntos = onSnapshot(prontosQuery, (snapshot) => {
+    const unsubCozinha = onSnapshot(collection(db, 'partners', user.uid, 'orders'), (snapshot) => {
       const pedidos = snapshot.docs.map(doc => {
         const data = doc.data();
         return {
           id: doc.id,
           address: {
             city: data.address?.city || '',
-            complement: data.address?.complement || '',
             neighborhood: data.address?.neighborhood || '',
+            street: data.address?.street || '',
             number: data.address?.number || '',
-            state: data.address?.state || '',
-            street: data.address?.street || ''
+            complement: data.address?.complement || '',
+            zipCode: data.address?.zipCode || '',
           },
           createdAt: data.createdAt || new Date().toISOString(),
-          deliveryFee: Number(data.deliveryFee) || 0,
-          deliveryMode: data.deliveryMode || 'delivery',
-          finalPrice: Number(data.finalPrice) || 0,
-          items: data.items?.map((item: any) => ({
-            name: item.name || '',
-            options: item.options || [],
-            requiredSelections: item.requiredSelections || [],
-            price: Number(item.price) || 0,
-            productId: item.productId || '',
-            quantity: Number(item.quantity) || 0,
-            totalPrice: Number(item.totalPrice) || 0
-          })) || [],
-          payment: {
-            method: data.payment?.method || '',
-            status: data.status || 'pending',
-            cardFee: data.payment?.cardFee ? {
-              value: Number(data.payment.cardFee.value) || 0,
-              percentage: data.payment.cardFee.percentage || '',
-              flag: data.payment.cardFee.flag || '',
-              flagName: data.payment.cardFee.flagName || ''
-            } : undefined,
-            changeFor: data.payment?.changeFor || ''
-          },
-          storeId: data.storeId || '',
-          totalPrice: Number(data.totalPrice) || 0,
+          deliveryFee: data.deliveryFee || 0,
+          items: data.items || [],
+          paymentMethod: data.paymentMethod || 'cash',
+          status: data.status || 'pending',
+          total: data.total || 0,
           updatedAt: data.updatedAt || new Date().toISOString(),
           userId: data.userId || '',
           userName: data.userName || '',
-          status: data.status || 'pending',
           observations: data.observations || '',
-          coupon: data.coupon || '',
-          hasCoupon: data.hasCoupon || false,
-          couponCode: data.couponCode || '',
-          couponApplied: data.couponApplied || undefined
+          deliveryTime: data.deliveryTime || '',
+          pickupTime: data.pickupTime || '',
         } as Pedido;
       });
-      setPedidosProntos(pedidos);
+      setPedidosCozinha(pedidos.filter(p => p.status === 'preparing'));
     });
 
-    // Listener para pedidos em entrega
-    const unsubEmEntrega = onSnapshot(emEntregaQuery, (snapshot) => {
+    const unsubProntos = onSnapshot(collection(db, 'partners', user.uid, 'orders'), (snapshot) => {
       const pedidos = snapshot.docs.map(doc => {
         const data = doc.data();
         return {
           id: doc.id,
           address: {
             city: data.address?.city || '',
-            complement: data.address?.complement || '',
             neighborhood: data.address?.neighborhood || '',
+            street: data.address?.street || '',
             number: data.address?.number || '',
-            state: data.address?.state || '',
-            street: data.address?.street || ''
+            complement: data.address?.complement || '',
+            zipCode: data.address?.zipCode || '',
           },
           createdAt: data.createdAt || new Date().toISOString(),
-          deliveryFee: Number(data.deliveryFee) || 0,
-          deliveryMode: data.deliveryMode || 'delivery',
-          finalPrice: Number(data.finalPrice) || 0,
-          items: data.items?.map((item: any) => ({
-            name: item.name || '',
-            options: item.options || [],
-            requiredSelections: item.requiredSelections || [],
-            price: Number(item.price) || 0,
-            productId: item.productId || '',
-            quantity: Number(item.quantity) || 0,
-            totalPrice: Number(item.totalPrice) || 0
-          })) || [],
-          payment: {
-            method: data.payment?.method || '',
-            status: data.status || 'pending',
-            cardFee: data.payment?.cardFee ? {
-              value: Number(data.payment.cardFee.value) || 0,
-              percentage: data.payment.cardFee.percentage || '',
-              flag: data.payment.cardFee.flag || '',
-              flagName: data.payment.cardFee.flagName || ''
-            } : undefined,
-            changeFor: data.payment?.changeFor || ''
-          },
-          storeId: data.storeId || '',
-          totalPrice: Number(data.totalPrice) || 0,
+          deliveryFee: data.deliveryFee || 0,
+          items: data.items || [],
+          paymentMethod: data.paymentMethod || 'cash',
+          status: data.status || 'pending',
+          total: data.total || 0,
           updatedAt: data.updatedAt || new Date().toISOString(),
           userId: data.userId || '',
           userName: data.userName || '',
-          status: data.status || 'pending',
           observations: data.observations || '',
-          coupon: data.coupon || '',
-          hasCoupon: data.hasCoupon || false,
-          couponCode: data.couponCode || '',
-          couponApplied: data.couponApplied || undefined
+          deliveryTime: data.deliveryTime || '',
+          pickupTime: data.pickupTime || '',
         } as Pedido;
       });
-      setPedidosEmEntrega(pedidos);
+      setPedidosProntos(pedidos.filter(p => p.status === 'ready'));
+    });
+
+    const unsubEmEntrega = onSnapshot(collection(db, 'partners', user.uid, 'orders'), (snapshot) => {
+      const pedidos = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          address: {
+            city: data.address?.city || '',
+            neighborhood: data.address?.neighborhood || '',
+            street: data.address?.street || '',
+            number: data.address?.number || '',
+            complement: data.address?.complement || '',
+            zipCode: data.address?.zipCode || '',
+          },
+          createdAt: data.createdAt || new Date().toISOString(),
+          deliveryFee: data.deliveryFee || 0,
+          items: data.items || [],
+          paymentMethod: data.paymentMethod || 'cash',
+          status: data.status || 'pending',
+          total: data.total || 0,
+          updatedAt: data.updatedAt || new Date().toISOString(),
+          userId: data.userId || '',
+          userName: data.userName || '',
+          observations: data.observations || '',
+          deliveryTime: data.deliveryTime || '',
+          pickupTime: data.pickupTime || '',
+        } as Pedido;
+      });
+      setPedidosEmEntrega(pedidos.filter(p => p.status === 'out_for_delivery'));
     });
 
     return () => {
@@ -396,7 +285,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
       unsubProntos();
       unsubEmEntrega();
     };
-  }, [user]);
+  }, [user?.uid, fetchPedidos]);
 
   const aceitarPedido = async (pedido: Pedido) => {
     if (!user?.uid) return;

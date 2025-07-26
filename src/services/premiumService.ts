@@ -59,49 +59,30 @@ export const premiumService = {
   checkUserPremium: async (): Promise<PremiumStatus> => {
     try {
       const user = auth.currentUser;
-      console.log('Usuário atual:', user?.uid);
       
       if (!user) {
-        console.log('Nenhum usuário logado');
         return { isPremium: false };
       }
 
       const userDocRef = doc(db, 'partners', user.uid);
-      console.log('Buscando documento:', userDocRef.path);
       
       const userDoc = await getDoc(userDocRef);
-      console.log('Documento existe:', userDoc.exists());
       
       const userData = userDoc.data();
-      console.log('Dados do usuário:', userData);
 
       if (!userData) {
-        console.log('Nenhum dado encontrado para o usuário');
         return { isPremium: false };
       }
 
       const isPremium = userData.store?.isPremium || false;
       const premiumExpiresAt = userData.store?.premiumExpiresAt;
       
-      console.log('Status Premium:', {
-        isPremium,
-        premiumExpiresAt,
-        storeData: userData.store
-      });
-
       // Verifica se a data de expiração é válida e ainda não expirou
       const expirationDate = premiumExpiresAt ? new Date(premiumExpiresAt) : undefined;
       const isExpired = expirationDate ? expirationDate < new Date() : true;
 
-      console.log('Verificação de expiração:', {
-        expirationDate,
-        isExpired,
-        currentDate: new Date()
-      });
-
       // Se tiver expirado, retorna como não premium
       if (isExpired) {
-        console.log('Plano expirado');
         return { isPremium: false };
       }
 
@@ -117,7 +98,6 @@ export const premiumService = {
         }
       };
 
-      console.log('Status final:', status);
       return status;
     } catch (error) {
       console.error('Erro ao verificar status premium:', error);

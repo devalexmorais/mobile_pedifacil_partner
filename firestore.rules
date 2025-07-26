@@ -29,6 +29,12 @@ service cloud.firestore {
              request.auth.token.firebase.sign_in_attributes.email.matches('.*@system.gserviceaccount.com');
     }
 
+    // Função para verificar se é um parceiro
+    function isPartner() {
+      return request.auth != null && 
+             exists(/databases/$(database)/documents/partners/$(request.auth.uid));
+    }
+
     // Função para verificar se é uma atualização apenas dos campos usedBy e updatedAt
     function isOnlyUsageUpdate() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedBy', 'updatedAt']);
@@ -36,12 +42,7 @@ service cloud.firestore {
 
     // ---------------- Regras globais ----------------
 
-    // Regra específica para notificações de usuários - DEVE VIR ANTES DA REGRA GLOBAL
-    match /users/{userId}/notifications/{notificationId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() || isCloudFunction();
-      allow update, delete: if isOwner(userId);
-    }
+
 
     // Regra geral para leitura (mas não para notificações de usuários)
     match /{document=**} {
@@ -170,7 +171,12 @@ service cloud.firestore {
         allow create, update, delete: if isOwner(userId);
       }
 
-      // Regra removida - movida para antes da regra global
+      // Regra específica para notificações de usuários
+      match /notifications/{notificationId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() || isCloudFunction() || isPartner();
+        allow update, delete: if isOwner(userId) || isCloudFunction();
+      }
     }
 
     // ---------------- Regras para parceiros ----------------

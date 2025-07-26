@@ -25,6 +25,7 @@ export interface NotificationData {
     [key: string]: any; // Permitir outras propriedades
   };
   read: boolean;
+  viewed?: boolean; // Campo para controlar se foi vista via push
   title: string;
 }
 
@@ -45,6 +46,40 @@ Notifications.setNotificationHandler({
     shouldSetBadge: true,
   }),
 });
+
+// Cache para controlar notificações já processadas
+const processedNotificationIds = new Set<string>();
+
+// Função para carregar IDs processados do localStorage
+const loadProcessedNotificationIds = (): Set<string> => {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const stored = localStorage.getItem('processedNotificationIds');
+      if (stored) {
+        return new Set(JSON.parse(stored));
+      }
+    }
+  } catch (error) {
+    console.error('Erro ao carregar IDs de notificações processadas:', error);
+  }
+  return new Set<string>();
+};
+
+// Função para salvar IDs processados no localStorage
+const saveProcessedNotificationIds = (ids: Set<string>): void => {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.setItem('processedNotificationIds', JSON.stringify([...ids]));
+    }
+  } catch (error) {
+    console.error('Erro ao salvar IDs de notificações processadas:', error);
+  }
+};
+
+// Carregar IDs processados na inicialização
+const processedIds = loadProcessedNotificationIds();
+processedNotificationIds.clear();
+processedIds.forEach(id => processedNotificationIds.add(id));
 
 export const notificationService = {
   // Verificar se usuário está autenticado
@@ -71,6 +106,7 @@ export const notificationService = {
           body: data.body,
           createdAt: data.createdAt?.toDate() || new Date(),
           read: data.read || false,
+          viewed: data.viewed || false,
           data: data.data || {}
         });
       });
@@ -133,6 +169,34 @@ export const notificationService = {
     } catch (error) {
       console.error('Erro ao marcar todas notificações como lidas:', error);
       throw error;
+    }
+  },
+
+  // Marcar notificação como vista (quando mostrada via push)
+  async markAsViewed(notificationId: string): Promise<void> {
+    try {
+      const user = auth.currentUser;
+      if (!user) throw new Error('Usuário não autenticado');
+
+      const notificationRef = doc(db, 'partners', user.uid, 'notifications', notificationId);
+      await updateDoc(notificationRef, {
+        viewed: true // Campo adicional para controlar se foi vista via push
+      });
+    } catch (error) {
+      console.error('Erro ao marcar notificação como vista:', error);
+      throw error;
+    }
+  },
+
+  // Limpar cache de notificações processadas
+  clearProcessedNotificationsCache(): void {
+    processedNotificationIds.clear();
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.removeItem('processedNotificationIds');
+      }
+    } catch (error) {
+      console.error('Erro ao limpar cache de notificações processadas:', error);
     }
   },
 
@@ -264,6 +328,7 @@ export const notificationService = {
             body: data.body,
             createdAt: data.createdAt?.toDate() || new Date(),
             read: data.read || false,
+            viewed: data.viewed || false,
             data: data.data || {}
           });
         });
@@ -275,12 +340,32 @@ export const notificationService = {
           .filter(change => change.type === 'added')
           .map(change => ({ id: change.doc.id, ...change.doc.data() } as RawNotification));
         
-        // Enviar notificação push para cada nova notificação
+        // Enviar notificação push apenas para notificações realmente novas
         newNotifications.forEach(notification => {
-          if (!notification.read) {
+          // Verificar se a notificação já foi processada
+          if (!notification.read && !processedNotificationIds.has(notification.id)) {
+            // Marcar como processada
+            processedNotificationIds.add(notification.id);
+            
+            // Salvar no localStorage
+            saveProcessedNotificationIds(processedNotificationIds);
+            
+            // Enviar push notification
             this.sendPushNotification(notification.title, notification.body, notification.data);
+            
+            // Marcar como vista (opcional - para controle adicional)
+            // this.markAsViewed(notification.id).catch(console.error);
           }
         });
+        
+        // Limpar cache de IDs processados para notificações que não existem mais
+        // (para evitar vazamento de memória)
+        const currentIds = new Set(notifications.map(n => n.id));
+        for (const id of processedNotificationIds) {
+          if (!currentIds.has(id)) {
+            processedNotificationIds.delete(id);
+          }
+        }
       });
       
       return unsubscribe;
