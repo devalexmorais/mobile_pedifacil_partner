@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState,useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,15 +11,8 @@ import {
   StatusBar,
   SafeAreaView,
   Platform,
-  Dimensions,
-  Pressable,
-  Animated,
-  PanResponder,
-  Easing,
-  ActivityIndicator,
   Alert,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles/theme/colors';
 import { establishmentSettingsService, Schedule } from '../services/establishmentSettingsService';
 import { formatCurrency } from '../utils/format';

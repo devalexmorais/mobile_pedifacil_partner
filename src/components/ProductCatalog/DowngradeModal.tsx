@@ -1,6 +1,5 @@
 import React from 'react';
-import { View, Text, Modal, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Modal,StyleSheet } from 'react-native';
 
 interface DowngradeModalProps {
   visible: boolean;

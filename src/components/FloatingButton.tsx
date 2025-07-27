@@ -13,7 +13,7 @@ import { colors } from '../styles/theme/colors';
 import { SettingsModals } from './SettingsModals';
 import { establishmentSettingsService } from '../services/establishmentSettingsService';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
 type FloatingButtonOption = {
   icon: string;

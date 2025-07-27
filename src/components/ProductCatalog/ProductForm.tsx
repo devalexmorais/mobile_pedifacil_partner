@@ -1,7 +1,5 @@
 import React from 'react';
-import { View, ScrollView, TextInput, TouchableOpacity, Text, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import ImageViewer from '@/components/ImageViewer';
+import { ScrollView, StyleSheet } from 'react-native';
 
 interface ProductFormProps {
   // ... definir as props necessárias

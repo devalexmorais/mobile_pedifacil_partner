@@ -7,7 +7,7 @@ interface ImageViewerProps {
   selectedImage: string | null;
 }
 
-export default function ImageViewer({ placeholderImageSource, selectedImage }: ImageViewerProps) {
+export default function ImageViewer({ selectedImage }: ImageViewerProps) {
   if (selectedImage) {
     return <Image source={{ uri: selectedImage }} style={styles.image} />;
   }

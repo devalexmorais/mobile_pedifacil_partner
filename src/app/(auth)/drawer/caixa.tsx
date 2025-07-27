@@ -3,8 +3,9 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator
 import { colors } from '@/styles/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import firebaseSalesService from '@/services/firebaseSales';
-import { Order, OrderItem, DaySummary, PaymentMethodType } from '@/services/firebaseSales';
+import { Order, DaySummary} from '@/services/firebaseSales';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
+import { LoadingSpinner } from '@/components';
 
 // Mapeamento centralizado dos métodos de pagamento
 const PAYMENT_METHODS = {
@@ -182,10 +183,7 @@ export default function Caixa() {
         </View>
 
         {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.orange} />
-            <Text style={styles.loadingText}>Carregando dados...</Text>
-          </View>
+          <LoadingSpinner />
         ) : error ? (
           <View style={styles.errorContainer}>
             <Ionicons name="alert-circle-outline" size={40} color={colors.red[500]} />

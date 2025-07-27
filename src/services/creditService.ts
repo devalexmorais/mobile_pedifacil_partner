@@ -10,7 +10,6 @@ import {
   updateDoc, 
   Timestamp,
   writeBatch,
-  getDoc
 } from 'firebase/firestore';
 
 export interface Credit {

@@ -1,5 +1,5 @@
-import React, { useState, useRef, useMemo } from 'react';
-import { View, StyleSheet, ActivityIndicator, Image, Text } from 'react-native';
+import React, { useState} from 'react';
+import { View, StyleSheet, ActivityIndicator, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 interface OptimizedImageProps {

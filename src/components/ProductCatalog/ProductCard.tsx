@@ -1,5 +1,5 @@
-import React, { useState, useEffect, memo, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TouchableWithoutFeedback } from 'react-native';
+import React, {useEffect, memo,} from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { Product } from '@/types/product';
 import OptimizedImage from '../OptimizedImage';

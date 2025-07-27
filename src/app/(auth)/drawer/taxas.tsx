@@ -6,6 +6,7 @@ import { deliveryFeeService, DeliveryFee } from '@/services/deliveryFeeService';
 import { addressService } from '@/services/addressService';
 import { establishmentService } from '@/services/establishmentService';
 import { Feather } from '@expo/vector-icons';
+import { LoadingSpinner } from '@/components';
 
 
 // Função para formatar valor para BRL
@@ -199,10 +200,7 @@ export default function TaxasEntrega() {
         </View>
 
         {isLoading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.green[500]} />
-            <Text style={styles.loadingText}>Carregando taxas...</Text>
-          </View>
+          <LoadingSpinner />
         ) : (
           <View style={styles.feesList}>
             {deliveryFees.map((fee) => (

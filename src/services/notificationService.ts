@@ -1,4 +1,4 @@
-import { collection, query, orderBy, getDocs, doc, updateDoc, where, getDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
+import { collection, query, orderBy, getDocs, doc, updateDoc, where, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';

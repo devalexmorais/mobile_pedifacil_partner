@@ -5,7 +5,6 @@ import { usePedidos } from '../../../contexts/PedidosContext';
 import { EmptyState } from '../../../components/EmptyState';
 import { Pedido } from '../../../contexts/PedidosContext';
 import { notificationService } from '../../../services/notificationService';
-import { colors } from '../../../styles/theme/colors';
 
 export default function Pronto() {
   const [expandedId, setExpandedId] = useState<string | null>(null);

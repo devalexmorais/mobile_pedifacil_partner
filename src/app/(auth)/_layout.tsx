@@ -1,6 +1,6 @@
 import { Drawer } from 'expo-router/drawer';
 import { useRouter} from 'expo-router';
-import { View,SafeAreaView, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View,SafeAreaView, Text, TouchableOpacity, StyleSheet} from 'react-native';
 import { Ionicons, AntDesign, FontAwesome6, FontAwesome } from '@expo/vector-icons';
 import { DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
 import { StatusBar } from 'react-native';

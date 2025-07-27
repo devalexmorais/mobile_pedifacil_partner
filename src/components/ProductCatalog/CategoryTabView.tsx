@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Dimensions, useWindowDimensions, Text } from 'react-native';
+import { StyleSheet, useWindowDimensions, Text } from 'react-native';
 import { TabView, TabBar } from 'react-native-tab-view';
 
 interface Category {

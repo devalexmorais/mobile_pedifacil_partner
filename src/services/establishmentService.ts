@@ -1,6 +1,6 @@
 import { doc, updateDoc, getDoc, setDoc, collection, query, where, orderBy, limit, getDocs, onSnapshot, deleteField } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
-import { establishmentSettingsService, Schedule } from './establishmentSettingsService';
+import { establishmentSettingsService } from './establishmentSettingsService';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { notificationService } from './notificationService';
 

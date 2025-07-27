@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { colors } from '@/styles/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,6 +8,7 @@ import { useFinancialData } from '../../../hooks/useFinancialData';
 import { usePremiumAnalytics } from '../../../hooks/usePremiumAnalytics';
 import PremiumCharts from '../../../components/PremiumCharts';
 import { useCredits } from '../../../hooks/useCredits';
+import { LoadingSpinner } from '@/components';
 
 
 export default function Financeiro() {
@@ -49,12 +50,7 @@ export default function Financeiro() {
 
 
   if (financialLoading || premiumLoading || creditsLoading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.purple[500]} />
-        <Text style={styles.loadingText}>Carregando dados financeiros...</Text>
-      </View>
-    );
+    return <LoadingSpinner />;
   }
 
   if (financialError) {

@@ -1,50 +1,157 @@
-# Welcome to your Expo app 👋
+# PediFácil Partner - App para Estabelecimentos
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Aplicativo móvel para estabelecimentos parceiros do PediFácil, desenvolvido com React Native e Expo.
 
-## Get started
+## 📱 Sobre o Projeto
 
-1. Install dependencies
+O PediFácil Partner é um aplicativo completo para gerenciamento de pedidos, produtos, finanças e assinaturas para estabelecimentos parceiros da plataforma PediFácil.
 
+## 🚀 Funcionalidades Principais
+
+### 📋 Gestão de Pedidos
+- **Status em Tempo Real**: Acompanhamento de pedidos (pendente, preparando, pronto, em entrega, entregue)
+- **Notificações Automáticas**: Sistema de notificações push para mudanças de status
+- **Interface Intuitiva**: Telas organizadas por status dos pedidos
+
+### 🛍️ Catálogo de Produtos
+- **Gestão Completa**: Adicionar, editar e remover produtos
+- **Categorias**: Organização por categorias
+- **Variações**: Produtos com múltiplas opções e tamanhos
+- **Promoções**: Sistema de cupons e descontos
+
+### 💰 Sistema Financeiro
+- **Faturas Mensais**: Geração automática de faturas
+- **Sistema de Créditos**: Acúmulo e aplicação automática de créditos via cupons globais
+- **Relatórios**: Visualização de receitas e despesas
+- **Taxas**: Controle de taxas da plataforma
+
+### 💳 Sistema de Assinatura
+- **Plano Premium**: Assinatura mensal com Mercado Pago
+- **Cartões Salvos**: Armazenamento seguro de cartões
+- **Cobrança Automática**: Renovação automática mensal
+- **Cancelamento**: Facilidade para cancelar assinatura
+
+### 🔔 Notificações
+- **Push Notifications**: Notificações em tempo real
+- **Status de Pedidos**: Atualizações automáticas
+- **Sistema Robusto**: Integração com Expo Notifications
+
+## 🛠️ Tecnologias Utilizadas
+
+- **React Native** com **Expo**
+- **Firebase** (Firestore, Functions, Auth)
+- **Mercado Pago** (Pagamentos e Assinaturas)
+- **TypeScript**
+- **Expo Router** (Navegação)
+- **React Hook Form** (Formulários)
+
+## 📁 Estrutura do Projeto
+
+```
+src/
+├── app/                    # Telas do app (Expo Router)
+│   ├── (auth)/            # Telas autenticadas
+│   │   ├── (tabs)/        # Abas principais (pedidos)
+│   │   └── drawer/        # Menu lateral
+├── components/            # Componentes reutilizáveis
+├── services/             # Serviços e APIs
+├── contexts/             # Contextos React
+├── hooks/                # Hooks customizados
+├── types/                # Definições TypeScript
+└── utils/                # Utilitários
+```
+
+## 🔧 Configuração e Instalação
+
+### Pré-requisitos
+- Node.js 18+
+- Expo CLI
+- Conta Firebase
+- Conta Mercado Pago
+
+### Instalação
+
+1. **Clone o repositório**
+   ```bash
+   git clone [url-do-repositorio]
+   cd mobile_pedifacil_partner
+   ```
+
+2. **Instale as dependências**
    ```bash
    npm install
    ```
 
-2. Start the app
-
+3. **Configure as variáveis de ambiente**
    ```bash
-    npx expo start
+   # Crie um arquivo .env com:
+   EXPO_PUBLIC_FIREBASE_API_KEY=sua_chave
+   EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=seu_dominio
+   EXPO_PUBLIC_FIREBASE_PROJECT_ID=seu_projeto
+   EXPO_PUBLIC_MERCADO_PAGO_PUBLIC_KEY=sua_chave_publica
    ```
 
-In the output, you'll find options to open the app in a
+4. **Inicie o projeto**
+   ```bash
+   npx expo start
+   ```
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## 🔐 Autenticação e Segurança
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+- **Firebase Auth**: Autenticação segura
+- **Firestore Rules**: Regras de segurança para dados
+- **Tokenização**: Cartões tokenizados via Mercado Pago
+- **Permissões**: Controle de acesso por estabelecimento
 
-## Get a fresh project
+## 📊 Principais Integrações
 
-When you're ready, run:
+### Firebase
+- **Firestore**: Banco de dados principal
+- **Functions**: Backend serverless
+- **Auth**: Autenticação de usuários
+- **Storage**: Armazenamento de imagens
 
+### Mercado Pago
+- **Pagamentos**: Processamento de pagamentos
+- **Assinaturas**: Sistema de assinatura recorrente
+- **Webhooks**: Notificações de pagamento
+- **Customers**: Gestão de clientes
+
+## 🚀 Deploy
+
+### Firebase Functions
 ```bash
-npm run reset-project
+cd functions
+npm install
+firebase deploy --only functions
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### App Store / Google Play
+```bash
+eas build --platform all
+eas submit --platform all
+```
 
-## Learn more
+## 📈 Monitoramento
 
-To learn more about developing your project with Expo, look at the following resources:
+- **Firebase Analytics**: Métricas de uso
+- **Crashlytics**: Relatórios de erro
+- **Logs**: Sistema de logs detalhado
+- **Performance**: Monitoramento de performance
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## 🤝 Contribuição
 
-## Join the community
+1. Fork o projeto
+2. Crie uma branch para sua feature
+3. Commit suas mudanças
+4. Push para a branch
+5. Abra um Pull Request
 
-Join our community of developers creating universal apps.
+## 📞 Suporte
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Para suporte técnico ou dúvidas sobre o projeto, entre em contato com a equipe de desenvolvimento.
+
+---
+
+**Desenvolvido para PediFácil** 🚀
+*Sistema completo de gestão para estabelecimentos parceiros*

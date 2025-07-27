@@ -6,6 +6,7 @@ import { Picker } from '@react-native-picker/picker';
 import { addressService } from '../../../services/addressService';
 import { CustomInput } from '../../../components/CustomInput';
 import { colors } from '../../../styles/theme/colors';
+import { LoadingSpinner } from '@/components';
 
 interface State {
   id: string;
@@ -224,11 +225,7 @@ export default function RegisterAddress() {
   };
 
   if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
+    return <LoadingSpinner />;
   }
 
   return (

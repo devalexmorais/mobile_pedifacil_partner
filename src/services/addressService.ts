@@ -1,8 +1,6 @@
 import { 
   collection, 
   getDocs,
-  DocumentData,
-  QueryDocumentSnapshot,
   collectionGroup
 } from 'firebase/firestore';
 import { db } from '../config/firebase';

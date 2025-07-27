@@ -1,5 +1,5 @@
 import { db, auth as firebaseAuth } from '@/config/firebase';
-import { collection, query, where, getDocs, doc, getDoc, Timestamp, collectionGroup } from 'firebase/firestore';
+import { collection, query, getDocs, doc, getDoc } from 'firebase/firestore';
 
 // Tipos de pagamento válidos
 export type PaymentMethodType = 'cash' | 'card' | 'pix';

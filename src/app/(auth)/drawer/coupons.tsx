@@ -1,16 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, TouchableOpacity, ScrollView, Text, Modal } from 'react-native';
 import { Switch, Button, TextInput, Menu } from 'react-native-paper';
-import { Picker } from '@react-native-picker/picker';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { colors } from '@/styles/theme/colors';
-import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { couponService, Coupon, CouponWithStatus } from '@/services/couponService';
+import { LoadingSpinner } from '@/components';
 
 export default function Coupons() {
   const { user } = useAuth();
-  const router = useRouter();
   const [couponsWithStatus, setCouponsWithStatus] = useState<CouponWithStatus[]>([]);
   const [selectedCoupon, setSelectedCoupon] = useState<CouponWithStatus | null>(null);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
@@ -605,9 +603,7 @@ export default function Coupons() {
       
       <ScrollView style={styles.couponList} showsVerticalScrollIndicator={false}>
         {isLoading ? (
-          <View style={styles.emptyCoupons}>
-            <Text style={styles.emptyCouponsText}>Carregando cupons...</Text>
-          </View>
+          <LoadingSpinner />
         ) : couponsWithStatus.length > 0 ? couponsWithStatus.map((coupon) => (
           <View key={coupon.id} style={styles.couponCard}>
             <View style={styles.couponCardHeader}>

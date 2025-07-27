@@ -1,5 +1,5 @@
 import { auth } from '@/config/firebase';
-import { collection, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { 
@@ -7,7 +7,6 @@ import {
   createUserWithEmailAndPassword, 
   signOut,
   onAuthStateChanged as firebaseOnAuthStateChanged,
-  PhoneAuthProvider,
   User as FirebaseUser
 } from 'firebase/auth';
 import { establishmentService } from './establishmentService';

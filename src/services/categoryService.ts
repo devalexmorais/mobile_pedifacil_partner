@@ -1,14 +1,9 @@
 import { 
   collection, 
   getDocs,
-  DocumentData,
-  QueryDocumentSnapshot,
-  query,
-  where,
   collectionGroup,
   addDoc,
   doc,
-  setDoc,
   serverTimestamp,
   deleteDoc
 } from 'firebase/firestore';

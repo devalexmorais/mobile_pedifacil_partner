@@ -1,5 +1,5 @@
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp, collection, query, where, getDocs, getDoc } from 'firebase/firestore';
+import { doc, setDoc, collection, query, where, getDocs, getDoc } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 import { getAnalytics, logEvent, isSupported, Analytics } from 'firebase/analytics';
 import { Platform } from 'react-native';

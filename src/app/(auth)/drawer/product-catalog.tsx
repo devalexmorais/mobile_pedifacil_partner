@@ -5,13 +5,12 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
   Modal,
   Alert,
   SafeAreaView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { doc, collection, getDocs, addDoc, updateDoc, deleteDoc, setDoc, writeBatch } from 'firebase/firestore';
+import { doc, collection, getDocs, updateDoc, deleteDoc, setDoc, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../../../config/firebase';
 import * as ImagePicker from 'expo-image-picker';
 import { usePlan } from '@/contexts/PlanContext';
@@ -20,11 +19,11 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { ProductFormModal } from '@/components/ProductCatalog/ProductFormModal';
 import { ProductDetailsModal } from '@/components/ProductCatalog/ProductDetailsModal';
 import { PromotionModal } from '@/components/ProductCatalog/PromotionModal';
-import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage } from '../../../config/firebase';
 import { categoryService } from '@/services/categoryService';
 import { Product, Promotion } from '@/types/product';
-import { ProductCatalogSkeleton } from '@/components/skeleton';
+import { LoadingSpinner } from '@/components';
 import { CategoryTabView } from '@/components/ProductCatalog/CategoryTabView';
 import { CategoryProductsView } from '@/components/ProductCatalog/CategoryProductsView';
 
@@ -1358,14 +1357,14 @@ export default function ProductCatalog() {
     }
   };
 
-  // Se ainda está carregando e não há dados, mostra o skeleton
+  // Se ainda está carregando e não há dados, mostra o loading
   if (loading && categories.length === 0 && availableCategories.length === 0) {
-    return <ProductCatalogSkeleton />;
+    return <LoadingSpinner />;
   }
 
   // Se não há categorias disponíveis, mostra estado vazio
   if (availableCategories.length === 0 && categories.length === 0) {
-    return <ProductCatalogSkeleton />;
+    return <LoadingSpinner />;
   }
 
   return (

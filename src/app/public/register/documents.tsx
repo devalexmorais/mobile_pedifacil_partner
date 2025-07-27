@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
@@ -19,6 +18,7 @@ import { categoryService} from '../../../services/categoryService';
 import { registerService } from '../../../services/registerService';
 import { CustomInput } from '../../../components/CustomInput';
 import { colors } from '../../../styles/theme/colors';
+import { LoadingSpinner } from '@/components';
 
 interface Category {
   id: string;
@@ -410,11 +410,7 @@ export default function Documents() {
   };
 
   if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
+    return <LoadingSpinner />;
   }
 
   return (

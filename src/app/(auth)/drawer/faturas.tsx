@@ -14,11 +14,11 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/theme/colors';
-import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons} from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useNavigation, DrawerActions } from '@react-navigation/native';
+import { useNavigation} from '@react-navigation/native';
 import { db } from '@/config/firebase';
-import { collection, query, where, getDocs, orderBy, Timestamp, doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { collection, query, getDocs, orderBy, Timestamp, doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -29,6 +29,7 @@ import { BlurView } from 'expo-blur';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { mercadoPagoService } from '@/services/mercadoPagoService';
 import { usePaymentStatus } from '@/hooks/usePaymentStatus';
+import { LoadingSpinner } from '@/components';
 
 interface InvoiceDetail {
   id: string;
@@ -1150,13 +1151,7 @@ export default function Faturas() {
   };
 
   if (isLoading) {
-    return (
-      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-        <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
-          <ActivityIndicator size="large" color={colors.orange} />
-        </View>
-      </SafeAreaView>
-    );
+    return <LoadingSpinner />;
   }
 
   return (

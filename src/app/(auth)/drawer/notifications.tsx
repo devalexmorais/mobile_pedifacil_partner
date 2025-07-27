@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, Text, Alert, AppState } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
 import { NotificationItem } from '../../../components/NotificationItem';
 import { EmptyNotifications } from '../../../components/EmptyNotifications';
 import { notificationService, NotificationData } from '../../../services/notificationService';
 import { pushNotificationService } from '../../../services/pushNotificationService';
 import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
+import { LoadingSpinner } from '@/components';
 
 export default function NotificationsScreen() {
   const [notifications, setNotifications] = useState<NotificationData[]>([]);
@@ -176,11 +176,7 @@ export default function NotificationsScreen() {
 
   // Renderizar conteúdo baseado no estado
   if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#FFA500" />
-      </View>
-    );
+    return <LoadingSpinner />;
   }
 
   return (

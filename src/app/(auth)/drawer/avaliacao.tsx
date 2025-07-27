@@ -4,7 +4,7 @@ import { colors } from '@/styles/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, getDocs } from 'firebase/firestore';
 import { db, auth } from '@/config/firebase';
-import { AvaliacaoSkeleton } from '@/components/skeleton';
+import { LoadingSpinner } from '@/components';
 
 interface Review {
   id: string;
@@ -94,7 +94,7 @@ export default function Avaliacao() {
   };
 
   if (loading) {
-    return <AvaliacaoSkeleton />;
+    return <LoadingSpinner />;
   }
 
   if (error) {

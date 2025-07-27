@@ -1,6 +1,5 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
-import { getAuth } from 'firebase/auth';
 
 export interface Schedule {
   [key: string]: {

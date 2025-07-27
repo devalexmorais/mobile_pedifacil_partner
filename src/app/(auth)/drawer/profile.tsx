@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Auth, getAuth } from 'firebase/auth';
 import { PhoneEditModal } from '../../../components/PhoneEditModal';
 import * as ImagePicker from 'expo-image-picker';
-import { ProfileSkeleton } from '../../../components/skeleton';
+import { LoadingSpinner } from '../../../components';
 
 // Inicializar auth com tipagem correta
 const auth: Auth = getAuth();
@@ -379,7 +379,7 @@ export default function Profile() {
   }, []);
 
   if (loading) {
-    return <ProfileSkeleton />;
+    return <LoadingSpinner />;
   }
 
   if (!partnerData) {

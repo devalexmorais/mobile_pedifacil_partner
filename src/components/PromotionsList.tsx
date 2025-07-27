@@ -1,7 +1,7 @@
 import React from 'react';
 import { ScrollView, View, Text, StyleSheet } from 'react-native';
 import { ProductWithPromotion } from '@/types/product-catalog';
-import { ProductCard } from './product-catalog/ProductCard';
+import { ProductCardMemo } from './ProductCatalog/ProductCard';
 import { colors } from '@/styles/theme/colors';
 
 interface PromotionsListProps {
@@ -28,12 +28,15 @@ export function PromotionsList({ products, onEdit, onTogglePromotion, onToggleAc
   return (
     <ScrollView style={styles.container}>
       {promotedProducts.map(product => (
-        <ProductCard
+        <ProductCardMemo
           key={product.id}
           product={product}
+          onPress={() => onEdit(product)}
           onEdit={onEdit}
+          onToggleAvailability={() => onToggleActive(product)}
+          onDelete={() => {}}
           onTogglePromotion={onTogglePromotion}
-          onToggleActive={onToggleActive}
+          defaultImage={require('@/assets/product-placeholder.png')}
         />
       ))}
     </ScrollView>

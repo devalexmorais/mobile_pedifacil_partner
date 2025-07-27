@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
 import { colors } from '../styles/theme/colors';
-import { MonthlyComparison, PremiumAnalytics } from '../hooks/usePremiumAnalytics';
+import { PremiumAnalytics } from '../hooks/usePremiumAnalytics';
 
 const screenWidth = Dimensions.get('window').width;
 const chartWidth = screenWidth - 80; // Garante que sempre caiba na tela

@@ -4,11 +4,11 @@ import { colors } from '@/styles/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { usePremium } from '../../../hooks/usePremium';
-import { premiumService } from '../../../services/premiumService';
 import { useAuth } from '../../../contexts/AuthContext';
 import { formatCurrency } from '../../../utils/format';
 import { collection, getDocs, doc, updateDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db } from '../../../config/firebase';
+import { LoadingSpinner } from '@/components';
 
 interface Plan {
   id: string;
@@ -264,11 +264,7 @@ export default function Signature() {
   };
 
   if (loading || premiumLoading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
+    return <LoadingSpinner />;
   }
 
   return (
