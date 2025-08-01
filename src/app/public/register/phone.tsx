@@ -129,19 +129,7 @@ export default function Phone() {
     }
   };
 
-  const testTwilioCredentials = async () => {
-    try {
-      const result = await TwilioService.testCredentials();
-      
-      if (result.success) {
-        Alert.alert('✅ Credenciais OK', `Conta: ${result.accountInfo?.friendlyName}\nStatus: ${result.accountInfo?.status}`);
-      } else {
-        Alert.alert('❌ Erro nas Credenciais', JSON.stringify(result.error, null, 2));
-      }
-    } catch (error: any) {
-      Alert.alert('❌ Erro', error.message);
-    }
-  };
+
 
   return (
     <SafeAreaView style={styles.container}>
@@ -233,15 +221,7 @@ export default function Phone() {
                 </Text>
               </TouchableOpacity>
 
-              {/* Botão temporário para testar credenciais */}
-              <TouchableOpacity
-                style={[styles.backButton, { backgroundColor: '#4CAF50', borderColor: '#4CAF50' }]}
-                onPress={testTwilioCredentials}
-              >
-                <Text style={[styles.backButtonText, { color: '#fff' }]}>
-                  🧪 Testar Credenciais Twilio
-                </Text>
-              </TouchableOpacity>
+
             </View>
           )}
         </Formik>
