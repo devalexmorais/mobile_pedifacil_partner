@@ -8,10 +8,10 @@ import {
   Alert,
   ActivityIndicator,
   LogBox,
-  SafeAreaView,
   Modal,
   Dimensions,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Picker } from '@react-native-picker/picker';
 import { categoryService} from '../../../services/categoryService';
@@ -414,7 +414,7 @@ export default function Documents() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <ScrollView 
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}

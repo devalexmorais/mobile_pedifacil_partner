@@ -47,7 +47,7 @@ export const CustomInput = ({
         autoCorrect={false}
         editable={!disabled}
         placeholder={placeholder}
-        placeholderTextColor={colors.text.secondary}
+        placeholderTextColor="#999999"
         maxLength={maxLength}
       />
     </View>
@@ -75,7 +75,8 @@ const styles = StyleSheet.create({
     borderColor: colors.border.default,
     paddingHorizontal: 16,
     fontSize: 16,
-    color: colors.text.primary,
+    color: '#000000',
+    fontWeight: '500',
   },
   inputError: {
     borderColor: colors.text.error,

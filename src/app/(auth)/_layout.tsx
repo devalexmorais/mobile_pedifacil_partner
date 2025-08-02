@@ -82,7 +82,9 @@ function CustomDrawerContent(props: any) {
   return (
     <SafeAreaView style={styles.drawerContainer}>
       <StatusBar barStyle="light-content" backgroundColor="#FFA500" />
-      <MainEstablishmentButton/>
+      <View style={styles.establishmentButtonContainer}>
+        <MainEstablishmentButton/>
+      </View>
       <DrawerContentScrollView {...props} contentContainerStyle={styles.drawerScrollContent}>
         <View style={styles.drawerContent}>
           {/* Mantém os itens de navegação padrão */}
@@ -283,16 +285,7 @@ export default function AuthLayout() {
           ),
         }}
       />
-      <Drawer.Screen
-        name="drawer/taxas"
-        options={{
-          title: 'taxas',
-          headerShown: true,
-          drawerIcon: ({ color, size }) => (
-            <FontAwesome6 name="percentage" size={size} color={color} />
-          ),
-        }}
-      />
+
       <Drawer.Screen
         name="drawer/coupons"
         options={{
@@ -321,6 +314,10 @@ const styles = StyleSheet.create({
   drawerContainer: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  establishmentButtonContainer: {
+    paddingTop: 60,
+    paddingBottom: 8,
   },
   drawerContent: {
     flex: 1,

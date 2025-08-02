@@ -55,7 +55,7 @@ export default function Index() {
       const querySnapshot = await getDocs(q);
 
       if (querySnapshot.empty) {
-        setErrors({ email: 'Acesso não autorizado. Apenas parceiros podem fazer login.' });
+        setErrors({ email: 'Email não cadastrado. Que tal se tornar nosso parceiro?' });
         return;
       }
 

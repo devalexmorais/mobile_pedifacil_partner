@@ -28,6 +28,7 @@ export function FloatingButton() {
   const [cardFlagsModal, setCardFlagsModal] = useState(false);
   const [pickupModal, setPickupModal] = useState(false);
   const [minimumOrderModal, setMinimumOrderModal] = useState(false);
+  const [deliveryFeesModal, setDeliveryFeesModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [settings, setSettings] = useState<any>(null);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -119,6 +120,13 @@ export function FloatingButton() {
           return;
         }
         setMinimumOrderModal(true);
+      },
+    },
+    {
+      icon: 'car',
+      label: 'Taxas de entrega',
+      onPress: () => {
+        setDeliveryFeesModal(true);
       },
     },
   ];
@@ -225,11 +233,13 @@ export function FloatingButton() {
         cardFlagsModal={cardFlagsModal}
         pickupModal={pickupModal}
         minimumOrderModal={minimumOrderModal}
+        deliveryFeesModal={deliveryFeesModal}
         setScheduleModal={setScheduleModal}
         setDeliveryTimeModal={setDeliveryTimeModal}
         setCardFlagsModal={setCardFlagsModal}
         setPickupModal={setPickupModal}
         setMinimumOrderModal={setMinimumOrderModal}
+        setDeliveryFeesModal={setDeliveryFeesModal}
         settings={settings}
         onSettingsChange={loadSettings}
       />

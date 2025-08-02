@@ -341,6 +341,7 @@ export default function Coupons() {
                   activeOutlineColor={colors.orange}
                   keyboardType="numeric"
                   right={<TextInput.Icon icon="currency-usd" color={colors.orange} />}
+                  theme={{ colors: { background: colors.white } }}
                 />
                 <View style={styles.discountUnitBadge}>
                   <Text style={styles.discountUnitText}>
@@ -361,6 +362,7 @@ export default function Coupons() {
                 activeOutlineColor={colors.orange}
                 placeholder="DD/MM/AAAA"
                 right={<TextInput.Icon icon="calendar" color={colors.orange} />}
+                theme={{ colors: { background: colors.white } }}
               />
             </View>
 
@@ -375,6 +377,7 @@ export default function Coupons() {
                 activeOutlineColor={colors.orange}
                 placeholder="HH:mm"
                 right={<TextInput.Icon icon="clock-outline" color={colors.orange} />}
+                theme={{ colors: { background: colors.white } }}
               />
               <Text style={styles.helperText}>
                 Digite a hora no formato HH:mm (ex: 23:00)
@@ -475,6 +478,7 @@ export default function Coupons() {
                   placeholder="Ex: PEDIFACIL10"
                   autoCapitalize="characters"
                   right={<TextInput.Icon icon="ticket-percent" color={colors.orange} />}
+                  theme={{ colors: { background: colors.white } }}
                 />
                 <Text style={styles.helperText}>
                   Digite apenas letras e números (convertido para maiúsculas automaticamente)
@@ -522,6 +526,7 @@ export default function Coupons() {
                     activeOutlineColor={colors.orange}
                     keyboardType="numeric"
                     right={<TextInput.Icon icon="currency-usd" color={colors.orange} />}
+                    theme={{ colors: { background: colors.white } }}
                   />
                   <Text style={styles.discountUnit}>
                     {newCouponDiscountType === 'percentage' ? '%' : 'R$'}
@@ -544,6 +549,7 @@ export default function Coupons() {
                   keyboardType="numeric"
                   maxLength={10}
                   right={<TextInput.Icon icon="calendar" color={colors.orange} />}
+                  theme={{ colors: { background: colors.white } }}
                 />
 
                 <Text style={styles.inputLabel}>Hora de validade</Text>
@@ -558,25 +564,26 @@ export default function Coupons() {
                   keyboardType="numeric"
                   maxLength={5}
                   right={<TextInput.Icon icon="clock-outline" color={colors.orange} />}
+                  theme={{ colors: { background: colors.white } }}
                 />
                 <Text style={styles.helperText}>
                   Digite a hora no formato HH:mm (ex: 23:00)
                 </Text>
               </View>
+
+              <View style={styles.createButtonContainer}>
+                <Button 
+                  mode="contained" 
+                  onPress={handleCreateCoupon}
+                  style={styles.createButton}
+                  labelStyle={styles.buttonLabel}
+                  icon="check"
+                >
+                  CRIAR CUPOM
+                </Button>
+              </View>
             </View>
           </ScrollView>
-          
-          <View style={styles.fullScreenFooter}>
-            <Button 
-              mode="contained" 
-              onPress={handleCreateCoupon}
-              style={styles.createButton}
-              labelStyle={styles.buttonLabel}
-              icon="check"
-            >
-              CRIAR CUPOM
-            </Button>
-          </View>
         </View>
       </Modal>
     );
@@ -1164,7 +1171,10 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   createModalScrollContent: {
-    paddingBottom: 140, // Espaço para o footer
+    paddingBottom: 40, // Reduzido pois o botão agora está dentro do scroll
+  },
+  createButtonContainer: {
+    marginBottom: 10,
   },
   scrollContentContainer: {
     paddingBottom: 20,

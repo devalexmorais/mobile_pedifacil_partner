@@ -59,7 +59,7 @@ const sendCouponNotificationToUsers = async (
     // Buscar cidade do estabelecimento
     let storeCity = await getStoreCity(coupon.storeId);
     if (!storeCity) storeCity = 'Cidade não informada';
-    const body = `${storeName || 'Estabelecimento'} (${storeCity}) criou um novo cupom: ${coupon.code} - ${discountText}`;
+    const body = `${storeName || 'Estabelecimento'} criou um novo cupom: ${coupon.code} - ${discountText}`;
 
     // Limitar o número de usuários para evitar sobrecarga (máximo 100)
     const limitedUsers = users.slice(0, 100);

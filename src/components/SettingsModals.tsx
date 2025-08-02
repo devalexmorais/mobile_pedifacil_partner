@@ -12,10 +12,16 @@ import {
   SafeAreaView,
   Platform,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { colors } from '../styles/theme/colors';
 import { establishmentSettingsService, Schedule } from '../services/establishmentSettingsService';
 import { formatCurrency } from '../utils/format';
+import { deliveryFeeService, DeliveryFee } from '../services/deliveryFeeService';
+import { addressService } from '../services/addressService';
+import { establishmentService } from '../services/establishmentService';
+import { useAuth } from '../contexts/AuthContext';
+import { Feather } from '@expo/vector-icons';
 
 type PaymentMethod = {
   type: string;
@@ -44,11 +50,13 @@ interface SettingsModalsProps {
   cardFlagsModal: boolean;
   pickupModal: boolean;
   minimumOrderModal: boolean;
+  deliveryFeesModal: boolean;
   setScheduleModal: (value: boolean) => void;
   setDeliveryTimeModal: (value: boolean) => void;
   setCardFlagsModal: (value: boolean) => void;
   setPickupModal: (value: boolean) => void;
   setMinimumOrderModal: (value: boolean) => void;
+  setDeliveryFeesModal: (value: boolean) => void;
   settings: {
     schedule: Schedule;
     delivery: {
@@ -71,11 +79,13 @@ export function SettingsModals({
   cardFlagsModal,
   pickupModal,
   minimumOrderModal,
+  deliveryFeesModal,
   setScheduleModal,
   setDeliveryTimeModal,
   setCardFlagsModal,
   setPickupModal,
   setMinimumOrderModal,
+  setDeliveryFeesModal,
   settings,
   onSettingsChange
 }: SettingsModalsProps) {
@@ -154,6 +164,19 @@ export function SettingsModals({
     sabado: { isOpen: true, openTime: '08:00', closeTime: '18:00' }
   });
 
+  // Estados para taxas de entrega
+  const { user } = useAuth();
+  const [deliveryFees, setDeliveryFees] = useState<DeliveryFee[]>([]);
+  const [isLoadingFees, setIsLoadingFees] = useState(true);
+  const [storeCity, setStoreCity] = useState<string | null>(null);
+  const [storeState, setStoreState] = useState<string | null>(null);
+  
+  // Modal states para taxas
+  const [isEditFeeModalVisible, setIsEditFeeModalVisible] = useState(false);
+  const [editingFee, setEditingFee] = useState<DeliveryFee | null>(null);
+  const [editingValue, setEditingValue] = useState('');
+  const [isSavingFee, setIsSavingFee] = useState(false);
+
   // Atualizar estados quando as configurações mudarem
   useEffect(() => {
     if (settings) {
@@ -166,6 +189,148 @@ export function SettingsModals({
       setSchedule(settings.schedule);
     }
   }, [settings]);
+
+  // Carregar taxas de entrega quando o modal for aberto
+  useEffect(() => {
+    if (deliveryFeesModal && user?.uid) {
+      loadDeliveryFees();
+    }
+  }, [deliveryFeesModal, user]);
+
+  // Função para formatar valor para BRL
+  const formatToBRL = (value: number): string => {
+    return value.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  };
+
+  // Função para limpar formatação e converter para número
+  const cleanFormat = (value: string): number => {
+    const cleanValue = value.replace(/[^\d]/g, '');
+    return parseFloat(cleanValue) / 100;
+  };
+
+  const loadDeliveryFees = async () => {
+    try {
+      if (!user?.uid) return;
+      setIsLoadingFees(true);
+
+      // Obter dados do estabelecimento para identificar a cidade
+      const partnerData = await establishmentService.getPartnerData();
+      if (!partnerData || !partnerData.address) {
+        Alert.alert('Erro', 'Não foi possível obter os dados do estabelecimento');
+        setIsLoadingFees(false);
+        return;
+      }
+
+      const storeStateId = partnerData.address.state;
+      const storeCityId = partnerData.address.city;
+      
+      setStoreState(storeStateId);
+      setStoreCity(storeCityId);
+
+      // Carregar os bairros apenas da cidade do estabelecimento
+      const neighborhoodsFromCity = await addressService.getNeighborhoods(storeStateId, storeCityId);
+
+      // Carregar taxas existentes
+      const existingFees = await deliveryFeeService.getAllDeliveryFees(user.uid);
+      
+      // Criar um mapa de taxas existentes por bairro
+      const feesByNeighborhood = new Map(
+        existingFees.map(fee => [fee.neighborhood.toLowerCase(), fee])
+      );
+
+      // Criar lista final de taxas, incluindo bairros sem taxa (com valor 0)
+      const allFees: DeliveryFee[] = neighborhoodsFromCity.map(neighborhood => {
+        const existingFee = feesByNeighborhood.get(neighborhood.name.toLowerCase());
+        if (existingFee) {
+          return existingFee;
+        }
+        
+        // Criar uma taxa temporária com o formato correto da interface DeliveryFee
+        return {
+          id: `temp_${neighborhood.id}`,
+          neighborhood: neighborhood.name,
+          fee: 0,
+          storeId: user.uid,
+          createdAt: "2025-05-06T23:28:21.833Z",
+          updatedAt: new Date().toISOString()
+        };
+      });
+
+      // Ordenar por nome do bairro
+      allFees.sort((a, b) => a.neighborhood.localeCompare(b.neighborhood));
+
+      setDeliveryFees(allFees);
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error);
+      Alert.alert('Erro', 'Não foi possível carregar os dados');
+    } finally {
+      setIsLoadingFees(false);
+    }
+  };
+
+  const handleEditFee = (fee: DeliveryFee) => {
+    setEditingFee(fee);
+    setEditingValue(formatToBRL(fee.fee));
+    setIsEditFeeModalVisible(true);
+  };
+
+  const handleCloseEditFeeModal = () => {
+    setIsEditFeeModalVisible(false);
+    setEditingFee(null);
+    setEditingValue('');
+  };
+
+  const handleSaveFee = async () => {
+    if (!editingFee || !user?.uid) return;
+
+    try {
+      setIsSavingFee(true);
+      
+      // Converter o valor formatado para número
+      const value = cleanFormat(editingValue);
+      if (isNaN(value) || value < 0) {
+        Alert.alert('Erro', 'Por favor, insira um valor válido');
+        return;
+      }
+
+      // Se é uma taxa temporária e o valor é maior que 0, criar nova no banco
+      if (editingFee.id.startsWith('temp_') && value > 0) {
+        const newFeeId = await deliveryFeeService.createDeliveryFee({
+          neighborhood: editingFee.neighborhood,
+          fee: value,
+          storeId: user.uid
+        });
+
+        // Atualizar o estado local com o novo ID
+        setDeliveryFees(prev =>
+          prev.map(f => f.id === editingFee.id ? { ...f, id: newFeeId, fee: value } : f)
+        );
+      } else if (!editingFee.id.startsWith('temp_')) {
+        // Atualizar taxa existente
+        await deliveryFeeService.updateDeliveryFee(user.uid, editingFee.id, {
+          fee: value
+        });
+
+        setDeliveryFees(prev =>
+          prev.map(f => f.id === editingFee.id ? { ...f, fee: value } : f)
+        );
+      }
+
+      handleCloseEditFeeModal();
+    } catch (error) {
+      Alert.alert('Erro', 'Não foi possível salvar a taxa de entrega');
+    } finally {
+      setIsSavingFee(false);
+    }
+  };
+
+  const handleValueChange = (value: string) => {
+    const formatted = formatInputValue(value);
+    setEditingValue(formatted);
+  };
 
   // Função para salvar tempo de entrega
   const handleSaveDeliveryTime = async () => {
@@ -604,6 +769,128 @@ export function SettingsModals({
           </View>
         </SafeAreaView>
       </Modal>
+
+      {/* Modal de Taxas de Entrega */}
+      <Modal
+        visible={deliveryFeesModal}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        transparent={false}
+        onRequestClose={() => setDeliveryFeesModal(false)}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Taxas de Entrega</Text>
+            
+            <View style={styles.infoContainer}>
+              <Text style={styles.infoText}>
+                Atenção: Bairros não editados permanecerão com taxa 0 (entrega gratuita).
+              </Text>
+            </View>
+
+            {isLoadingFees ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={colors.orange} />
+                <Text style={styles.loadingText}>Carregando bairros...</Text>
+              </View>
+            ) : (
+              <ScrollView style={styles.scrollView}>
+                <View style={styles.feesList}>
+                  {deliveryFees.map((fee) => (
+                    <View key={fee.id} style={styles.feeCard}>
+                      <View style={styles.feeHeader}>
+                        <Text style={styles.neighborhoodName}>{fee.neighborhood}</Text>
+                        <TouchableOpacity
+                          style={styles.editButton}
+                          onPress={() => handleEditFee(fee)}
+                        >
+                          <Feather name="more-vertical" size={18} color="#FF7700" />
+                        </TouchableOpacity>
+                      </View>
+                      
+                      <View style={styles.feeDisplay}>
+                        <Text style={styles.currencySymbol}>R$</Text>
+                        <Text style={styles.feeValue}>{formatToBRL(fee.fee)}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </ScrollView>
+            )}
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.button, styles.cancelButton]}
+                onPress={() => setDeliveryFeesModal(false)}
+              >
+                <Text style={styles.buttonText}>Fechar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* Modal para editar taxa */}
+      <Modal
+        transparent={true}
+        visible={isEditFeeModalVisible}
+        animationType="none"
+        onRequestClose={handleCloseEditFeeModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.editModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Editar Taxa de Entrega</Text>
+              <TouchableOpacity onPress={handleCloseEditFeeModal} style={styles.closeButton}>
+                <Feather name="x" size={24} color={colors.gray[600]} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              <Text style={styles.neighborhoodTitle}>
+                {editingFee?.neighborhood}
+              </Text>
+              
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Valor da taxa</Text>
+                <View style={styles.inputWrapper}>
+                  <Text style={styles.inputCurrency}>R$</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    value={editingValue}
+                    onChangeText={handleValueChange}
+                    keyboardType="numeric"
+                    placeholder="0,00"
+                    placeholderTextColor={colors.gray[400]}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.cancelButton]}
+                  onPress={handleCloseEditFeeModal}
+                  disabled={isSavingFee}
+                >
+                  <Text style={styles.cancelButtonText}>Cancelar</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.saveButton]}
+                  onPress={handleSaveFee}
+                  disabled={isSavingFee}
+                >
+                  {isSavingFee ? (
+                    <ActivityIndicator size="small" color={colors.white} />
+                  ) : (
+                    <Text style={styles.saveButtonText}>Salvar</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -739,5 +1026,166 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 8,
     fontStyle: 'italic',
+  },
+  // Estilos para taxas de entrega
+  infoContainer: {
+    backgroundColor: '#FFF0E6',
+    borderWidth: 1,
+    borderColor: '#FFCCA9',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  infoText: {
+    fontSize: 14,
+    color: '#FF7700',
+    textAlign: 'center',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: colors.gray[600],
+  },
+  feesList: {
+    gap: 12,
+  },
+  feeCard: {
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    padding: 16,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.orange,
+  },
+  feeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  neighborhoodName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.gray[800],
+  },
+  feeDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  currencySymbol: {
+    fontSize: 16,
+    color: colors.gray[600],
+    marginRight: 4,
+  },
+  feeValue: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.gray[800],
+  },
+  editButton: {
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 18,
+    backgroundColor: '#FFF0E6',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  editModalContent: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 400,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[200],
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 16,
+    backgroundColor: colors.gray[100],
+  },
+  modalBody: {
+    padding: 20,
+  },
+  neighborhoodTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.gray[700],
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.gray[50],
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  inputCurrency: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.gray[600],
+    marginRight: 8,
+  },
+  modalInput: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.gray[800],
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  actionButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 44,
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.gray[700],
+  },
+  saveButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.white,
   },
 });
