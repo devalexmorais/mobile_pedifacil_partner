@@ -4,7 +4,7 @@ import { colors } from '@/styles/theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, getDocs } from 'firebase/firestore';
 import { db, auth } from '@/config/firebase';
-import { LoadingSpinner } from '@/components';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 
 interface Review {
   id: string;

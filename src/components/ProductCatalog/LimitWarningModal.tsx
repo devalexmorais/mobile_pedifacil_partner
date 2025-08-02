@@ -43,7 +43,7 @@ export function LimitWarningModal({
               style={styles.upgradeButton}
               onPress={onUpgrade}
             >
-              <Text style={styles.upgradeButtonText}>Fazer Upgrade</Text>
+              <Text style={styles.upgradeButtonText}>Upgrade</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -90,6 +90,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 8,
     backgroundColor: '#f0f0f0',
+    flex: 1,
+    alignItems: 'center',
   },
   closeButtonText: {
     color: '#666',
@@ -100,6 +102,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 8,
     backgroundColor: '#FFA500',
+    flex: 1,
+    alignItems: 'center',
   },
   upgradeButtonText: {
     color: 'white',

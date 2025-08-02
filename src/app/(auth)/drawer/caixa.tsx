@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import firebaseSalesService from '@/services/firebaseSales';
 import { Order, DaySummary} from '@/services/firebaseSales';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
-import { LoadingSpinner } from '@/components';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 
 // Mapeamento centralizado dos métodos de pagamento
 const PAYMENT_METHODS = {

@@ -7,7 +7,7 @@ import { notificationService, NotificationData } from '../../../services/notific
 import { pushNotificationService } from '../../../services/pushNotificationService';
 import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
-import { LoadingSpinner } from '@/components';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 
 export default function NotificationsScreen() {
   const [notifications, setNotifications] = useState<NotificationData[]>([]);

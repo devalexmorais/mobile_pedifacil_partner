@@ -18,7 +18,7 @@ import { categoryService} from '../../../services/categoryService';
 import { registerService } from '../../../services/registerService';
 import { CustomInput } from '../../../components/CustomInput';
 import { colors } from '../../../styles/theme/colors';
-import { LoadingSpinner } from '@/components';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 
 interface Category {
   id: string;

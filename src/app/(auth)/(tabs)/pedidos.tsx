@@ -7,8 +7,10 @@ import {
   TouchableOpacity,
   SafeAreaView,
   Alert,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { usePedidos, Pedido } from '../../../contexts/PedidosContext';
 import { EmptyState } from '../../../components/EmptyState';
 import { FloatingButton } from '../../../components/FloatingButton';
@@ -40,12 +42,21 @@ interface PedidoExtended extends Pedido {
 export default function Pedidos() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { pedidosPendentes, aceitarPedido, recusarPedido } = usePedidos();
-  const { user } = useAuth();
+  const { user, isAuthenticated, loading } = useAuth();
+  const router = useRouter();
   const pedidosPendentesExtended = pedidosPendentes as PedidoExtended[];
 
   useEffect(() => {
     initializeSettings();
   }, []);
+
+  // Verificar autenticação quando o componente carrega
+  useEffect(() => {
+    if (!loading && (!isAuthenticated || !user)) {
+      // Se não está autenticado, redirecionar para login
+      router.replace('/');
+    }
+  }, [isAuthenticated, user, loading]);
 
   const initializeSettings = async () => {
     try {
@@ -54,6 +65,16 @@ export default function Pedidos() {
       console.error('Erro ao inicializar configurações:', error);
     }
   };
+
+  // Se ainda está carregando, não renderizar nada (splash nativo já está visível)
+  if (loading) {
+    return null;
+  }
+
+  // Se não está autenticado, não renderizar nada (será redirecionado)
+  if (!isAuthenticated || !user) {
+    return null;
+  }
 
   if (!pedidosPendentes || pedidosPendentes.length === 0) {
     return (
@@ -638,4 +659,5 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
     zIndex: 20000,
   },
+
 });

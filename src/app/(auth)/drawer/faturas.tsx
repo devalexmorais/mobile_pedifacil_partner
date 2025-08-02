@@ -29,7 +29,7 @@ import { BlurView } from 'expo-blur';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { mercadoPagoService } from '@/services/mercadoPagoService';
 import { usePaymentStatus } from '@/hooks/usePaymentStatus';
-import { LoadingSpinner } from '@/components';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 
 interface InvoiceDetail {
   id: string;

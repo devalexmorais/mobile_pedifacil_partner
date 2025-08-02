@@ -5,7 +5,7 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { colors } from '@/styles/theme/colors';
 import { useAuth } from '@/contexts/AuthContext';
 import { couponService, Coupon, CouponWithStatus } from '@/services/couponService';
-import { LoadingSpinner } from '@/components';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 
 export default function Coupons() {
   const { user } = useAuth();

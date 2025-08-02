@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Auth, getAuth } from 'firebase/auth';
 import { PhoneEditModal } from '../../../components/PhoneEditModal';
 import * as ImagePicker from 'expo-image-picker';
-import { LoadingSpinner } from '../../../components';
+import { LoadingSpinner } from '../../../components/LoadingSpinner';
 
 // Inicializar auth com tipagem correta
 const auth: Auth = getAuth();

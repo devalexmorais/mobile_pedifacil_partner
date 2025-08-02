@@ -7,7 +7,7 @@ import { StatusBar } from 'react-native';
 import { MainEstablishmentButton } from '@/components/MainEstablishmentButton';
 import { signOut, getAuth } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { notificationService } from '../../services/notificationService';
 import { establishmentService } from '../../services/establishmentService';
 
@@ -18,7 +18,6 @@ import { establishmentService } from '../../services/establishmentService';
 
 function CustomDrawerContent(props: any) {
   const router = useRouter();
-  const isMounted = useRef(true);
   
   const handleLogout = async () => {
     try {
@@ -32,52 +31,14 @@ function CustomDrawerContent(props: any) {
       await AsyncStorage.removeItem('@auth_token');
       await AsyncStorage.removeItem('@user_data');
       
-      if (isMounted.current) {
-        // Usar setTimeout para adiar a navegação
-        setTimeout(() => {
-          router.replace('/');
-        }, 100);
-      }
+      // Redirecionar para login
+      router.replace('/');
     } catch (error) {
       console.error('Erro ao fazer logout:', error);
     }
   };
 
-  useEffect(() => {
-    // Definir flag de componente montado
-    isMounted.current = true;
-    
-    const checkAuthStatus = async () => {
-      try {
-        const token = await AsyncStorage.getItem('@auth_token');
-        if (!token && isMounted.current) {
-          // Usar setTimeout para adiar a navegação
-          setTimeout(() => {
-            router.replace('/');
-          }, 100);
-        }
-      } catch (error) {
-        console.error('Erro ao verificar autenticação:', error);
-        if (isMounted.current) {
-          // Usar setTimeout para adiar a navegação
-          setTimeout(() => {
-            router.replace('/');
-          }, 100);
-        }
-      }
-    };
 
-    // Adiar a verificação para garantir que o componente esteja completamente montado
-    const timer = setTimeout(() => {
-      checkAuthStatus();
-    }, 500);
-    
-    // Limpar na desmontagem
-    return () => {
-      isMounted.current = false;
-      clearTimeout(timer);
-    };
-  }, []);
 
   return (
     <SafeAreaView style={styles.drawerContainer}>
@@ -89,17 +50,17 @@ function CustomDrawerContent(props: any) {
         <View style={styles.drawerContent}>
           {/* Mantém os itens de navegação padrão */}
           <DrawerItemList {...props} />
+          
+          {/* Botão de logout */}
+          <TouchableOpacity 
+            style={styles.logoutButton}
+            onPress={handleLogout}
+          >
+            <Ionicons name="log-out-outline" size={24} color="#FF3B30" />
+            <Text style={styles.logoutText}>Sair</Text>
+          </TouchableOpacity>
         </View>
       </DrawerContentScrollView>
-      
-      {/* Botão de logout */}
-      <TouchableOpacity 
-        style={styles.logoutButton}
-        onPress={handleLogout}
-      >
-        <Ionicons name="log-out-outline" size={24} color="#FF3B30" />
-        <Text style={styles.logoutText}>Sair</Text>
-      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -329,8 +290,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    marginTop: 8,
     backgroundColor: '#FFF5F5',
   },
   logoutText: {

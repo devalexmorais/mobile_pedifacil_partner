@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { signInWithEmailAndPassword } from 'firebase/auth';
@@ -12,6 +12,7 @@ import { colors } from '@/styles/theme/colors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pushNotificationService } from '../services/pushNotificationService';
 import { notificationService } from '../services/notificationService';
+import { useAuth } from '../contexts/AuthContext';
 
 // Esquema de validação
 const LoginSchema = Yup.object().shape({
@@ -28,6 +29,101 @@ const LoginSchema = Yup.object().shape({
 
 export default function Index() {
   const router = useRouter();
+  const { user, isAuthenticated, loading } = useAuth();
+  const [isLoginBlocked, setIsLoginBlocked] = useState(false);
+  const [blockTimeRemaining, setBlockTimeRemaining] = useState(0);
+
+  // Verificar se o usuário já está autenticado
+  useEffect(() => {
+    const checkInitialAuth = async () => {
+      if (!loading) {
+        if (isAuthenticated && user) {
+          // Usuário já está logado, redirecionar para pedidos
+          console.log('Usuário autenticado, redirecionando para pedidos');
+          router.replace('/(auth)/(tabs)/pedidos');
+        } else if (!isAuthenticated && !user) {
+          // Verificar se há token mas o Firebase ainda não carregou
+          try {
+            const token = await AsyncStorage.getItem('@auth_token');
+            if (token) {
+              // Se há token, aguardar mais tempo para o Firebase inicializar completamente
+              console.log('Token encontrado, aguardando Firebase inicializar...');
+              setTimeout(() => {
+                if (isAuthenticated && user) {
+                  console.log('Usuário autenticado após delay, redirecionando para pedidos');
+                  router.replace('/(auth)/(tabs)/pedidos');
+                }
+              }, 2000); // Aumentado de 1000ms para 2000ms
+            }
+          } catch (error) {
+            console.error('Erro ao verificar token:', error);
+          }
+        }
+      }
+    };
+
+    checkInitialAuth();
+  }, [isAuthenticated, user, loading]);
+
+  // Monitorar mudanças no estado de autenticação
+  useEffect(() => {
+    if (!loading && isAuthenticated && user) {
+      console.log('Estado de autenticação mudou, redirecionando para pedidos');
+      router.replace('/(auth)/(tabs)/pedidos');
+    }
+  }, [isAuthenticated, user, loading]);
+
+  // Verificar se o login está bloqueado e gerenciar contador
+  useEffect(() => {
+    const checkLoginBlock = async () => {
+      try {
+        const blockUntil = await AsyncStorage.getItem('@login_block_until');
+        if (blockUntil) {
+          const blockTime = parseInt(blockUntil);
+          const now = Date.now();
+          
+          if (now < blockTime) {
+            setIsLoginBlocked(true);
+            const remaining = Math.ceil((blockTime - now) / 1000);
+            setBlockTimeRemaining(remaining);
+          } else {
+            // Bloqueio expirou
+            await AsyncStorage.removeItem('@login_block_until');
+            setIsLoginBlocked(false);
+            setBlockTimeRemaining(0);
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao verificar bloqueio de login:', error);
+      }
+    };
+
+    checkLoginBlock();
+  }, []);
+
+  // Contador regressivo para o botão
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    
+    if (isLoginBlocked && blockTimeRemaining > 0) {
+      interval = setInterval(() => {
+        setBlockTimeRemaining(prev => {
+          if (prev <= 1) {
+            setIsLoginBlocked(false);
+            AsyncStorage.removeItem('@login_block_until');
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [isLoginBlocked, blockTimeRemaining]);
 
   // Inicializar notificações push logo no carregamento do aplicativo
   useEffect(() => {
@@ -46,7 +142,25 @@ export default function Index() {
     initializeNotifications();
   }, []);
 
+  // Se ainda está carregando, não renderizar nada (splash nativo já está visível)
+  if (loading) {
+    return null;
+  }
+
+  // Se já está autenticado, não renderizar nada (será redirecionado)
+  if (isAuthenticated && user) {
+    return null;
+  }
+
   const handleSignIn = async (values: { email: string; password: string }, { setErrors }: { setErrors: (errors: any) => void }) => {
+    // Verificar se o login está bloqueado
+    if (isLoginBlocked) {
+      const minutes = Math.floor(blockTimeRemaining / 60);
+      const seconds = blockTimeRemaining % 60;
+      setErrors({ email: `Muitas tentativas de login. Tente novamente em ${minutes}:${seconds.toString().padStart(2, '0')}` });
+      return;
+    }
+
     try {
       // Primeiro verifica se é um parceiro
       const db = getFirestore();
@@ -97,7 +211,12 @@ export default function Index() {
           setErrors({ email: 'Este usuário está desativado' });
           break;
         case 'auth/too-many-requests':
-          setErrors({ email: 'Muitas tentativas de login. Tente novamente mais tarde.' });
+          // Bloquear login por 5 minutos
+          const blockUntil = Date.now() + (5 * 60 * 1000); // 5 minutos
+          await AsyncStorage.setItem('@login_block_until', blockUntil.toString());
+          setIsLoginBlocked(true);
+          setBlockTimeRemaining(300); // 5 minutos em segundos
+          setErrors({ email: 'Muitas tentativas de login. Tente novamente em 5:00' });
           break;
         default:
           setErrors({ email: error.message });
@@ -160,14 +279,19 @@ export default function Index() {
               </TouchableOpacity>
 
               <TouchableOpacity 
-                style={[styles.button, isSubmitting && styles.buttonDisabled]}
+                style={[styles.button, (isSubmitting || isLoginBlocked) && styles.buttonDisabled]}
                 onPress={handleSubmit as any}
-                disabled={isSubmitting}
+                disabled={isSubmitting || isLoginBlocked}
               >
                 {isSubmitting ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.buttonText}>Entrar</Text>
+                  <Text style={styles.buttonText}>
+                    {isLoginBlocked 
+                      ? `Aguarde ${Math.floor(blockTimeRemaining / 60)}:${(blockTimeRemaining % 60).toString().padStart(2, '0')}`
+                      : 'Entrar'
+                    }
+                  </Text>
                 )}
               </TouchableOpacity>
 
@@ -279,4 +403,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
   },
+
 });

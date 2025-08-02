@@ -6,7 +6,7 @@ import { Picker } from '@react-native-picker/picker';
 import { addressService } from '../../../services/addressService';
 import { CustomInput } from '../../../components/CustomInput';
 import { colors } from '../../../styles/theme/colors';
-import { LoadingSpinner } from '@/components';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 
 interface State {
   id: string;

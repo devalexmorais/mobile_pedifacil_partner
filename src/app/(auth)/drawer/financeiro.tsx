@@ -8,7 +8,7 @@ import { useFinancialData } from '../../../hooks/useFinancialData';
 import { usePremiumAnalytics } from '../../../hooks/usePremiumAnalytics';
 import PremiumCharts from '../../../components/PremiumCharts';
 import { useCredits } from '../../../hooks/useCredits';
-import { LoadingSpinner } from '@/components';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 
 
 export default function Financeiro() {

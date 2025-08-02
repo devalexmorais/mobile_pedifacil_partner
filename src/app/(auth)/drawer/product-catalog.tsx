@@ -23,9 +23,10 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage
 import { storage } from '../../../config/firebase';
 import { categoryService } from '@/services/categoryService';
 import { Product, Promotion } from '@/types/product';
-import { LoadingSpinner } from '@/components';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { CategoryTabView } from '@/components/ProductCatalog/CategoryTabView';
 import { CategoryProductsView } from '@/components/ProductCatalog/CategoryProductsView';
+import { LimitWarningModal } from '@/components/ProductCatalog/LimitWarningModal';
 
 
 interface ProductOption {
@@ -439,7 +440,7 @@ export default function ProductCatalog() {
             `Seu plano atual permite apenas ${limits.maxProducts} produtos ativos. Desative outro produto ou faça upgrade para o plano Premium.`,
             [
               {
-                text: 'Fazer Upgrade',
+                text: 'Upgrade',
                 onPress: handleUpgrade,
               },
               {
@@ -1012,11 +1013,11 @@ export default function ProductCatalog() {
           'Plano Alterado',
           `Seu plano atual permite apenas ${limits.maxProducts} produtos ativos. Os produtos excedentes foram desativados automaticamente.`,
           [
-            {
-              text: 'Fazer Upgrade',
-              onPress: handleUpgrade,
-              style: 'default',
-            },
+                    {
+          text: 'Upgrade',
+          onPress: handleUpgrade,
+          style: 'default',
+        },
             {
               text: 'OK',
               style: 'cancel',
@@ -1154,10 +1155,10 @@ export default function ProductCatalog() {
         'Funcionalidade Premium',
         'A funcionalidade de promoções está disponível apenas para assinantes premium.',
         [
-          {
-            text: 'Fazer Upgrade',
-            onPress: handleUpgrade,
-          },
+                  {
+          text: 'Upgrade',
+          onPress: handleUpgrade,
+        },
           {
             text: 'Cancelar',
             style: 'cancel',
@@ -1448,55 +1449,29 @@ export default function ProductCatalog() {
       )}
 
       {/* Modal de aviso de limite */}
-      <Modal
+      <LimitWarningModal
         visible={showLimitWarning}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowLimitWarning(false)}
-      >
-        <View style={styles.limitWarningContainer}>
-          <View style={styles.limitWarningContent}>
-            <Text style={styles.limitWarningText}>
-              Limite de produtos atingido
-            </Text>
-            <Text style={styles.limitWarningDetails}>
-              Você atingiu o limite de {limits.maxProducts} produtos do plano gratuito.
-            </Text>
-            <Text style={styles.limitWarningDetails}>
-              Para adicionar mais produtos, faça upgrade para o plano Premium!
-            </Text>
-            <View style={styles.warningButtons}>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setShowLimitWarning(false)}
-              >
-                <Text style={styles.closeButtonText}>Fechar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.upgradeButton}
-                onPress={handleUpgrade}
-              >
-                <Text style={styles.upgradeButtonText}>Fazer Upgrade</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        onClose={() => setShowLimitWarning(false)}
+        onUpgrade={handleUpgrade}
+        maxProducts={limits.maxProducts}
+      />
 
       {/* Modal para gerenciar produtos ativos (downgrade) */}
       <Modal
         visible={showDowngradeModal}
-        transparent={true}
-        animationType="fade"
+        transparent={false}
+        animationType="slide"
         onRequestClose={() => setShowDowngradeModal(false)}
       >
         <View style={styles.downgradeModalContainer}>
           <View style={styles.downgradeModalContent}>
-            <Text style={styles.downgradeTitle}>Selecione os produtos ativos</Text>
-            <Text style={styles.downgradeDescription}>
-              Seu plano permite até {limits.maxProducts} produtos ativos.
-              Selecione quais produtos deseja manter ativos:
-            </Text>
+            <View style={styles.downgradeHeader}>
+              <Text style={styles.downgradeTitle}>Selecione os produtos ativos</Text>
+              <Text style={styles.downgradeDescription}>
+                Seu plano permite até {limits.maxProducts} produtos ativos.
+                Selecione quais produtos deseja manter ativos:
+              </Text>
+            </View>
             
             <Text style={styles.selectionCounter}>
               Selecionados: {selectedProducts.size}/{limits.maxProducts}
@@ -1540,10 +1515,10 @@ export default function ProductCatalog() {
 
             <View style={styles.downgradeModalFooter}>
               <TouchableOpacity
-                style={styles.upgradeButton}
+                style={[styles.upgradeButton, { flex: 1 }]}
                 onPress={handleUpgrade}
               >
-                <Text style={styles.upgradeButtonText}>Fazer Upgrade</Text>
+                <Text style={styles.upgradeButtonText}>Upgrade</Text>
               </TouchableOpacity>
               
               <TouchableOpacity
@@ -1601,8 +1576,8 @@ const styles = StyleSheet.create({
   },
   floatingAddButton: {
     position: 'absolute',
-    right: 16,
-    bottom: 16,
+    right: 24,
+    bottom: 24,
     width: 56,
     height: 56,
     borderRadius: 28,
@@ -2124,62 +2099,16 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#666',
   },
-  removeButton: {
+    removeButton: {
     padding: 4,
-  },
-  limitWarningContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  limitWarningContent: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 10,
-    maxWidth: '80%',
-    maxHeight: '80%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  limitWarningText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 10
-  },
-  limitWarningDetails: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 10
-  },
-  warningButtons: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 20,
-  },
-  closeButton: {
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: '#f5f5f5',
-    alignItems: 'center',
-    flex: 1,
-  },
-  closeButtonText: {
-    color: '#666',
-    fontSize: 16,
-    fontWeight: '600',
   },
   upgradeButton: {
     padding: 12,
     borderRadius: 8,
-    backgroundColor: '#FFA500',
+    backgroundColor: '#4CAF50',
     alignItems: 'center',
-    marginTop: 15
+    justifyContent: 'center',
+    flex: 1,
   },
   upgradeButtonText: {
     color: '#fff',
@@ -2188,16 +2117,17 @@ const styles = StyleSheet.create({
   },
   downgradeModalContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: '#fff',
+    width: '100%',
+    height: '100%',
   },
   downgradeModalContent: {
+    flex: 1,
     backgroundColor: '#fff',
-    width: '90%',
-    maxHeight: '80%',
-    borderRadius: 10,
     padding: 20,
+  },
+  downgradeHeader: {
+    marginBottom: 20,
   },
   downgradeTitle: {
     fontSize: 20,
@@ -2217,7 +2147,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   productSelectionList: {
-    maxHeight: '60%',
+    flex: 1,
     paddingBottom: 20,
   },
   productSelectionItem: {
@@ -2255,13 +2185,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 20,
+    paddingTop: 20,
+    paddingBottom: 10,
+    gap: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+    backgroundColor: '#fff',
   },
   confirmSelectionButton: {
     padding: 12,
     borderRadius: 8,
     backgroundColor: '#FFA500',
     alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
   },
   confirmSelectionButtonEnabled: {
     backgroundColor: '#FFA500',

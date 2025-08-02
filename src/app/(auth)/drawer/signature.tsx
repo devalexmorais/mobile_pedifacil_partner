@@ -8,7 +8,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { formatCurrency } from '../../../utils/format';
 import { collection, getDocs, doc, updateDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db } from '../../../config/firebase';
-import { LoadingSpinner } from '@/components';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 
 interface Plan {
   id: string;
