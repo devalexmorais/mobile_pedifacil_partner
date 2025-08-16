@@ -6,16 +6,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/styles/theme/colors';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '@/config/firebase';
+import { useEstablishment } from '@/contexts/EstablishmentContext';
 
 export function MainEstablishmentButton() {
-  const [status, setStatus] = useState<{
-    isOpen: boolean;
-    operationMode: string;
-    lastStatusChange: string;
-    statusChangeReason: string;
-  } | null>(null);
+  const [status, setStatus] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const { paymentStatus, loading: paymentLoading } = usePaymentStatus();
+  const { isBlocked: contextBlocked } = useEstablishment();
+
+  // Combina o bloqueio do contexto com o do payment status
+  const isBlocked = contextBlocked || paymentStatus.isBlocked;
 
   // Debug do status de pagamento e reação a mudanças
   useEffect(() => {
@@ -187,26 +187,45 @@ export function MainEstablishmentButton() {
   }
 
   // Se está bloqueado (mais de 7 dias)
-  if (paymentStatus.isBlocked) {
+  if (isBlocked) {
     return (
       <View style={styles.container}>
         <TouchableOpacity
           style={[styles.button, styles.buttonBlocked]}
           onPress={() => {
+            const message = paymentStatus.isAdminBlocked
+              ? 'Estabelecimento bloqueado pelo administrador por infringir as regras do app. Entre em contato com o suporte.'
+              : `Fatura vencida há ${paymentStatus.daysPastDue} dias. Efetue o pagamento da fatura para continuar usando o aplicativo.`;
+            
             Alert.alert(
-              'Estabelecimento Bloqueado',
-              `Fatura vencida há ${paymentStatus.daysPastDue} dias. Efetue o pagamento da fatura para continuar usando o aplicativo.`,
-              [{ text: 'OK' }]
+              paymentStatus.isAdminBlocked ? 'Bloqueado pelo Admin' : 'Estabelecimento Bloqueado',
+              message,
+              [
+                {
+                  text: 'Ver Faturas',
+                  onPress: () => {
+                    // Aqui você pode navegar para a tela de faturas
+                    // navigation.navigate('faturas');
+                  }
+                },
+                { text: 'OK' }
+              ]
             );
           }}
           disabled={true}
         >
           <Ionicons name="lock-closed" size={32} color={colors.white} style={{ marginBottom: 8 }} />
           <Text style={styles.buttonTextBlocked}>
-            Estabelecimento Bloqueado
+            {paymentStatus.isAdminBlocked 
+              ? 'Bloqueado pelo Admin' 
+              : 'Estabelecimento Bloqueado'
+            }
           </Text>
           <Text style={styles.subTextBlocked}>
-          Pagamento necessário para desbloquear.
+            {paymentStatus.isAdminBlocked
+              ? 'Entre em contato com o suporte.'
+              : 'Pagamento necessário para desbloquear.'
+            }
           </Text>
         </TouchableOpacity>
       </View>

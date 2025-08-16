@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, query, getDocs, orderBy,onSnapshot } from 'firebase/firestore';
+import { collection, query, getDocs, orderBy, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { db, auth } from '@/config/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -9,6 +9,7 @@ export interface PaymentStatus {
   overdueInvoice: any | null;
   daysPastDue: number;
   isBlocked: boolean; // true se passou de 7 dias
+  isAdminBlocked: boolean; // true se bloqueado pelo admin
   blockingMessage: string;
 }
 
@@ -18,6 +19,7 @@ export function usePaymentStatus() {
     overdueInvoice: null,
     daysPastDue: 0,
     isBlocked: false,
+    isAdminBlocked: false,
     blockingMessage: ''
   });
   const [loading, setLoading] = useState(true);
@@ -31,30 +33,27 @@ export function usePaymentStatus() {
 
     try {
       setLoading(true);
-      console.log('🔍 Verificando status de pagamento para usuário:', user.uid);
       
       // Força renovação do token antes de chamar Cloud Functions
       const currentUser = auth.currentUser;
       if (currentUser) {
-        console.log('🔄 Renovando token de autenticação...');
-        await currentUser.getIdToken(true); // true = force refresh
-        console.log('✅ Token renovado com sucesso');
+        await currentUser.getIdToken(true);
       }
       
       // Primeiro tenta usar a Cloud Function segura
       const functions = getFunctions();
       const verificarBloqueio = httpsCallable(functions, 'verificarStatusBloqueio', {
-        timeout: 10000 // 10 segundos de timeout
+        timeout: 10000
       });
       
       try {
         const result = await verificarBloqueio();
         const data = result.data as any;
         
-        console.log('🔒 Status de bloqueio via Cloud Function:', data);
-        
         const blockingMessage = data.isBlocked 
-          ? `Estabelecimento bloqueado! Fatura vencida há ${data.daysPastDue} dias. Efetue o pagamento para continuar operando.`
+          ? data.isAdminBlocked
+            ? 'Estabelecimento bloqueado pelo administrador por infringir as regras do app. Entre em contato com o suporte.'
+            : `Estabelecimento bloqueado! Fatura vencida há ${data.daysPastDue} dias. Efetue o pagamento para continuar operando.`
           : data.daysPastDue > 0
             ? data.daysPastDue === 1 
               ? 'Você tem 1 fatura vencida há 1 dia. Efetue o pagamento o quanto antes.'
@@ -66,35 +65,50 @@ export function usePaymentStatus() {
           overdueInvoice: data.overdueInvoice,
           daysPastDue: data.daysPastDue,
           isBlocked: data.isBlocked,
+          isAdminBlocked: data.isAdminBlocked,
           blockingMessage
         });
         
         return;
         
       } catch (cloudError) {
-        console.warn('🔒 ⚠️ Erro na Cloud Function, usando verificação local:', cloudError);
         // Continua com verificação local como fallback
       }
       
-      // Fallback: Verificação local (código original)
-      console.log('🔍 Usando verificação local de status de pagamento...');
+      // Fallback: Verificação local
+      const partnerRef = doc(db, 'partners', user.uid);
+      const partnerDoc = await getDoc(partnerRef);
+      
+      if (partnerDoc.exists()) {
+        const partnerData = partnerDoc.data();
+        
+        // Verifica se está bloqueado pelo admin
+        if (partnerData.isActive === false) {
+          setPaymentStatus({
+            hasOverdueInvoice: false,
+            overdueInvoice: null,
+            daysPastDue: 0,
+            isBlocked: true,
+            isAdminBlocked: true,
+            blockingMessage: 'Estabelecimento bloqueado pelo administrador por infringir as regras do app. Entre em contato com o suporte.'
+          });
+          return;
+        }
+      }
       
       // Busca todas as faturas não pagas do usuário
       const invoicesRef = collection(db, 'partners', user.uid, 'invoices');
-      const q = query(
-        invoicesRef,
-        orderBy('endDate', 'asc')
-      );
+      const q = query(invoicesRef, orderBy('endDate', 'asc'));
       
       const snapshot = await getDocs(q);
       
       if (snapshot.empty) {
-        // Nenhuma fatura encontrada
         setPaymentStatus({
           hasOverdueInvoice: false,
           overdueInvoice: null,
           daysPastDue: 0,
-            isBlocked: false,
+          isBlocked: false,
+          isAdminBlocked: false,
           blockingMessage: ''
         });
         return;
@@ -108,11 +122,7 @@ export function usePaymentStatus() {
       snapshot.docs.forEach(doc => {
         const invoice = doc.data();
         
-        console.log(`🔍 DEBUG - Verificando fatura ${doc.id}: status=${invoice.status}, endDate=${invoice.endDate?.toDate?.()?.toLocaleDateString?.()}`);
-        
-        // Só considera faturas não pagas
         if (invoice.status === 'paid') {
-          console.log(`  ✅ Fatura ${doc.id} já paga - ignorando`);
           return;
         }
         
@@ -121,15 +131,10 @@ export function usePaymentStatus() {
         if (dueDate < today) {
           const daysPastDue = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
           
-          console.log(`  ⚠️ Fatura ${doc.id} vencida há ${daysPastDue} dias`);
-          
           if (daysPastDue > maxDaysPastDue) {
             maxDaysPastDue = daysPastDue;
             overdueInvoice = { id: doc.id, ...invoice };
-            console.log(`  🔒 Nova fatura mais vencida: ${doc.id} (${daysPastDue} dias)`);
           }
-        } else {
-          console.log(`  ✅ Fatura ${doc.id} ainda não venceu`);
         }
       });
 
@@ -141,40 +146,32 @@ export function usePaymentStatus() {
             ? 'Você tem 1 fatura vencida há 1 dia. Efetue o pagamento o quanto antes.'
             : `Você tem 1 fatura vencida há ${maxDaysPastDue} dias. Efetue o pagamento o quanto antes.`;
 
-        console.log('⚠️ Fatura vencida encontrada (local):', {
-          invoiceId: overdueInvoice?.id || 'unknown',
-          daysPastDue: maxDaysPastDue,
-          isBlocked,
-          blockingMessage
-        });
-
         setPaymentStatus({
           hasOverdueInvoice: true,
           overdueInvoice,
           daysPastDue: maxDaysPastDue,
           isBlocked,
+          isAdminBlocked: false,
           blockingMessage
         });
       } else {
-        console.log('✅ Nenhuma fatura vencida encontrada (local)');
-        // Nenhuma fatura vencida
         setPaymentStatus({
           hasOverdueInvoice: false,
           overdueInvoice: null,
           daysPastDue: 0,
           isBlocked: false,
+          isAdminBlocked: false,
           blockingMessage: ''
         });
       }
 
     } catch (error) {
-      console.error('Erro ao verificar status de pagamento:', error);
-      // Em caso de erro, não bloqueia
       setPaymentStatus({
         hasOverdueInvoice: false,
         overdueInvoice: null,
         daysPastDue: 0,
         isBlocked: false,
+        isAdminBlocked: false,
         blockingMessage: ''
       });
     } finally {
@@ -188,14 +185,38 @@ export function usePaymentStatus() {
       return;
     }
 
-
+    // Listener para mudanças no documento do parceiro (para detectar bloqueios admin)
+    const partnerRef = doc(db, 'partners', user.uid);
+    const unsubscribePartner = onSnapshot(partnerRef, (doc) => {
+      if (doc.exists()) {
+        const partnerData = doc.data();
+        
+        // Se o campo isActive mudou para false, atualiza o status imediatamente
+        if (partnerData.isActive === false) {
+          setPaymentStatus({
+            hasOverdueInvoice: false,
+            overdueInvoice: null,
+            daysPastDue: 0,
+            isBlocked: true,
+            isAdminBlocked: true,
+            blockingMessage: 'Estabelecimento bloqueado pelo administrador por infringir as regras do app. Entre em contato com o suporte.'
+          });
+          return;
+        }
+        
+        // Se o campo isActive mudou para true, verifica se há faturas vencidas
+        if (partnerData.isActive === true) {
+          // Reseta o status de bloqueio admin e verifica faturas
+          checkPaymentStatus();
+        }
+      }
+    });
 
     // Monitoramento em tempo real das faturas
     const invoicesRef = collection(db, 'partners', user.uid, 'invoices');
     const q = query(invoicesRef, orderBy('endDate', 'asc'));
 
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      
+    const unsubscribeInvoices = onSnapshot(q, async (snapshot) => {
       try {
         setLoading(true);
         
@@ -207,10 +228,10 @@ export function usePaymentStatus() {
           const result = await verificarBloqueio();
           const data = result.data as any;
           
-
-          
           const blockingMessage = data.isBlocked 
-            ? `Estabelecimento bloqueado! Fatura vencida há ${data.daysPastDue} dias. Efetue o pagamento para continuar operando.`
+            ? data.isAdminBlocked
+              ? 'Estabelecimento bloqueado pelo administrador por infringir as regras do app. Entre em contato com o suporte.'
+              : `Estabelecimento bloqueado! Fatura vencida há ${data.daysPastDue} dias. Efetue o pagamento para continuar operando.`
             : data.daysPastDue > 0
               ? data.daysPastDue === 1 
                 ? 'Você tem 1 fatura vencida há 1 dia. Efetue o pagamento o quanto antes.'
@@ -222,47 +243,54 @@ export function usePaymentStatus() {
             overdueInvoice: data.overdueInvoice,
             daysPastDue: data.daysPastDue,
             isBlocked: data.isBlocked,
+            isAdminBlocked: data.isAdminBlocked,
             blockingMessage
           };
-
-          // Verifica se houve mudança no status de bloqueio
-          if (paymentStatus.isBlocked && !newStatus.isBlocked) {
-            console.log('🎉 DESBLOQUEIO INSTANTÂNEO DETECTADO! Fatura foi paga!');
-          } else if (!paymentStatus.isBlocked && newStatus.isBlocked) {
-            console.log('🔒 BLOQUEIO INSTANTÂNEO DETECTADO! Fatura venceu há mais de 7 dias!');
-          }
 
           setPaymentStatus(newStatus);
           
         } catch (cloudError) {
-          console.warn('🔒 ⚠️ Erro na Cloud Function, usando verificação local instantânea:', cloudError);
-          
           // Fallback: Verificação local instantânea
           if (snapshot.empty) {
-            console.log('✅ DESBLOQUEIO INSTANTÂNEO - Nenhuma fatura encontrada');
             setPaymentStatus({
               hasOverdueInvoice: false,
               overdueInvoice: null,
               daysPastDue: 0,
               isBlocked: false,
+              isAdminBlocked: false,
               blockingMessage: ''
             });
             return;
+          }
+
+          // Primeiro verifica se o parceiro está bloqueado pelo admin
+          const partnerRef = doc(db, 'partners', user.uid);
+          const partnerDoc = await getDoc(partnerRef);
+          
+          if (partnerDoc.exists()) {
+            const partnerData = partnerDoc.data();
+            
+            if (partnerData.isActive === false) {
+              setPaymentStatus({
+                hasOverdueInvoice: false,
+                overdueInvoice: null,
+                daysPastDue: 0,
+                isBlocked: true,
+                isAdminBlocked: true,
+                blockingMessage: 'Estabelecimento bloqueado pelo administrador por infringir as regras do app. Entre em contato com o suporte.'
+              });
+              return;
+            }
           }
 
           const today = new Date();
           let overdueInvoice: any = null;
           let maxDaysPastDue = 0;
 
-          // Verifica se alguma fatura não paga está vencida
           snapshot.docs.forEach(doc => {
             const invoice = doc.data();
             
-            console.log(`🔍 DEBUG (instantâneo) - Verificando fatura ${doc.id}: status=${invoice.status}`);
-            
-            // Só considera faturas não pagas
             if (invoice.status === 'paid') {
-              console.log(`  ✅ Fatura ${doc.id} já paga - ignorando (instantâneo)`);
               return;
             }
             
@@ -271,15 +299,10 @@ export function usePaymentStatus() {
             if (dueDate < today) {
               const daysPastDue = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
               
-              console.log(`  ⚠️ Fatura ${doc.id} vencida há ${daysPastDue} dias (instantâneo)`);
-              
               if (daysPastDue > maxDaysPastDue) {
                 maxDaysPastDue = daysPastDue;
                 overdueInvoice = { id: doc.id, ...invoice };
-                console.log(`  🔒 Nova fatura mais vencida (instantâneo): ${doc.id} (${daysPastDue} dias)`);
               }
-            } else {
-              console.log(`  ✅ Fatura ${doc.id} ainda não venceu (instantâneo)`);
             }
           });
 
@@ -297,33 +320,41 @@ export function usePaymentStatus() {
             overdueInvoice,
             daysPastDue: maxDaysPastDue,
             isBlocked,
+            isAdminBlocked: false,
             blockingMessage
           };
-
-          // Verifica se houve mudança no status de bloqueio
-          if (paymentStatus.isBlocked && !newStatus.isBlocked) {
-            console.log('🎉 DESBLOQUEIO INSTANTÂNEO DETECTADO (local)! Fatura foi paga!');
-          } else if (!paymentStatus.isBlocked && newStatus.isBlocked) {
-            console.log('🔒 BLOQUEIO INSTANTÂNEO DETECTADO (local)! Fatura venceu há mais de 7 dias!');
-          }
 
           setPaymentStatus(newStatus);
         }
         
       } catch (error) {
-        console.error('❌ Erro na verificação instantânea:', error);
+        // Em caso de erro, não bloqueia
+        setPaymentStatus({
+          hasOverdueInvoice: false,
+          overdueInvoice: null,
+          daysPastDue: 0,
+          isBlocked: false,
+          isAdminBlocked: false,
+          blockingMessage: ''
+        });
       } finally {
         setLoading(false);
       }
     }, (error) => {
-      console.error('❌ Erro no listener de faturas:', error);
-      setLoading(false);
+      // Em caso de erro, não bloqueia
+      setPaymentStatus({
+        hasOverdueInvoice: false,
+        overdueInvoice: null,
+        daysPastDue: 0,
+        isBlocked: false,
+        isAdminBlocked: false,
+        blockingMessage: ''
+      });
     });
 
-    // Cleanup
     return () => {
-      console.log('🔄 Parando monitoramento em tempo real de faturas');
-      unsubscribe();
+      unsubscribePartner();
+      unsubscribeInvoices();
     };
   }, [user?.uid]);
 

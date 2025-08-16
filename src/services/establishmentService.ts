@@ -537,48 +537,30 @@ export const establishmentService = {
       if (!user) throw new Error('Usuário não autenticado');
 
       // Força renovação do token antes de chamar Cloud Functions
-      console.log('🔄 Renovando token de autenticação...');
-      await user.getIdToken(true); // true = force refresh
-      console.log('✅ Token renovado com sucesso');
-
-      console.log('🔒 Tentando alterar status do estabelecimento:', isOpen ? 'ABRIR' : 'FECHAR');
+      await user.getIdToken(true);
 
       // Se estiver tentando abrir, primeiro verifica se pode via Cloud Function
       if (isOpen) {
         const functions = getFunctions();
         const verificarPermissao = httpsCallable(functions, 'verificarPermissaoAbertura', {
-          timeout: 10000 // 10 segundos de timeout
+          timeout: 10000
         });
         
         try {
-          console.log('🔒 Testando Cloud Function com nova configuração...');
           const result = await verificarPermissao();
           const data = result.data as any;
           
-          console.log('🔒 Resposta da Cloud Function:', data);
-          
           if (!data.canOpen) {
-            console.log('🔒 ❌ ABERTURA NEGADA pelo backend:', data.reason);
             throw new Error(data.reason || 'Estabelecimento não pode ser aberto devido a pendências de pagamento');
           }
           
-          console.log('🔒 ✅ ABERTURA PERMITIDA pelo backend');
         } catch (cloudError: any) {
-          console.error('🔒 ❌ ERRO na verificação de permissão:', cloudError);
-          console.error('🔒 Detalhes do erro:', {
-            code: cloudError.code,
-            message: cloudError.message,
-            details: cloudError.details
-          });
-          
           // Se é erro de permissão, repassa a mensagem
           if (cloudError.code === 'functions/permission-denied') {
             throw new Error(cloudError.message);
           }
           
           // Para outros erros, faz verificação local de segurança
-          console.warn('🔒 ⚠️ Erro na Cloud Function, fazendo verificação local de segurança...');
-          
           // Verificação local de faturas vencidas como fallback
           const invoicesRef = collection(db, 'partners', user.uid, 'invoices');
           const overdueQuery = query(
@@ -627,11 +609,10 @@ export const establishmentService = {
       // Usa a Cloud Function segura para atualizar o status
       const functions = getFunctions();
       const atualizarStatus = httpsCallable(functions, 'atualizarStatusEstabelecimento', {
-        timeout: 10000 // 10 segundos de timeout
+        timeout: 10000
       });
       
       try {
-        console.log('🔒 Testando atualização via Cloud Function...');
         const result = await atualizarStatus({
           isOpen,
           reason: isOpen 
@@ -640,24 +621,14 @@ export const establishmentService = {
         });
         
         const data = result.data as any;
-        console.log('🔒 ✅ Status atualizado via Cloud Function:', data.message);
         
       } catch (cloudError: any) {
-        console.error('🔒 ❌ ERRO na Cloud Function de atualização:', cloudError);
-        console.error('🔒 Detalhes do erro de atualização:', {
-          code: cloudError.code,
-          message: cloudError.message,
-          details: cloudError.details
-        });
-        
         // Se é erro de permissão, repassa a mensagem
         if (cloudError.code === 'functions/permission-denied') {
           throw new Error(cloudError.message);
         }
         
         // Para outros erros, tenta atualização local como fallback
-        console.warn('🔒 ⚠️ Erro na Cloud Function, tentando atualização local...');
-        
         const partnerRef = doc(db, 'partners', user.uid);
         
         // Prepara os dados de atualização
@@ -679,9 +650,7 @@ export const establishmentService = {
         await updateDoc(partnerRef, updateData);
       }
 
-      console.log(`🔒 Estabelecimento ${isOpen ? 'aberto' : 'fechado'} com sucesso`);
     } catch (error) {
-      console.error('🔒 ❌ Erro ao alternar status do estabelecimento:', error);
       throw error;
     }
   },

@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useRouter, usePathname } from 'expo-router';
 import { usePaymentStatus } from '@/hooks/usePaymentStatus';
-import { AppBlockedScreen } from './AppBlockedScreen';
+import { useEstablishment } from '@/contexts/EstablishmentContext';
 
 interface AppGuardProps {
   children: React.ReactNode;
@@ -11,6 +11,10 @@ export function AppGuard({ children }: AppGuardProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { paymentStatus, loading } = usePaymentStatus();
+  const { isBlocked: contextBlocked } = useEstablishment();
+
+  // Combina o bloqueio do contexto com o do payment status
+  const isBlocked = contextBlocked || paymentStatus.isBlocked;
 
   // Rotas permitidas mesmo quando bloqueado
   const allowedRoutes = [
@@ -43,29 +47,15 @@ export function AppGuard({ children }: AppGuardProps) {
 
   // Redireciona automaticamente se o app estiver bloqueado e não estiver em rota permitida
   useEffect(() => {
-    if (!loading && paymentStatus.isBlocked && !isRouteAllowed(pathname)) {
-      // Redireciona para faturas com flag de bloqueio
+    if (!loading && isBlocked && !isRouteAllowed(pathname)) {
+      // Redireciona para faturas quando bloqueado
       router.replace('/faturas' as any);
     }
-  }, [paymentStatus.isBlocked, pathname, loading, router]);
+  }, [isBlocked, pathname, loading, router]);
 
   // Ainda carregando status de pagamento
   if (loading) {
     return <>{children}</>;
-  }
-
-  // Se o app está bloqueado e não está em rota permitida, mostra tela de bloqueio
-  if (paymentStatus.isBlocked && !isRouteAllowed(pathname)) {
-    return (
-      <AppBlockedScreen
-        dueAmount={paymentStatus.overdueInvoice?.amount || 0}
-        dueDate={paymentStatus.overdueInvoice?.endDate?.toDate?.() || new Date()}
-        suspensionReason={paymentStatus.blockingMessage}
-        blockedSince={paymentStatus.overdueInvoice?.endDate?.toDate?.() || new Date()}
-        overdueCount={1}
-        daysOverdue={paymentStatus.daysPastDue}
-      />
-    );
   }
 
   // App liberado ou rota permitida - mostra conteúdo normal

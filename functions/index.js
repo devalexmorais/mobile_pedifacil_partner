@@ -72,7 +72,32 @@ const MERCADO_PAGO_IPS = [
 // Função para verificar status de pagamento e aplicar bloqueios
 async function verificarEAplicarBloqueio(partnerId) {
   try {
-    console.log('🔒 VERIFICANDO STATUS DE BLOQUEIO para parceiro:', partnerId);
+    // Primeiro verifica se o parceiro está bloqueado pelo admin
+    const partnerRef = db.collection('partners').doc(partnerId);
+    const partnerDoc = await partnerRef.get();
+    
+    if (!partnerDoc.exists) {
+      return {
+        isBlocked: false,
+        daysPastDue: 0,
+        overdueInvoice: null,
+        blockingReason: null,
+        isAdminBlocked: false
+      };
+    }
+    
+    const partnerData = partnerDoc.data();
+    
+    // Verifica se está bloqueado pelo admin
+    if (partnerData.isActive === false) {
+      return {
+        isBlocked: true,
+        daysPastDue: 0,
+        overdueInvoice: null,
+        blockingReason: 'Estabelecimento bloqueado pelo administrador por infringir as regras do app. Entre em contato com o suporte.',
+        isAdminBlocked: true
+      };
+    }
     
     // Busca todas as faturas não pagas do parceiro
     const invoicesQuery = await db
@@ -84,12 +109,12 @@ async function verificarEAplicarBloqueio(partnerId) {
       .get();
     
     if (invoicesQuery.empty) {
-      console.log('🔒 ✅ Nenhuma fatura pendente - parceiro liberado');
       return {
         isBlocked: false,
         daysPastDue: 0,
         overdueInvoice: null,
-        blockingReason: null
+        blockingReason: null,
+        isAdminBlocked: false
       };
     }
     
@@ -118,28 +143,23 @@ async function verificarEAplicarBloqueio(partnerId) {
       ? `Fatura vencida há ${maxDaysPastDue} dias. Pagamento necessário para continuar operando.`
       : null;
     
-    console.log('🔒 RESULTADO DA VERIFICAÇÃO:', {
-      isBlocked,
-      daysPastDue: maxDaysPastDue,
-      hasOverdueInvoice: !!overdueInvoice,
-      blockingReason
-    });
-    
     return {
       isBlocked,
       daysPastDue: maxDaysPastDue,
       overdueInvoice,
-      blockingReason
+      blockingReason,
+      isAdminBlocked: false
     };
     
   } catch (error) {
-    console.error('🔒 ❌ ERRO ao verificar bloqueio:', error);
+    console.error('Erro ao verificar bloqueio:', error);
     // Em caso de erro, não bloqueia (fail-safe)
     return {
       isBlocked: false,
       daysPastDue: 0,
       overdueInvoice: null,
-      blockingReason: null
+      blockingReason: null,
+      isAdminBlocked: false
     };
   }
 }
@@ -148,18 +168,15 @@ async function verificarEAplicarBloqueio(partnerId) {
 async function forcarFechamentoSeNecessario(partnerId, bloqueioInfo) {
   try {
     if (!bloqueioInfo.isBlocked) {
-      console.log('🔒 Parceiro não está bloqueado - não precisa forçar fechamento');
       return;
     }
-    
-    console.log('🔒 FORÇANDO FECHAMENTO - parceiro bloqueado há', bloqueioInfo.daysPastDue, 'dias');
     
     // Busca o documento do parceiro
     const partnerRef = db.collection('partners').doc(partnerId);
     const partnerDoc = await partnerRef.get();
     
     if (!partnerDoc.exists) {
-      console.error('🔒 ❌ Parceiro não encontrado:', partnerId);
+      console.error('Parceiro não encontrado:', partnerId);
       return;
     }
     
@@ -167,29 +184,41 @@ async function forcarFechamentoSeNecessario(partnerId, bloqueioInfo) {
     
     // Se o estabelecimento está aberto, força o fechamento
     if (partnerData.isOpen) {
-      console.log('🔒 FECHANDO estabelecimento automaticamente por bloqueio');
-      
-      await partnerRef.update({
+      const updateData = {
         isOpen: false,
         lastStatusChange: admin.firestore.Timestamp.now(),
-        statusChangeReason: `Fechado automaticamente - ${bloqueioInfo.blockingReason}`,
         operationMode: 'blocked',
-        blockedSince: admin.firestore.Timestamp.now(),
-        blockingReason: bloqueioInfo.blockingReason,
         updatedAt: admin.firestore.Timestamp.now()
-      });
+      };
       
-      console.log('🔒 ✅ Estabelecimento fechado automaticamente por bloqueio');
+      // Adiciona campos específicos baseado no tipo de bloqueio
+      if (bloqueioInfo.isAdminBlocked) {
+        updateData.statusChangeReason = 'Fechado automaticamente - Bloqueado pelo administrador';
+        updateData.blockedSince = admin.firestore.Timestamp.now();
+        updateData.blockingReason = bloqueioInfo.blockingReason;
+        updateData.isActive = false; // Garante que o campo isActive seja false
+      } else {
+        updateData.statusChangeReason = `Fechado automaticamente - ${bloqueioInfo.blockingReason}`;
+        updateData.blockedSince = admin.firestore.Timestamp.now();
+        updateData.blockingReason = bloqueioInfo.blockingReason;
+      }
+      
+      await partnerRef.update(updateData);
+      
     } else {
-      console.log('🔒 Estabelecimento já estava fechado - status atual:', {
-        isOpen: partnerData.isOpen,
-        operationMode: partnerData.operationMode,
-        statusChangeReason: partnerData.statusChangeReason
-      });
+      // Mesmo fechado, atualiza campos de bloqueio se necessário
+      if (bloqueioInfo.isAdminBlocked && partnerData.isActive !== false) {
+        await partnerRef.update({
+          isActive: false,
+          blockedSince: admin.firestore.Timestamp.now(),
+          blockingReason: bloqueioInfo.blockingReason,
+          updatedAt: admin.firestore.Timestamp.now()
+        });
+      }
     }
     
   } catch (error) {
-    console.error('🔒 ❌ ERRO ao forçar fechamento:', error);
+    console.error('Erro ao forçar fechamento:', error);
   }
 }
 
@@ -1599,7 +1628,6 @@ exports.verificarStatusBloqueio = functions.https.onCall(async (data, context) =
     }
 
     const partnerId = context.auth.uid;
-    console.log('🔒 VERIFICANDO STATUS DE BLOQUEIO via Cloud Function para:', partnerId);
 
     // Verifica o status de bloqueio
     const bloqueioInfo = await verificarEAplicarBloqueio(partnerId);
@@ -1616,7 +1644,7 @@ exports.verificarStatusBloqueio = functions.https.onCall(async (data, context) =
     };
 
   } catch (error) {
-    console.error('🔒 ❌ ERRO ao verificar status de bloqueio:', error);
+    console.error('Erro ao verificar status de bloqueio:', error);
     throw new functions.https.HttpsError('internal', `Erro ao verificar bloqueio: ${error.message}`);
   }
 });
@@ -1630,37 +1658,44 @@ exports.verificarPermissaoAbertura = functions.https.onCall(async (data, context
     }
 
     const partnerId = context.auth.uid;
-    console.log('🔒 VERIFICANDO PERMISSÃO DE ABERTURA para:', partnerId);
 
     // Verifica o status de bloqueio
     const bloqueioInfo = await verificarEAplicarBloqueio(partnerId);
     
     if (bloqueioInfo.isBlocked) {
-      console.log('🔒 ❌ ABERTURA NEGADA - parceiro bloqueado');
-      
       // Força fechamento se necessário
       await forcarFechamentoSeNecessario(partnerId, bloqueioInfo);
+      
+      // Mensagem específica para bloqueio pelo admin
+      let reason = bloqueioInfo.blockingReason;
+      let message = 'Estabelecimento não pode ser aberto devido a fatura vencida';
+      
+      if (bloqueioInfo.isAdminBlocked) {
+        reason = 'Estabelecimento bloqueado pelo administrador por infringir as regras do app';
+        message = 'Estabelecimento bloqueado pelo administrador. Entre em contato com o suporte.';
+      }
       
       return {
         success: false,
         canOpen: false,
         isBlocked: true,
-        reason: bloqueioInfo.blockingReason,
+        isAdminBlocked: bloqueioInfo.isAdminBlocked,
+        reason,
         daysPastDue: bloqueioInfo.daysPastDue,
-        message: 'Estabelecimento não pode ser aberto devido a fatura vencida'
+        message
       };
     }
 
-    console.log('🔒 ✅ ABERTURA PERMITIDA - parceiro em dia');
     return {
       success: true,
       canOpen: true,
       isBlocked: false,
+      isAdminBlocked: false,
       message: 'Estabelecimento pode ser aberto normalmente'
     };
 
   } catch (error) {
-    console.error('🔒 ❌ ERRO ao verificar permissão de abertura:', error);
+    console.error('Erro ao verificar permissão de abertura:', error);
     throw new functions.https.HttpsError('internal', `Erro ao verificar permissão: ${error.message}`);
   }
 });
@@ -1676,21 +1711,24 @@ exports.atualizarStatusEstabelecimento = functions.https.onCall(async (data, con
     const partnerId = context.auth.uid;
     const { isOpen, reason } = data;
 
-    console.log('🔒 ATUALIZANDO STATUS DO ESTABELECIMENTO:', { partnerId, isOpen, reason });
-
     // Se está tentando abrir, verifica se pode
     if (isOpen) {
       const bloqueioInfo = await verificarEAplicarBloqueio(partnerId);
       
       if (bloqueioInfo.isBlocked) {
-        console.log('🔒 ❌ ABERTURA NEGADA - parceiro bloqueado');
-        
         // Força fechamento
         await forcarFechamentoSeNecessario(partnerId, bloqueioInfo);
         
+        // Mensagem específica para bloqueio pelo admin
+        let errorMessage = `Não é possível abrir o estabelecimento: ${bloqueioInfo.blockingReason}`;
+        
+        if (bloqueioInfo.isAdminBlocked) {
+          errorMessage = 'Não é possível abrir o estabelecimento: Estabelecimento bloqueado pelo administrador por infringir as regras do app. Entre em contato com o suporte.';
+        }
+        
         throw new functions.https.HttpsError(
           'permission-denied', 
-          `Não é possível abrir o estabelecimento: ${bloqueioInfo.blockingReason}`
+          errorMessage
         );
       }
     }
@@ -1717,8 +1755,6 @@ exports.atualizarStatusEstabelecimento = functions.https.onCall(async (data, con
 
     await partnerRef.update(updateData);
 
-    console.log('🔒 ✅ Status do estabelecimento atualizado:', isOpen ? 'ABERTO' : 'FECHADO');
-
     return {
       success: true,
       isOpen,
@@ -1727,7 +1763,7 @@ exports.atualizarStatusEstabelecimento = functions.https.onCall(async (data, con
     };
 
   } catch (error) {
-    console.error('🔒 ❌ ERRO ao atualizar status do estabelecimento:', error);
+    console.error('Erro ao atualizar status do estabelecimento:', error);
     
     if (error instanceof functions.https.HttpsError) {
       throw error;
@@ -1746,22 +1782,11 @@ exports.verificarBloqueioAoAtualizarFatura = functions.firestore
       const before = change.before.data();
       const after = change.after.data();
 
-      console.log('🔒 TRIGGER ATIVADO - Fatura atualizada:', {
-        partnerId,
-        invoiceId: context.params.invoiceId,
-        statusBefore: before.status,
-        statusAfter: after.status
-      });
-
       // Se o status mudou para 'paid', DESBLOQUEIO INSTANTÂNEO
       if (before.status !== 'paid' && after.status === 'paid') {
-        console.log('🎉 FATURA PAGA DETECTADA - INICIANDO DESBLOQUEIO INSTANTÂNEO:', partnerId);
-        
         const bloqueioInfo = await verificarEAplicarBloqueio(partnerId);
         
         if (!bloqueioInfo.isBlocked) {
-          console.log('🎉 ✅ DESBLOQUEIO INSTANTÂNEO - Todas as faturas estão em dia!');
-          
           // Remove o bloqueio do estabelecimento IMEDIATAMENTE
           const partnerRef = db.collection('partners').doc(partnerId);
           await partnerRef.update({
@@ -1774,29 +1799,20 @@ exports.verificarBloqueioAoAtualizarFatura = functions.firestore
             'establishmentStatus.unblockedAt': admin.firestore.Timestamp.now(),
             updatedAt: admin.firestore.Timestamp.now()
           });
-          
-          console.log('🎉 ✅ DESBLOQUEIO CONCLUÍDO - Estabelecimento liberado para operação!');
-        } else {
-          console.log('⚠️ Ainda há outras faturas vencidas - mantendo bloqueio');
         }
       }
       
       // Se uma fatura venceu, verifica se precisa bloquear
       if (before.status === 'pending' && after.status === 'overdue') {
-        console.log('🔒 FATURA VENCIDA DETECTADA - verificando se precisa bloquear parceiro:', partnerId);
-        
         const bloqueioInfo = await verificarEAplicarBloqueio(partnerId);
         
         if (bloqueioInfo.isBlocked) {
-          console.log('🔒 APLICANDO BLOQUEIO - Fatura vencida há mais de 7 dias');
           await forcarFechamentoSeNecessario(partnerId, bloqueioInfo);
         }
       }
 
       // Se o paymentInfo.status mudou para 'paid', também desbloqueia
       if (before.paymentInfo?.status !== 'paid' && after.paymentInfo?.status === 'paid') {
-        console.log('🎉 PAGAMENTO CONFIRMADO VIA paymentInfo - INICIANDO DESBLOQUEIO:', partnerId);
-        
         // Atualiza o status da fatura para 'paid' se ainda não estiver
         if (after.status !== 'paid') {
           const invoiceRef = change.after.ref;
@@ -1805,15 +1821,12 @@ exports.verificarBloqueioAoAtualizarFatura = functions.firestore
             paidAt: admin.firestore.Timestamp.now(),
             updatedAt: admin.firestore.Timestamp.now()
           });
-          console.log('🎉 Status da fatura atualizado para PAID');
         }
         
         // Verifica e remove bloqueio
         const bloqueioInfo = await verificarEAplicarBloqueio(partnerId);
         
         if (!bloqueioInfo.isBlocked) {
-          console.log('🎉 ✅ DESBLOQUEIO INSTANTÂNEO VIA PAGAMENTO CONFIRMADO!');
-          
           const partnerRef = db.collection('partners').doc(partnerId);
           await partnerRef.update({
             'establishmentStatus.operationMode': 'manual',
@@ -1829,6 +1842,121 @@ exports.verificarBloqueioAoAtualizarFatura = functions.firestore
       }
 
     } catch (error) {
-      console.error('🔒 ❌ ERRO no trigger de verificação de bloqueio:', error);
+      console.error('Erro no trigger de verificação de bloqueio:', error);
     }
-  }); 
+  });
+
+// 🔒 CLOUD FUNCTION: Bloquear Estabelecimento pelo Admin
+exports.bloquearEstabelecimentoAdmin = functions.https.onCall(async (data, context) => {
+  try {
+    // Verificar se o usuário está autenticado
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado');
+    }
+
+    // Verificar se o usuário é admin
+    const adminUid = context.auth.uid;
+    const adminRole = await getUserRoleFromFirestore(adminUid);
+    
+    if (adminRole !== 'admin') {
+      throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem bloquear estabelecimentos');
+    }
+
+    const { partnerId, reason, isActive } = data;
+
+    if (!partnerId) {
+      throw new functions.https.HttpsError('invalid-argument', 'ID do parceiro é obrigatório');
+    }
+
+    // Busca o documento do parceiro
+    const partnerRef = db.collection('partners').doc(partnerId);
+    const partnerDoc = await partnerRef.get();
+
+    if (!partnerDoc.exists) {
+      throw new functions.https.HttpsError('not-found', 'Parceiro não encontrado');
+    }
+
+    const partnerData = partnerDoc.data();
+    const currentStatus = partnerData.isActive;
+
+    // Se está tentando bloquear um estabelecimento já bloqueado
+    if (isActive === false && currentStatus === false) {
+      return {
+        success: true,
+        message: 'Estabelecimento já estava bloqueado',
+        wasAlreadyBlocked: true
+      };
+    }
+
+    // Se está tentando desbloquear um estabelecimento já desbloqueado
+    if (isActive === true && currentStatus === true) {
+      return {
+        success: true,
+        message: 'Estabelecimento já estava desbloqueado',
+        wasAlreadyUnblocked: true
+      };
+    }
+
+    // Atualiza o status do estabelecimento
+    const updateData = {
+      isActive: isActive,
+      updatedAt: admin.firestore.Timestamp.now(),
+      lastAdminAction: {
+        adminUid: adminUid,
+        action: isActive ? 'unblock' : 'block',
+        reason: reason || (isActive ? 'Desbloqueado pelo administrador' : 'Bloqueado pelo administrador'),
+        timestamp: admin.firestore.Timestamp.now()
+      }
+    };
+
+    // Se está bloqueando, adiciona campos de bloqueio
+    if (isActive === false) {
+      updateData.blockedSince = admin.firestore.Timestamp.now();
+      updateData.blockingReason = reason || 'Estabelecimento bloqueado pelo administrador por infringir as regras do app';
+      updateData.isOpen = false; // Força fechamento
+      updateData.lastStatusChange = admin.firestore.Timestamp.now();
+      updateData.statusChangeReason = 'Fechado automaticamente - Bloqueado pelo administrador';
+      updateData.operationMode = 'blocked';
+    } else {
+      // Se está desbloqueando, remove campos de bloqueio
+      updateData.blockedSince = admin.firestore.FieldValue.delete();
+      updateData.blockingReason = admin.firestore.FieldValue.delete();
+      updateData.operationMode = 'manual';
+    }
+
+    await partnerRef.update(updateData);
+
+    return {
+      success: true,
+      message: `Estabelecimento ${isActive ? 'desbloqueado' : 'bloqueado'} com sucesso`,
+      partnerId,
+      newStatus: isActive,
+      reason: reason || 'Sem motivo especificado',
+      timestamp: admin.firestore.Timestamp.now()
+    };
+
+  } catch (error) {
+    console.error('Erro ao bloquear/desbloquear estabelecimento:', error);
+    
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    
+    throw new functions.https.HttpsError('internal', `Erro ao atualizar status: ${error.message}`);
+  }
+});
+
+// Função auxiliar para obter role do usuário
+async function getUserRoleFromFirestore(uid) {
+  try {
+    const userDoc = await db.collection('users').doc(uid).get();
+    if (userDoc.exists) {
+      const userData = userDoc.data();
+      return userData.role || 'user';
+    }
+    return 'user';
+  } catch (error) {
+    console.error('Erro ao obter role do usuário:', error);
+    return 'user';
+  }
+}
