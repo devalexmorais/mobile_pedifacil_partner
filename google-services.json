@@ -8,25 +8,6 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:247060176018:android:e3aa058187089ad1769a4b",
-        "android_client_info": {
-          "package_name": "com.pedifacil.deliverycliente"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyDo9rM1DdgkegS_wWL4xiKY6PpuUXMvFRk"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    },
-    {
-      "client_info": {
         "mobilesdk_app_id": "1:247060176018:android:5a6d21f3564668cc769a4b",
         "android_client_info": {
           "package_name": "com.pedifacil.deliveryparceiros"

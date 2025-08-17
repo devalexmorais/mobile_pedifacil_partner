@@ -1124,61 +1124,19 @@ exports.setUserRole = functions.https.onCall((data, context) => {
     });
 });
 
-// Trigger quando um novo usuário é criado
-exports.onUserCreated = functions.auth.user().onCreate(async (userRecord) => {
-  try {
-    // Define a role padrão como 'partner' para novos usuários
-    const defaultClaims = { role: 'partner' };
-    
-    await admin.auth().setCustomUserClaims(userRecord.uid, defaultClaims);
-    
-    // Verifica se o documento já existe (criado pelo registerService)
-    const existingDoc = await admin.firestore().collection('partners').doc(userRecord.uid).get();
-    
-    if (existingDoc.exists) {
-      console.log(`Documento do parceiro ${userRecord.uid} já existe - apenas atualizando campos necessários`);
-      
-      // Se o documento já existe, apenas adiciona/atualiza campos específicos que podem estar faltando
-      await admin.firestore().collection('partners').doc(userRecord.uid).update({
-        email: userRecord.email, // Garante que o email está correto
-        role: 'partner', // Garante que a role está definida
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        // Adiciona store apenas se não existir
-        ...(existingDoc.data().store ? {} : {
-          'store.isPremium': false,
-          'store.premiumExpiresAt': null,
-          'store.premiumFeatures.analytics': false,
-          'store.premiumFeatures.advancedReports': false,
-          'store.premiumFeatures.prioritySupport': false,
-        })
-      });
-    } else {
-      // Se o documento não existe, cria um novo (caso raro - usuário criado fora do fluxo de registro)
-      console.log(`Criando novo documento para parceiro ${userRecord.uid}`);
-      await admin.firestore().collection('partners').doc(userRecord.uid).set({
-        email: userRecord.email,
-        role: 'partner',
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        store: {
-          isPremium: false,
-          premiumExpiresAt: null,
-          premiumFeatures: {
-            analytics: false,
-            advancedReports: false,
-            prioritySupport: false,
-          }
-        }
-      });
-    }
-
-    console.log(`Usuário ${userRecord.uid} criado com sucesso com role padrão`);
-    return null;
-  } catch (error) {
-    console.error('Erro ao criar usuário:', error);
-    return null;
-  }
-});
+// Trigger quando um novo usuário é criado - TEMPORARIAMENTE DESABILITADA
+// exports.onUserCreated = functions.auth.user().onCreate(async (userRecord) => {
+//   try {
+//     // Define a role padrão como 'partner' para novos usuários
+//     await admin.auth().setCustomUserClaims(userRecord.uid, { role: 'partner' });
+//     
+//     console.log(`Usuário ${userRecord.uid} criado com sucesso com role padrão`);
+//     return null;
+//   } catch (error) {
+//     console.error('Erro ao criar usuário:', error);
+//     return null;
+//   }
+// });
 
 // Opcional: Função para verificar a role atual do usuário
 exports.getUserRole = functions.https.onCall(async (data, context) => {
@@ -1205,83 +1163,169 @@ exports.getUserRole = functions.https.onCall(async (data, context) => {
 // (mesma lógica dos cupons que funciona perfeitamente)
 
 // Função para detectar novas notificações e enviar push
-exports.sendNotificationOnCreate = functions.firestore
+exports.onNotificationsCreatedPartner = functions.firestore
   .document('partners/{partnerId}/notifications/{notificationId}')
   .onCreate(async (snapshot, context) => {
     try {
-      // Extrair o ID do parceiro e da notificação dos parâmetros de contexto
+      // Obtém os parâmetros da função
       const partnerId = context.params.partnerId;
       const notificationId = context.params.notificationId;
       
-      console.log(`Nova notificação criada: ${notificationId} para parceiro: ${partnerId}`);
-      
-      // Obter os dados da notificação
+      // Obtém os dados da notificação
       const notificationData = snapshot.data();
       
-      // Verificar se a notificação contém os dados necessários
-      if (!notificationData) {
-        console.error('Dados da notificação não encontrados');
-        return null;
-      }
+      // Registra nos logs para debug
+      console.log(`🚀 Nova notificação ${notificationId} criada para o parceiro ${partnerId}`);
+      console.log('📋 Dados da notificação:', JSON.stringify(notificationData, null, 2));
       
-      // Buscar o documento do parceiro para obter o token FCM
-      const partnerDoc = await admin.firestore()
-        .collection('partners')
-        .doc(partnerId)
-        .get();
+      // Obtém os tokens de dispositivo do parceiro
+      const partnerRef = admin.firestore().collection('partners').doc(partnerId);
+      const partnerDoc = await partnerRef.get();
       
       if (!partnerDoc.exists) {
-        console.error(`Parceiro não encontrado: ${partnerId}`);
+        console.log(`❌ Parceiro ${partnerId} não encontrado no Firestore`);
         return null;
       }
       
       const partnerData = partnerDoc.data();
+      console.log('👤 Dados do parceiro:', JSON.stringify({
+        uid: partnerId,
+        email: partnerData.email,
+        hasFcmToken: !!partnerData.fcmToken,
+        fcmTokenLength: partnerData.fcmToken ? partnerData.fcmToken.length : 0
+      }, null, 2));
       
-      // Verificar se o parceiro tem tokens FCM registrados
-      // Verificando tanto o formato fcmTokens quanto o formato notificationTokens para compatibilidade
-      let fcmToken = null;
+      const fcmToken = partnerData.fcmToken;
       
-      if (partnerData.fcmTokens && partnerData.fcmTokens.token) {
-        fcmToken = partnerData.fcmTokens.token;
-      } else if (partnerData.notificationTokens && partnerData.notificationTokens.expoToken) {
-        fcmToken = partnerData.notificationTokens.expoToken;
-      }
-      
+      // Verifica se há token de FCM para este parceiro
       if (!fcmToken) {
-        console.log(`Parceiro ${partnerId} não possui token FCM registrado`);
+        console.log(`⚠️ Token FCM não encontrado para o parceiro ${partnerId}`);
+        console.log('🔍 Campos disponíveis no parceiro:', Object.keys(partnerData));
         return null;
       }
       
-      // Preparar mensagem de notificação
-      const message = {
-        notification: {
-          title: notificationData.title || 'Nova notificação',
-          body: notificationData.body || 'Você recebeu uma nova notificação',
-        },
-        data: {
-          type: notificationData.type || 'general',
-          notificationId: notificationId,
-          partnerId: partnerId,
-          // Adicionar dados para navegação no app
-          screen: notificationData.screen || 'notifications',
-          clickAction: 'FLUTTER_NOTIFICATION_CLICK',
-        },
-        token: fcmToken,
-      };
+      console.log(`✅ Token encontrado para parceiro ${partnerId}:`, fcmToken.substring(0, 20) + '...');
       
-      // Enviar a notificação
-      const response = await admin.messaging().send(message);
-      console.log('Notificação enviada com sucesso:', response);
+      // Detectar tipo de token
+      const isExpoToken = fcmToken.startsWith('ExponentPushToken[');
+      const isFCMToken = !isExpoToken; // Se não for Expo, assume que é FCM
       
-      // Atualizar o documento de notificação para indicar que foi enviado
-      await snapshot.ref.update({
-        sent: true,
-        sentAt: admin.firestore.FieldValue.serverTimestamp(),
+      console.log(`🔍 Tipo de token detectado:`, {
+        isExpoToken,
+        isFCMToken,
+        tokenType: isExpoToken ? 'Expo Push Token' : 'FCM Token'
       });
       
-      return response;
+      // Prepara a mensagem de notificação
+      const title = notificationData.title || 'Nova notificação';
+      const body = notificationData.body || 'Você tem uma nova notificação';
+      
+      let response;
+      
+      if (isExpoToken) {
+        // Enviar via Expo Push (para tokens Expo)
+        console.log('📤 Enviando via Expo Push...');
+        
+        const expoMessage = {
+          to: fcmToken,
+          sound: 'default',
+          title: title,
+          body: body,
+          data: {
+            notificationId: notificationId,
+            partnerId: partnerId,
+            timestamp: new Date().toISOString(),
+            click_action: 'FLUTTER_NOTIFICATION_CLICK',
+          },
+        };
+        
+        // Enviar via Expo Push API
+        const expoResponse = await axios.post('https://exp.host/--/api/v2/push/send', expoMessage, {
+          headers: {
+            'Accept': 'application/json',
+            'Accept-encoding': 'gzip, deflate',
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        response = expoResponse.data;
+        console.log('✅ Notificação enviada via Expo Push:', response);
+        
+      } else if (isFCMToken) {
+        // Enviar via FCM (para tokens nativos)
+        console.log('📤 Enviando via FCM...');
+        
+        const fcmMessage = {
+          notification: {
+            title: title,
+            body: body,
+          },
+          data: {
+            notificationId: notificationId,
+            partnerId: partnerId,
+            timestamp: new Date().toISOString(),
+            click_action: 'FLUTTER_NOTIFICATION_CLICK',
+          },
+          token: fcmToken,
+          android: {
+            priority: 'high',
+            notification: {
+              sound: 'default',
+              priority: 'high',
+              channelId: 'pedifacil_notifications'
+            }
+          },
+          apns: {
+            payload: {
+              aps: {
+                sound: 'default',
+                badge: 1
+              }
+            }
+          }
+        };
+        
+        console.log('📤 Enviando mensagem FCM:', JSON.stringify({
+          title: fcmMessage.notification.title,
+          body: fcmMessage.notification.body,
+          token: fcmMessage.token.substring(0, 20) + '...',
+          hasAndroidConfig: !!fcmMessage.android,
+          hasApnsConfig: !!fcmMessage.apns
+        }, null, 2));
+        
+        // Envia a notificação push via FCM
+        response = await admin.messaging().send(fcmMessage);
+        console.log('✅ Notificação enviada via FCM:', response);
+        
+      } else {
+        throw new Error(`Tipo de token não reconhecido: ${fcmToken.substring(0, 20)}...`);
+      }
+      
+      // Marcar a notificação como processada
+      await snapshot.ref.update({
+        'data.processedByFCM': true,
+        'data.fcmProcessedAt': admin.firestore.FieldValue.serverTimestamp(),
+        'data.tokenType': isExpoToken ? 'expo' : 'fcm',
+        'data.deliveryMethod': isExpoToken ? 'expo_push' : 'fcm'
+      });
+      
+      console.log('🏷️ Notificação marcada como processada');
+      
+      return null;
     } catch (error) {
-      console.error('Erro ao enviar notificação:', error);
+      console.error('❌ Erro ao processar notificação:', error);
+      console.error('🔍 Stack trace:', error.stack);
+      
+      // Tentar marcar a notificação como falha
+      try {
+        await snapshot.ref.update({
+          'data.fcmError': error.message,
+          'data.fcmErrorAt': admin.firestore.FieldValue.serverTimestamp()
+        });
+      } catch (updateError) {
+        console.error('❌ Erro ao marcar falha na notificação:', updateError);
+      }
+      
       return null;
     }
   });
