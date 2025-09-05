@@ -5,7 +5,7 @@ import { getAnalytics, isSupported } from 'firebase/analytics';
 import { getStorage } from 'firebase/storage';
 import { getFunctions } from 'firebase/functions';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getApp } from '@react-native-firebase/app';
+// Removido import do React Native Firebase - usando apenas Firebase v9+ SDK
 
 const firebaseConfig = {
   apiKey: "AIzaSyChPcaHDVCuz6Whhr87xaT-X_3lStqL_Is",
@@ -81,7 +81,6 @@ export const analytics = async () => {
 export const storage = getStorage(app);
 export const functions = getFunctions(app, 'us-central1');
 
-// Exportar instância do React Native Firebase para compatibilidade
-export const rnFirebaseApp = getApp();
+// Removido export do React Native Firebase - usando apenas Firebase v9+ SDK
 
 export default app;

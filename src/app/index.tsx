@@ -132,8 +132,8 @@ export default function Index() {
         // Configurar notificações locais com Expo
         await notificationService.setupPushNotifications();
         
-        // Configurar notificações FCM para segundo plano
-        await pushNotificationService.requestUserPermission();
+        // NÃO solicitar permissões automaticamente - apenas no login
+        console.log('🔧 Notificações locais configuradas (sem solicitar permissões)');
       } catch (error) {
         console.error('Erro ao inicializar notificações:', error);
       }

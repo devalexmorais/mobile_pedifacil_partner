@@ -22,14 +22,13 @@ export default function NotificationsScreen() {
   useEffect(() => {
     async function setupNotifications() {
       try {
-        // Inicializar o serviço completo de push notifications
-        await pushNotificationService.initialize();
+        // Inicializar apenas a configuração básica (sem solicitar token)
+        await pushNotificationService.initializeWithoutToken();
         
         // Configurar notificações expo
         await notificationService.setupPushNotifications();
         
-        // Verificar token FCM
-        await pushNotificationService.getFCMToken();
+        // NÃO solicitar token FCM aqui - apenas no login
 
         // Ouvir por notificações recebidas em primeiro plano
         notificationListener.current = Notifications.addNotificationReceivedListener(notification => {

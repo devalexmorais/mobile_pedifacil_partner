@@ -1176,7 +1176,6 @@ exports.onNotificationsCreatedPartner = functions.firestore
       
       // Registra nos logs para debug
       console.log(`🚀 Nova notificação ${notificationId} criada para o parceiro ${partnerId}`);
-      console.log('📋 Dados da notificação:', JSON.stringify(notificationData, null, 2));
       
       // Obtém os tokens de dispositivo do parceiro
       const partnerRef = admin.firestore().collection('partners').doc(partnerId);
@@ -1188,12 +1187,7 @@ exports.onNotificationsCreatedPartner = functions.firestore
       }
       
       const partnerData = partnerDoc.data();
-      console.log('👤 Dados do parceiro:', JSON.stringify({
-        uid: partnerId,
-        email: partnerData.email,
-        hasFcmToken: !!partnerData.fcmToken,
-        fcmTokenLength: partnerData.fcmToken ? partnerData.fcmToken.length : 0
-      }, null, 2));
+      console.log('👤 Parceiro:', partnerData.email);
       
       const fcmToken = partnerData.fcmToken;
       
@@ -1204,17 +1198,11 @@ exports.onNotificationsCreatedPartner = functions.firestore
         return null;
       }
       
-      console.log(`✅ Token encontrado para parceiro ${partnerId}:`, fcmToken.substring(0, 20) + '...');
+      console.log(`✅ Token FCM encontrado (${fcmToken.length} chars)`);
       
       // Detectar tipo de token
       const isExpoToken = fcmToken.startsWith('ExponentPushToken[');
       const isFCMToken = !isExpoToken; // Se não for Expo, assume que é FCM
-      
-      console.log(`🔍 Tipo de token detectado:`, {
-        isExpoToken,
-        isFCMToken,
-        tokenType: isExpoToken ? 'Expo Push Token' : 'FCM Token'
-      });
       
       // Prepara a mensagem de notificação
       const title = notificationData.title || 'Nova notificação';
@@ -1224,7 +1212,7 @@ exports.onNotificationsCreatedPartner = functions.firestore
       
       if (isExpoToken) {
         // Enviar via Expo Push (para tokens Expo)
-        console.log('📤 Enviando via Expo Push...');
+        console.log('📤 Enviando via Expo Push');
         
         const expoMessage = {
           to: fcmToken,
@@ -1252,8 +1240,14 @@ exports.onNotificationsCreatedPartner = functions.firestore
         console.log('✅ Notificação enviada via Expo Push:', response);
         
       } else if (isFCMToken) {
+        // Validação adicional para tokens FCM
+        if (fcmToken.length < 100) {
+          console.log(`❌ Token FCM inválido para parceiro ${partnerId}: muito curto ou vazio`);
+          throw new Error(`Token FCM inválido: ${fcmToken.substring(0, 20)}...`);
+        }
+        
         // Enviar via FCM (para tokens nativos)
-        console.log('📤 Enviando via FCM...');
+        console.log('📤 Enviando via FCM');
         
         const fcmMessage = {
           notification: {
@@ -1285,17 +1279,11 @@ exports.onNotificationsCreatedPartner = functions.firestore
           }
         };
         
-        console.log('📤 Enviando mensagem FCM:', JSON.stringify({
-          title: fcmMessage.notification.title,
-          body: fcmMessage.notification.body,
-          token: fcmMessage.token.substring(0, 20) + '...',
-          hasAndroidConfig: !!fcmMessage.android,
-          hasApnsConfig: !!fcmMessage.apns
-        }, null, 2));
+        // Log simplificado para FCM
         
         // Envia a notificação push via FCM
         response = await admin.messaging().send(fcmMessage);
-        console.log('✅ Notificação enviada via FCM:', response);
+        console.log('✅ Notificação enviada via FCM');
         
       } else {
         throw new Error(`Tipo de token não reconhecido: ${fcmToken.substring(0, 20)}...`);
@@ -1309,7 +1297,7 @@ exports.onNotificationsCreatedPartner = functions.firestore
         'data.deliveryMethod': isExpoToken ? 'expo_push' : 'fcm'
       });
       
-      console.log('🏷️ Notificação marcada como processada');
+      console.log('✅ Processamento concluído');
       
       return null;
     } catch (error) {

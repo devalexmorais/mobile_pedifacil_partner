@@ -3,6 +3,7 @@ import { db } from '../config/firebase';
 import { collection, query, where, doc, updateDoc, onSnapshot, orderBy, getDoc, getDocs, DocumentData, addDoc, Timestamp } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { establishmentService } from '../services/establishmentService';
+import { notificationService } from '../services/notificationService';
 
 type Address = {
   city: string;
@@ -102,7 +103,7 @@ type PedidosContextData = {
   pedidosEmEntrega: Pedido[];
   aceitarPedido: (pedido: Pedido) => void;
   recusarPedido: (pedidoId: string) => void;
-  cancelarPedido: (pedidoId: string) => void;
+  cancelarPedido: (pedidoId: string, userId: string) => void;
   marcarComoPronto: (pedidoId: string) => void;
   marcarComoEmEntrega: (pedidoId: string) => void;
   marcarComoEntregue: (pedidoId: string) => void;
@@ -121,6 +122,15 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
   const [pedidosProntos, setPedidosProntos] = useState<Pedido[]>([]);
   const [pedidosEmEntrega, setPedidosEmEntrega] = useState<Pedido[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Função para ordenar pedidos por data de criação (mais antigos primeiro)
+  const sortPedidosByDate = (pedidos: Pedido[]) => {
+    return pedidos.sort((a, b) => {
+      const dateA = new Date(a.createdAt.seconds * 1000 + a.createdAt.nanoseconds / 1000000);
+      const dateB = new Date(b.createdAt.seconds * 1000 + b.createdAt.nanoseconds / 1000000);
+      return dateA.getTime() - dateB.getTime(); // Mais antigos primeiro
+    });
+  };
 
   const fetchPedidos = useCallback(async () => {
     if (!user?.uid) return;
@@ -141,10 +151,10 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         ...doc.data()
       })) as Pedido[];
 
-      setPedidosPendentes(pedidos.filter(p => p.status === 'pending'));
-      setPedidosCozinha(pedidos.filter(p => p.status === 'preparing'));
-      setPedidosProntos(pedidos.filter(p => p.status === 'ready'));
-      setPedidosEmEntrega(pedidos.filter(p => p.status === 'out_for_delivery'));
+      setPedidosPendentes(sortPedidosByDate(pedidos.filter(p => p.status === 'pending')));
+      setPedidosCozinha(sortPedidosByDate(pedidos.filter(p => p.status === 'preparing')));
+      setPedidosProntos(sortPedidosByDate(pedidos.filter(p => p.status === 'ready')));
+      setPedidosEmEntrega(sortPedidosByDate(pedidos.filter(p => p.status === 'out_for_delivery')));
     } catch (error) {
       console.error('Erro ao buscar pedidos:', error);
     } finally {
@@ -183,10 +193,10 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           pickupTime: data.pickupTime || '',
         } as Pedido;
       });
-      setPedidosPendentes(pedidos.filter(p => p.status === 'pending'));
-      setPedidosCozinha(pedidos.filter(p => p.status === 'preparing'));
-      setPedidosProntos(pedidos.filter(p => p.status === 'ready'));
-      setPedidosEmEntrega(pedidos.filter(p => p.status === 'out_for_delivery'));
+      setPedidosPendentes(sortPedidosByDate(pedidos.filter(p => p.status === 'pending')));
+      setPedidosCozinha(sortPedidosByDate(pedidos.filter(p => p.status === 'preparing')));
+      setPedidosProntos(sortPedidosByDate(pedidos.filter(p => p.status === 'ready')));
+      setPedidosEmEntrega(sortPedidosByDate(pedidos.filter(p => p.status === 'out_for_delivery')));
     });
 
     const unsubCozinha = onSnapshot(collection(db, 'partners', user.uid, 'orders'), (snapshot) => {
@@ -216,7 +226,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           pickupTime: data.pickupTime || '',
         } as Pedido;
       });
-      setPedidosCozinha(pedidos.filter(p => p.status === 'preparing'));
+      setPedidosCozinha(sortPedidosByDate(pedidos.filter(p => p.status === 'preparing')));
     });
 
     const unsubProntos = onSnapshot(collection(db, 'partners', user.uid, 'orders'), (snapshot) => {
@@ -246,7 +256,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           pickupTime: data.pickupTime || '',
         } as Pedido;
       });
-      setPedidosProntos(pedidos.filter(p => p.status === 'ready'));
+      setPedidosProntos(sortPedidosByDate(pedidos.filter(p => p.status === 'ready')));
     });
 
     const unsubEmEntrega = onSnapshot(collection(db, 'partners', user.uid, 'orders'), (snapshot) => {
@@ -276,7 +286,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
           pickupTime: data.pickupTime || '',
         } as Pedido;
       });
-      setPedidosEmEntrega(pedidos.filter(p => p.status === 'out_for_delivery'));
+      setPedidosEmEntrega(sortPedidosByDate(pedidos.filter(p => p.status === 'out_for_delivery')));
     });
 
     return () => {
@@ -321,7 +331,7 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const cancelarPedido = async (pedidoId: string) => {
+  const cancelarPedido = async (pedidoId: string, userId: string) => {
     if (!user?.uid) return;
 
     try {
@@ -330,6 +340,14 @@ export function PedidosProvider({ children }: { children: React.ReactNode }) {
         status: 'cancelled',
         updatedAt: new Date().toISOString()
       });
+      
+      // Enviar notificação de cancelamento para o usuário
+      await notificationService.sendOrderStatusNotificationToUser(
+        userId,
+        pedidoId,
+        'cancelled',
+        user.uid
+      );
       
       // Registra atividade para evitar fechamento por inatividade
       establishmentService.registerOrderActivity();

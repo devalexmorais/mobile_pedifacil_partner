@@ -3,9 +3,10 @@ import { db, auth } from '../config/firebase';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
-import { Platform } from 'react-native';
+import { Platform, AppState } from 'react-native';
 import { addDoc, serverTimestamp } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import messaging from '@react-native-firebase/messaging';
 
 export interface NotificationData {
   id: string;
@@ -50,6 +51,10 @@ Notifications.setNotificationHandler({
 // Cache para controlar notificações já processadas
 const processedNotificationIds = new Set<string>();
 
+// Controle do estado do app para notificações inteligentes
+let isAppInForeground = AppState.currentState === 'active';
+let fcmUnsubscribe: (() => void) | null = null;
+
 // Função para carregar IDs processados do localStorage
 const loadProcessedNotificationIds = (): Set<string> => {
   try {
@@ -80,6 +85,85 @@ const saveProcessedNotificationIds = (ids: Set<string>): void => {
 const processedIds = loadProcessedNotificationIds();
 processedNotificationIds.clear();
 processedIds.forEach(id => processedNotificationIds.add(id));
+
+// Função para controlar estado do app
+const handleAppStateChange = (nextAppState: string) => {
+  isAppInForeground = nextAppState === 'active';
+  console.log(`📱 Estado do app alterado: ${nextAppState} - Foreground: ${isAppInForeground}`);
+};
+
+// Função para mostrar notificação local apenas quando app está em foreground
+const showLocalNotification = async (title: string, body: string, data: any = {}) => {
+  const currentAppState = AppState.currentState;
+  console.log(`🔍 Estado atual do app: ${currentAppState}, isAppInForeground: ${isAppInForeground}`);
+  
+  if (!isAppInForeground || currentAppState !== 'active') {
+    console.log('🚫 App em background - FCM nativo cuidará da notificação');
+    return;
+  }
+
+  try {
+    console.log('📱 App em foreground - mostrando notificação local');
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        data,
+        sound: true,
+        vibrate: [0, 250, 250, 250],
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+      },
+      trigger: null, // Enviar imediatamente
+    });
+  } catch (error) {
+    console.error('❌ Erro ao mostrar notificação local:', error);
+  }
+};
+
+// Configurar FCM listeners
+const setupFCMListeners = () => {
+  try {
+    // Listener para quando app está em foreground
+    const unsubscribeForeground = messaging().onMessage(async remoteMessage => {
+      console.log('🔔 FCM mensagem recebida em foreground:', remoteMessage);
+      
+      if (remoteMessage.notification) {
+        // Verificar se app está realmente em foreground antes de mostrar notificação local
+        const currentState = AppState.currentState;
+        console.log(`🔍 Estado do app no onMessage: ${currentState}`);
+        
+        if (currentState === 'active') {
+          await showLocalNotification(
+            remoteMessage.notification.title || 'Nova notificação',
+            remoteMessage.notification.body || '',
+            remoteMessage.data || {}
+          );
+        } else {
+          console.log('🚫 App não está em foreground - FCM nativo cuidará da notificação');
+        }
+      }
+    });
+
+    // Handler para quando app está em background/quitado
+    messaging().setBackgroundMessageHandler(async remoteMessage => {
+      console.log('🔔 FCM mensagem recebida em background:', remoteMessage);
+      // O FCM nativo já exibe a notificação automaticamente
+      // Não precisamos fazer nada aqui
+    });
+
+    // Configurar listener de mudança de estado do app
+    const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
+
+    fcmUnsubscribe = () => {
+      unsubscribeForeground();
+      appStateSubscription?.remove();
+    };
+
+    console.log('✅ FCM listeners configurados com sucesso');
+  } catch (error) {
+    console.error('❌ Erro ao configurar FCM listeners:', error);
+  }
+};
 
 export const notificationService = {
   // Verificar se usuário está autenticado
@@ -202,67 +286,22 @@ export const notificationService = {
 
   // Registrar para notificações push
   async registerForPushNotificationsAsync(): Promise<string | undefined> {
-    let token;
-  
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', {
-        name: 'default',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#FFA500',
-      });
-    }
-  
-    if (Device.isDevice) {
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
-      
-      if (existingStatus !== 'granted') {
-        const { status } = await Notifications.requestPermissionsAsync();
-        finalStatus = status;
-      }
-      
-      if (finalStatus !== 'granted') {
-        console.log('Falha ao obter token push para notificações!');
-        return undefined;
-      }
-      
-      try {
-        token = (await Notifications.getExpoPushTokenAsync({
-          projectId: Constants.expoConfig?.extra?.eas?.projectId,
-        })).data;
-        
-        console.log('Token de notificação push:', token);
-      } catch (error) {
-        console.error('Erro ao obter token de notificação:', error);
-      }
-    }
-  
-    return token;
+    // Token Expo removido - usando apenas FCM
+    console.log('⚠️ Token Expo não é mais obtido - usando apenas FCM');
+    return undefined;
   },
 
-  // Configurar notificações push
+  // Configurar notificações push com sistema inteligente
   async setupPushNotifications(): Promise<(() => void) | undefined> {
     try {
-      // Registrar para token de notificação push
-      const token = await this.registerForPushNotificationsAsync();
+      console.log('🔧 Configurando sistema inteligente de notificações...');
       
-      if (!token) {
-        return undefined;
-      }
-      
-      // Salvar token no perfil do usuário se autenticado
-      if (this.isAuthenticated()) {
-        await this.saveNotificationToken(token);
-      }
+      // Configurar FCM listeners (foreground/background)
+      setupFCMListeners();
 
-      // Configurar listener para notificações recebidas quando o app está em primeiro plano
-      const foregroundSubscription = Notifications.addNotificationReceivedListener(notification => {
-        // Notificação recebida em primeiro plano
-      });
-      
-      // Configurar listener para notificações clicadas
+      // Configurar listener para notificações clicadas (Expo)
       const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
+        console.log('🔔 Notificação clicada:', response);
         // Processar dados da notificação quando o usuário clica
         const data = response.notification.request.content.data;
         
@@ -272,11 +311,13 @@ export const notificationService = {
       
       // Retornar função de limpeza para os componentes que chamarem esta função
       return () => {
-        Notifications.removeNotificationSubscription(foregroundSubscription);
         Notifications.removeNotificationSubscription(responseSubscription);
+        if (fcmUnsubscribe) {
+          fcmUnsubscribe();
+        }
       };
     } catch (error) {
-      console.error('Erro ao configurar notificações push:', error);
+      console.error('❌ Erro ao configurar notificações push:', error);
       throw error;
     }
   },
@@ -287,14 +328,9 @@ export const notificationService = {
       const user = auth.currentUser;
       if (!user) return;
       
-      const partnerRef = doc(db, 'partners', user.uid);
-      await updateDoc(partnerRef, {
-        notificationTokens: {
-          expoToken: token,
-          updatedAt: new Date()
-        }
-      });
-      
+      // Não salvar mais tokens Expo - apenas FCM será usado
+      console.log('⚠️ Salvamento de token Expo desabilitado - usando apenas FCM');
+      return;
 
     } catch (error) {
       console.error('Erro ao salvar token de notificação:', error);
@@ -334,7 +370,7 @@ export const notificationService = {
           .filter(change => change.type === 'added')
           .map(change => ({ id: change.doc.id, ...change.doc.data() } as RawNotification));
         
-        // Enviar notificação push apenas para notificações realmente novas
+        // Processar notificações novas (sem enviar push local - FCM já cuida disso)
         newNotifications.forEach(notification => {
           // Verificar se a notificação já foi processada
           if (!notification.read && !processedNotificationIds.has(notification.id)) {
@@ -344,8 +380,9 @@ export const notificationService = {
             // Salvar no localStorage
             saveProcessedNotificationIds(processedNotificationIds);
             
-            // Enviar push notification
-            this.sendPushNotification(notification.title, notification.body, notification.data);
+            // NÃO enviar push notification local aqui - FCM já cuida disso
+            // A notificação push será enviada pela Cloud Function via FCM
+            console.log('📝 Nova notificação detectada no Firestore - FCM enviará push automaticamente');
             
             // Marcar como vista (opcional - para controle adicional)
             // this.markAsViewed(notification.id).catch(console.error);
@@ -370,22 +407,13 @@ export const notificationService = {
     }
   },
 
-  // Enviar notificação push
+  // Enviar notificação push usando sistema inteligente
   async sendPushNotification(title: string, body: string, data: any = {}): Promise<void> {
     try {
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title,
-          body,
-          data,
-          sound: true,
-          vibrate: [0, 250, 250, 250],
-          priority: Notifications.AndroidNotificationPriority.HIGH,
-        },
-        trigger: null, // Enviar imediatamente
-      });
+      // Usar a função inteligente que verifica o estado do app
+      await showLocalNotification(title, body, data);
     } catch (error) {
-      console.error('Erro ao enviar notificação push:', error);
+      console.error('❌ Erro ao enviar notificação push:', error);
       throw error;
     }
   },
@@ -416,18 +444,9 @@ export const notificationService = {
       
       const docRef = await addDoc(userNotificationsRef, notificationData);
       
-      // Tentar enviar notificação push também
-      try {
-        await this.sendPushNotification(data.title, data.body, {
-          ...cleanData,
-          notificationId: docRef.id,
-          type: 'order_status'
-        });
-
-      } catch (pushError) {
-        console.warn('⚠️ Erro ao enviar notificação push local:', pushError);
-        // Não falhar se a notificação push falhar
-      }
+      // Notificação push será enviada automaticamente pela Cloud Function
+      // quando detectar a nova notificação no Firestore
+      console.log('📝 Notificação salva no Firestore - Cloud Function enviará push automaticamente');
       
       return docRef.id;
     } catch (error) {
@@ -667,12 +686,8 @@ export const notificationService = {
 
 
       
-      // Também envia notificação push local
-      await this.sendPushNotification(title, body, {
-        orderId,
-        type: 'inactivity_cancellation',
-        screen: 'notifications'
-      });
+      // Notificação push será enviada automaticamente pela Cloud Function
+      console.log('📝 Notificação de inatividade salva - Cloud Function enviará push automaticamente');
 
     } catch (error) {
       console.error('❌ Erro ao criar notificação de inatividade:', error);
@@ -709,11 +724,8 @@ export const notificationService = {
 
 
       
-      // Também envia notificação push local
-      await this.sendPushNotification(title, body, {
-        type: 'store_closed_inactivity',
-        screen: 'notifications'
-      });
+      // Notificação push será enviada automaticamente pela Cloud Function
+      console.log('📝 Notificação de fechamento salva - Cloud Function enviará push automaticamente');
 
     } catch (error) {
       console.error('❌ Erro ao criar notificação de fechamento por inatividade:', error);
@@ -773,11 +785,8 @@ export const notificationService = {
 
 
       
-      // Também envia notificação push local
-      await this.sendPushNotification(title, body, {
-        type: 'bulk_inactivity_cancellation',
-        screen: 'notifications'
-      });
+      // Notificação push será enviada automaticamente pela Cloud Function
+      console.log('📝 Notificação em lote salva - Cloud Function enviará push automaticamente');
 
     } catch (error) {
       console.error('❌ Erro ao criar notificação de cancelamentos em lote:', error);

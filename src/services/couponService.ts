@@ -104,22 +104,9 @@ const sendCouponNotificationToUsers = async (
 
     console.log(`✅ Notificação de cupom enviada com sucesso para ${limitedUsers.length} usuários`);
 
-    // Também enviar notificação push local para o parceiro
-    try {
-      await notificationService.sendPushNotification(title, body, {
-        type: 'coupon',
-        action,
-        couponCode: coupon.code,
-        discountType: coupon.discountType,
-        discountValue: coupon.value,
-        storeId: coupon.storeId,
-        storeName,
-        city: storeCity
-      });
-      console.log('✅ Notificação push local enviada para o parceiro');
-    } catch (pushError) {
-      console.error('❌ Erro ao enviar notificação push:', pushError);
-    }
+    // Notificação push será enviada automaticamente pela Cloud Function via FCM
+    // Não precisamos enviar notificação local aqui para evitar duplicação
+    console.log('📝 Notificação de cupom salva - Cloud Function enviará push automaticamente');
   } catch (error) {
     console.error('❌ Erro ao enviar notificação de cupom:', error);
   }

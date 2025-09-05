@@ -3,10 +3,6 @@ import { User } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
-import { doc, setDoc } from 'firebase/firestore';
-import { db } from '../config/firebase';
 
 interface AuthContextType {
   user: User | null;
@@ -27,57 +23,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [userData, setUserData] = useState<any | null>(null);
 
-  // Função para obter e salvar token de notificação
-  // Esta função é executada automaticamente quando o usuário se autentica
-  // e salva o token no Firestore para que as Cloud Functions possam enviar notificações
-  const saveNotificationToken = async (userId: string) => {
-    try {
-      console.log('🔔 Obtendo token de notificação para usuário:', userId);
-      
-      // Solicitar permissões para notificações
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
-      
-      if (existingStatus !== 'granted') {
-        const { status } = await Notifications.requestPermissionsAsync();
-        finalStatus = status;
-      }
-      
-      if (finalStatus !== 'granted') {
-        console.log('❌ Permissão para notificações negada');
-        return;
-      }
-      
-      console.log('✅ Permissão para notificações concedida');
-      
-      // Obter token nativo do dispositivo (para produção)
-      const token = await Notifications.getDevicePushTokenAsync();
-      console.log('🔑 Token do dispositivo obtido:', token.data ? token.data.substring(0, 20) + '...' : 'Token vazio');
-      
-      if (!token || !token.data) {
-        console.log('⚠️ Token de notificação vazio');
-        return;
-      }
-      
-      // Salvar token no Firestore
-      const userRef = doc(db, 'partners', userId);
-      
-      await setDoc(userRef, {
-        fcmToken: token.data,
-        deviceInfo: {
-          lastUpdated: new Date(),
-          platform: Platform.OS,
-          version: Platform.Version,
-          tokenType: 'device_push'
-        }
-      }, { merge: true });
-      
-      console.log('🔥 Token de notificação salvo no Firestore para parceiro:', userId);
-      
-    } catch (error) {
-      console.error('❌ Erro ao obter/salvar token de notificação:', error);
-    }
-  };
+  // Função removida - token de notificação é gerenciado apenas no App.tsx
+  // para evitar duplicação de logs e operações
 
   useEffect(() => {
     const checkAuthStatus = async () => {
@@ -100,8 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
           setUser(currentUser);
           
-          // Salvar token de notificação para usuário já autenticado
-          saveNotificationToken(currentUser.uid);
+          // Token de notificação é gerenciado apenas no App.tsx
         } else if (token) {
           // Se há token mas não há usuário, pode ser um token inválido
           // Aguardar o onAuthStateChanged para verificar
@@ -140,8 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUserData(userData);
           }
           
-          // Salvar token de notificação para novo usuário autenticado
-          saveNotificationToken(user.uid);
+          // Token de notificação é gerenciado apenas no App.tsx
           
         } catch (error) {
           console.error('Erro ao atualizar token:', error);

@@ -21,7 +21,7 @@ export default function Preparando() {
     );
   }
 
-  const handleCancelarPedido = async (pedidoId: string) => {
+  const handleCancelarPedido = async (pedidoId: string, userId: string) => {
     if (isProcessing) return;
     
     Alert.alert(
@@ -38,7 +38,7 @@ export default function Preparando() {
           onPress: async () => {
             try {
               setIsProcessing(true);
-              await cancelarPedido(pedidoId);
+              await cancelarPedido(pedidoId, userId);
               
               Alert.alert(
                 'Pedido Cancelado',
@@ -175,7 +175,7 @@ export default function Preparando() {
         <View style={styles.buttonContainer}>
           <TouchableOpacity 
             style={[styles.button, styles.cancelButton, isProcessing && styles.disabledButton]}
-            onPress={() => handleCancelarPedido(item.id)}
+            onPress={() => handleCancelarPedido(item.id, item.userId)}
             disabled={isProcessing}
           >
             <Ionicons name="close-circle" size={22} color="#fff" />
